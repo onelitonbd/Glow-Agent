@@ -262,8 +262,11 @@ document.getElementById('attachButton').addEventListener('click', () => showToas
 document.getElementById('openHistory').addEventListener('click', () => { renderConversationList(); historyDrawer.showModal(); });
 document.getElementById('closeHistory').addEventListener('click', () => historyDrawer.close());
 document.getElementById('newConversation').addEventListener('click', startNewConversation);
-document.getElementById('drawerNewChat').addEventListener('click', () => { historyDrawer.close(); startNewConversation(); });
 document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close()));
+document.querySelectorAll('.coming-soon').forEach((button) => button.addEventListener('click', () => {
+  historyDrawer.close();
+  showToast(`${button.dataset.route} is the next workspace capability.`);
+}));
 messageInput.addEventListener('input', () => { messageInput.style.height = 'auto'; messageInput.style.height = `${Math.min(messageInput.scrollHeight, 180)}px`; });
 renderLog();
 loadWorkspace();
