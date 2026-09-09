@@ -7,9 +7,11 @@ const state = {
   providers: [],
   availableModels: [],
   skills: [],
+  tools: [],
   selectedProviderId: null,
   selectedModelId: null,
-  selectedSkillIds: new Set()
+  selectedSkillIds: new Set(),
+  selectedToolIds: new Set()
 };
 const chatLog = document.getElementById('chatLog');
 const title = document.getElementById('conversationTitle');
@@ -17,10 +19,14 @@ const composer = document.getElementById('composer');
 const messageInput = document.getElementById('messageInput');
 const sendButton = document.getElementById('sendMessage');
 const modelTrigger = document.getElementById('openModelPicker');
+const skillTrigger = document.getElementById('openSkills');
+const toolTrigger = document.getElementById('openTools');
 const modelDialog = document.getElementById('modelDialog');
 const modelOptions = document.getElementById('modelOptions');
 const modelPickerHint = document.getElementById('modelPickerHint');
 const skillsDialog = document.getElementById('skillsDialog');
+const toolsDialog = document.getElementById('toolsDialog');
+const chatToolOptions = document.getElementById('chatToolOptions');
 const chatSkillOptions = document.getElementById('chatSkillOptions');
 const historyDrawer = document.getElementById('historyDrawer');
 const conversationList = document.getElementById('conversationList');
@@ -44,6 +50,15 @@ function renderLog() {
     const bubble = element('article', `message ${message.role}`, message.content);
     const meta = element('div', 'message-meta', message.role === 'assistant' && message.modelId ? message.modelId : formatDate(message.createdAt));
     bubble.append(meta);
+    if (message.role === 'assistant' && Array.isArray(message.toolEvents) && message.toolEvents.length) {
+      const events = element('div', 'tool-events');
+      message.toolEvents.forEach((event) => {
+        const item = element('div', 'tool-event', event.summary);
+        item.prepend(icon('wrench'));
+        events.append(item);
+      });
+      bubble.append(events);
+    }
     chatLog.append(bubble);
   });
   chatLog.scrollTop = chatLog.scrollHeight;
@@ -104,6 +119,8 @@ function renderModelPicker() {
 }
 
 function renderSkillPicker() {
+  skillTrigger.classList.toggle('selected', state.selectedSkillIds.size > 0);
+  skillTrigger.setAttribute('aria-label', state.selectedSkillIds.size ? `${state.selectedSkillIds.size} skill${state.selectedSkillIds.size === 1 ? '' : 's'} selected. Select skills.` : 'Select skills');
   chatSkillOptions.replaceChildren();
   if (state.skills.length === 0) {
     chatSkillOptions.append(element('p', 'hint', 'No skills are available yet. Create one from the Skills page.'));
@@ -126,6 +143,36 @@ function renderSkillPicker() {
   });
 }
 
+
+function toolIcon(toolId) {
+  return toolId === 'calculator' ? 'calculator' : 'clock';
+}
+
+function renderToolPicker() {
+  toolTrigger.classList.toggle('selected', state.selectedToolIds.size > 0);
+  toolTrigger.setAttribute('aria-label', state.selectedToolIds.size ? `${state.selectedToolIds.size} tool${state.selectedToolIds.size === 1 ? '' : 's'} permitted for the next response. Select tools.` : 'Select tools');
+  chatToolOptions.replaceChildren();
+  if (state.tools.length === 0) {
+    chatToolOptions.append(element('p', 'hint', 'No tools are available from the local server.'));
+    return;
+  }
+  state.tools.forEach((tool) => {
+    const isSelected = state.selectedToolIds.has(tool.id);
+    const option = element('button', `model-option${isSelected ? ' selected' : ''}`);
+    option.type = 'button';
+    const badge = element('span', 'data-icon violet'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon(toolIcon(tool.id)));
+    const copy = element('span'); copy.append(element('b', 'data-name', tool.name), element('span', 'data-subtitle', tool.description));
+    option.append(badge, copy);
+    if (isSelected) option.append(icon('check'));
+    option.addEventListener('click', () => {
+      if (isSelected) state.selectedToolIds.delete(tool.id);
+      else state.selectedToolIds.add(tool.id);
+      renderToolPicker();
+    });
+    chatToolOptions.append(option);
+  });
+}
+
 async function loadModels() {
   state.providers = await api.providers.list();
   const results = await Promise.all(state.providers.map(async (provider) => {
@@ -144,11 +191,13 @@ async function loadModels() {
 
 async function loadWorkspace() {
   try {
-    const [conversations, skills] = await Promise.all([api.conversations.list(), api.skills.list()]);
+    const [conversations, skills, tools] = await Promise.all([api.conversations.list(), api.skills.list(), api.tools.list()]);
     state.conversations = conversations;
     state.skills = skills;
+    state.tools = tools;
     renderConversationList();
     renderSkillPicker();
+    renderToolPicker();
     await loadModels();
   } catch (error) {
     showToast(error.message, 'danger');
@@ -187,9 +236,12 @@ composer.addEventListener('submit', async (event) => {
       message,
       providerId: state.selectedProviderId,
       modelId: state.selectedModelId,
-      skillIds: [...state.selectedSkillIds]
+      skillIds: [...state.selectedSkillIds],
+      toolIds: [...state.selectedToolIds]
     });
     state.conversation = result.conversation;
+    state.selectedSkillIds.clear();
+    state.selectedToolIds.clear();
     messageInput.value = '';
     await loadWorkspace();
     renderLog();
@@ -205,7 +257,8 @@ composer.addEventListener('submit', async (event) => {
 
 document.getElementById('openModelPicker').addEventListener('click', () => { renderModelPicker(); modelDialog.showModal(); });
 document.getElementById('openSkills').addEventListener('click', () => { renderSkillPicker(); skillsDialog.showModal(); });
-document.getElementById('attachButton').addEventListener('click', () => showToast('Attachments and tool permissions are the next capability phase.'));
+document.getElementById('openTools').addEventListener('click', () => { renderToolPicker(); toolsDialog.showModal(); });
+document.getElementById('attachButton').addEventListener('click', () => showToast('Attachments are the next capability phase.'));
 document.getElementById('openHistory').addEventListener('click', () => { renderConversationList(); historyDrawer.showModal(); });
 document.getElementById('closeHistory').addEventListener('click', () => historyDrawer.close());
 document.getElementById('newConversation').addEventListener('click', startNewConversation);

@@ -136,13 +136,16 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .message.user { justify-self: end; border-bottom-right-radius: 4px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .message.assistant { justify-self: start; border: 1px solid var(--line); border-bottom-left-radius: 4px; background: var(--surface); color: var(--text-soft); }
 .message-meta { margin-top: 6px; font: 7px var(--mono); opacity: .7; }
+.tool-events { display: grid; gap: 4px; margin-top: 8px; }
+.tool-event { display: flex; align-items: center; gap: 5px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-soft); color: var(--muted); font: 7px/1.35 var(--mono); }
+.tool-event svg { width: 11px; height: 11px; flex: 0 0 auto; color: var(--accent); }
 .composer { padding: 10px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: 0 12px 32px rgba(0,0,0,.18); }
 .composer textarea { display: block; width: 100%; min-height: 58px; padding: 5px 4px 10px; resize: none; border: 0; outline: 0; background: transparent; color: var(--text); font: 11px/1.5 var(--font); }
 .composer textarea::placeholder { color: var(--quiet); }
 .composer-controls { display: flex; align-items: center; gap: 7px; padding-top: 9px; border-top: 1px solid var(--line); }
 .composer-spacer { flex: 1; }
 .composer .icon-button { width: 33px; height: 33px; }
-.composer .model-trigger.selected { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); }
+.composer .icon-button.selected { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); }
 .composer .send { border: 0; background: var(--accent); color: var(--accent-ink); }
 .drawer { width: min(86vw, 350px); height: 100%; margin: 0 auto 0 0; padding: env(safe-area-inset-top) 15px 20px; border: 0; border-right: 1px solid var(--line); background: var(--bg); color: var(--text); box-shadow: 20px 0 50px rgba(0,0,0,.4); }
 .drawer::backdrop { background: rgba(3,4,6,.65); backdrop-filter: blur(8px); }

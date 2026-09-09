@@ -36,6 +36,7 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request('/health'),
+  tools: { list: () => request('/tools') },
   providers: {
     list: () => request('/providers'),
     get: (id) => request(`/providers/${encodeURIComponent(id)}`),

@@ -1,10 +1,10 @@
 # Glow Agent MVP implementation plan
 
-**Status:** Phase 1 and the local-first data layer are being implemented now.
+**Status:** Foundation, local data workflows, and the first safe agentic-tool vertical slice are implemented. Streaming, attachments, authenticated network access, and richer tools remain later phases.
 
 ## Product boundary for this first working release
 
-Glow Agent is a **single-owner, local-first AI workspace** run from Termux. It connects to OpenAI-compatible providers using a user-supplied base URL and API key, discovers models server-side, and lets the owner write reusable skills.
+Glow Agent is a **single-owner, local-first AI workspace** run from Termux. It connects to OpenAI-compatible providers using a user-supplied base URL and API key, discovers models server-side, lets the owner write reusable skills, and supports selected server-side tools during a chat response.
 
 The initial release deliberately binds to `127.0.0.1`. It does not claim to be safe for LAN or public exposure until authentication, authorization, HTTPS, and a deliberate network-access design are complete.
 
@@ -20,11 +20,14 @@ The initial release deliberately binds to `127.0.0.1`. It does not claim to be s
 3. **Skills workflow**
    - Persistent skill CRUD with the existing mobile design: Name, Description, and Instructions.
    - The three-dot card menu opens below its card and exposes Configure and Delete.
-4. **Usable chat vertical slice**
+4. **Allowlisted tool workflow**
+   - The server exposes Calculator and Current time as built-in tools. The browser selects a tool for one message but never executes model-supplied commands itself.
+   - The server sends OpenAI-compatible function definitions only for the tools the user selected, validates call arguments, executes a small explicit allowlist, limits execution to four provider rounds, and records a safe tool-use summary alongside the assistant message.
+5. **Usable chat vertical slice**
    - Conversations and messages persist locally.
-   - The browser sends a message to the same-origin server. The server resolves the selected provider/model, injects explicitly selected skill instructions as a system message, calls the OpenAI-compatible `/chat/completions` endpoint, and returns the assistant response. No client code receives the provider secret.
-5. **Verification and handover**
-   - Node API tests cover health, safe provider output, model selection, skills, and common input failures.
+   - The browser sends a message to the same-origin server. The server resolves the selected provider/model, injects explicitly selected skill instructions as a system message, invokes selected tools when the provider requests them, and returns the assistant response. No client code receives the provider secret.
+6. **Verification and handover**
+   - Node API tests cover health, safe provider output, model selection, skills, common input failures, tool discovery, server-side tool calling, and skill injection.
    - README documents install, encryption-key generation, local operation, backup, and the current security boundary.
 
 ## Concrete API contract
@@ -34,6 +37,7 @@ All endpoints are same-origin and are rooted at `/api/v1`.
 | Area | Routes |
 | --- | --- |
 | Operations | `GET /health` |
+| Tools | `GET /tools` |
 | Providers | `GET, POST /providers`; `GET, PUT, DELETE /providers/:providerId`; `POST /providers/:providerId/fetch-models` |
 | Selected models | `GET, POST /providers/:providerId/models`; `DELETE /providers/:providerId/models/:modelId` |
 | Skills | `GET, POST /skills`; `GET, PUT, DELETE /skills/:skillId` |
@@ -46,7 +50,7 @@ Mutating requests accept JSON only. Every API response uses a `{ "data": ... }` 
 - `providers`: display name, normalized base URL, encrypted credential bundle, and timestamps.
 - `provider_models`: selected model IDs, scoped to a provider.
 - `skills`: name, description, instructions, and timestamps.
-- `conversations` and `messages`: local chat history. Provider/model IDs are recorded with messages, but credentials never are.
+- `conversations` and `messages`: local chat history. Provider/model IDs and safe tool-use summaries are recorded with messages, but credentials never are.
 
 ## Explicit security decisions
 
@@ -54,8 +58,9 @@ Mutating requests accept JSON only. Every API response uses a `{ "data": ... }` 
 - SQL uses prepared statements. Inputs are bounded and validated at the server boundary.
 - The upstream OpenAI-compatible request is made only by the server. The UI works with safe provider metadata and IDs.
 - Credential strings are never logged, returned, persisted in browser storage, interpolated into HTML, or included in query strings.
+- Tool calls are limited to an explicit server-side allowlist; no shell, file, network, or arbitrary JavaScript execution is available to a model.
 - The project currently refuses non-loopback binding. LAN/public support will be a separate authenticated release rather than an unsafe environment toggle.
 
 ## Deferred, not omitted
 
-Tool execution and attachment processing require a separate capability-permission model and sandboxing policy, so the initial Attach affordance remains a clearly labelled future capability. Streaming responses, account auth, LAN/public access, full tool execution, and production backup scheduling follow after this secure local workflow is proven.
+Attachment processing requires a separate capability-permission model and storage policy, so the Attach affordance remains clearly labelled as a future capability. The current tools are intentionally limited to Calculator and Current time; streaming responses, account auth, LAN/public access, richer/sandboxed tools, and production backup scheduling follow after this secure local workflow is proven.

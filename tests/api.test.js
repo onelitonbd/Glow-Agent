@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createApp } from '../server/app.js';
+import { executeToolCall, selectedTools } from '../server/services/tools.js';
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -29,6 +30,7 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-test-'));
   let sawCredential = false;
   let sawSkillInstruction = false;
+  let sawToolResult = false;
   const upstream = createServer(async (request, response) => {
     if (request.headers.authorization === 'Bearer local-test-key') sawCredential = true;
     if (request.url === '/v1/models') {
@@ -41,6 +43,13 @@ test('local API persists safe providers, skills, models, and a provider-backed r
       for await (const chunk of request) raw += chunk;
       const body = JSON.parse(raw);
       sawSkillInstruction = body.messages.some((message) => message.role === 'system' && message.content.includes('Answer in a compact checklist.'));
+      const toolResult = body.messages.find((message) => message.role === 'tool');
+      if (!toolResult) {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ choices: [{ message: { content: null, tool_calls: [{ id: 'call_calculator', type: 'function', function: { name: 'calculator', arguments: '{"expression":"12 * (5 + 1)"}' } }] } }] }));
+        return;
+      }
+      sawToolResult = JSON.parse(toolResult.content).result === 72;
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ choices: [{ message: { content: 'A real local provider response.' } }] }));
       return;
@@ -70,6 +79,8 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   const health = await json(`${base}/health`);
   assert.equal(health.response.status, 200);
   assert.equal(health.payload.data.status, 'ok');
+  const tools = await json(`${base}/tools`);
+  assert.deepEqual(tools.payload.data.map((tool) => tool.id), ['calculator', 'current_time']);
 
   const created = await json(`${base}/providers`, {
     method: 'POST',
@@ -108,12 +119,28 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   const conversation = await json(`${base}/conversations`, { method: 'POST' });
   const response = await json(`${base}/conversations/${conversation.payload.data.id}/respond`, {
     method: 'POST',
-    body: { message: 'Help me plan today.', providerId: provider.id, modelId: 'gpt-test-mini', skillIds: [skill.payload.data.id] }
+    body: { message: 'Help me plan today.', providerId: provider.id, modelId: 'gpt-test-mini', skillIds: [skill.payload.data.id], toolIds: ['calculator'] }
   });
   assert.equal(response.response.status, 200);
   assert.equal(response.payload.data.assistantMessage.content, 'A real local provider response.');
   assert.equal(response.payload.data.conversation.messages.length, 2);
+  assert.equal(response.payload.data.assistantMessage.toolEvents[0].summary, 'Calculator: 12 * (5 + 1) = 72');
   assert.equal(sawSkillInstruction, true);
+  assert.equal(sawToolResult, true);
+});
+
+test('allowlisted tools use a bounded arithmetic parser and safe time-zone handling', () => {
+  const selected = selectedTools(['calculator', 'current_time']);
+  const arithmetic = executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"(2 + 3) * 4"}' } }, new Set(selected.map((tool) => tool.id)));
+  assert.equal(arithmetic.result.result, 20);
+  const rejected = executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"process.exit()"}' } }, new Set(['calculator']));
+  assert.match(rejected.result.error, /Expression must use/u);
+  const clock = executeToolCall({ function: { name: 'current_time', arguments: '{"timeZone":"Asia/Dhaka"}' } }, new Set(['current_time']));
+  assert.equal(clock.result.timeZone, 'Asia/Dhaka');
+  const blocked = executeToolCall({ function: { name: 'shell', arguments: '{}' } }, new Set(['calculator']));
+  assert.equal(blocked.result.error, 'This tool was not selected for this request.');
+  const prototypeName = executeToolCall({ function: { name: '__proto__', arguments: '{}' } }, new Set(['calculator']));
+  assert.equal(prototypeName.result.error, 'This tool was not selected for this request.');
 });
 
 test('invalid provider input is rejected without creating a record', async (t) => {

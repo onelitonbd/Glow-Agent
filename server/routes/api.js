@@ -13,6 +13,7 @@ import {
 } from '../services/providers.js';
 import { createSkill, deleteSkill, getSkill, listSkills, updateSkill } from '../services/skills.js';
 import { createConversation, getConversation, listConversations, respondToConversation } from '../services/conversations.js';
+import { listTools } from '../services/tools.js';
 
 function success(response, data, status = 200) {
   response.status(status).json({ data });
@@ -44,6 +45,7 @@ export function createApiRouter({ db, config }) {
   router.get('/health', (_request, response) => success(response, {
     status: 'ok', service: 'glow-agent', time: new Date().toISOString()
   }));
+  router.get('/tools', (_request, response) => success(response, listTools()));
 
   router.route('/providers')
     .get((_request, response) => success(response, listProviders(db, config.encryptionKey)))

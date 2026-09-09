@@ -2,7 +2,7 @@
 
 **Glow Agent** is a mobile-first, local-first AI workspace designed to run from Termux. It uses plain HTML, CSS, and browser JavaScript on the frontend, with a same-origin Node.js/Express API and local SQLite database on the backend.
 
-The current implementation supports OpenAI-compatible BYOK providers, server-side model discovery, persistent selected models, reusable skills, local conversation history, and non-streaming chat completions. Provider API keys are encrypted before they are stored in SQLite and are never returned to the browser after save.
+The current implementation supports OpenAI-compatible BYOK providers, server-side model discovery, persistent selected models, reusable skills, safe built-in tools, local conversation history, and non-streaming chat completions. Provider API keys are encrypted before they are stored in SQLite and are never returned to the browser after save.
 
 ## Run locally in Termux
 
@@ -48,9 +48,10 @@ For development with file watching, run `npm run dev`. Run automated API checks 
 1. Open **Providers** and add an OpenAI-compatible provider with its base URL and primary API key. Optional backup keys are tried only for upstream `401`, `403`, or `429` responses.
 2. Open **Models** for that provider, fetch `/models`, and add the models you want available in chat.
 3. Create reusable **Skills**. The three-dot menu opens below each skill card and offers Configure and Delete. In chat, select zero or more skills for the next request.
-4. Select a provider/model using the compact composer icon and send a message. Glow Agent persists the conversation locally and calls the configured provider's `/chat/completions` endpoint from the server.
+4. In the chat composer, optionally permit the **Calculator** and/or **Current time** tool for the next response. Tool calls are requested by the model but validated and executed only by the server; no model-supplied shell commands or arbitrary JavaScript are allowed.
+5. Select a provider/model using the compact composer icon and send a message. Glow Agent persists the conversation locally, applies selected skills, performs any selected tool calls, and calls the configured provider's `/chat/completions` endpoint from the server.
 
-Attachments, tool execution, streaming responses, accounts, and networked deployment are deliberately deferred to later security-focused phases. The Attach control is labelled accordingly rather than pretending those capabilities are active.
+Attachments, streaming responses, accounts, networked deployment, and richer tools are deliberately deferred to later security-focused phases. The Attach control is labelled accordingly rather than pretending those capabilities are active.
 
 ## Documentation and design references
 

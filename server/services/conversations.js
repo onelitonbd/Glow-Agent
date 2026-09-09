@@ -3,6 +3,7 @@ import { notFound, validation, AppError } from '../lib/errors.js';
 import { identifier, modelId, requiredString } from '../lib/validate.js';
 import { now } from '../db/database.js';
 import { providerCredentials, providerFetch, upstreamUrl } from './providers.js';
+import { executeToolCall, openAiToolDefinitions, selectedTools } from './tools.js';
 
 function toConversation(row) {
   return {
@@ -15,12 +16,19 @@ function toConversation(row) {
 }
 
 function toMessage(row) {
+  let toolEvents = [];
+  try {
+    toolEvents = row.tool_events ? JSON.parse(row.tool_events) : [];
+  } catch {
+    toolEvents = [];
+  }
   return {
     id: row.id,
     role: row.role,
     content: row.content,
     providerId: row.provider_id,
     modelId: row.model_id,
+    toolEvents,
     createdAt: row.created_at
   };
 }
@@ -96,13 +104,13 @@ function conversationMessages(db, conversationId) {
   `).all(conversationId).reverse();
 }
 
-function persistMessage(db, { conversationId, role, content, providerId = null, selectedModelId = null }) {
+function persistMessage(db, { conversationId, role, content, providerId = null, selectedModelId = null, toolEvents = [] }) {
   const id = randomUUID();
   const createdAt = now();
-  db.prepare(`INSERT INTO messages (id, conversation_id, role, content, provider_id, model_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, conversationId, role, content, providerId, selectedModelId, createdAt);
-  return { id, role, content, providerId, modelId: selectedModelId, createdAt };
+  db.prepare(`INSERT INTO messages (id, conversation_id, role, content, provider_id, model_id, created_at, tool_events)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, conversationId, role, content, providerId, selectedModelId, createdAt, toolEvents.length ? JSON.stringify(toolEvents) : null);
+  return { id, role, content, providerId, modelId: selectedModelId, toolEvents, createdAt };
 }
 
 export async function respondToConversation(db, encryptionKey, rawConversationId, body, timeoutMs) {
@@ -113,43 +121,72 @@ export async function respondToConversation(db, encryptionKey, rawConversationId
   const selected = db.prepare('SELECT 1 FROM provider_models WHERE provider_id = ? AND model_id = ?').get(providerId, selectedModelId);
   if (!selected) throw validation('Select this model for the provider before starting a chat.');
   const skills = selectedSkills(db, body.skillIds);
+  const tools = selectedTools(body.toolIds);
   const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
   const { provider, credentials } = providerCredentials(db, encryptionKey, providerId);
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
   const system = systemMessage(skills);
   if (system) messages.unshift({ role: 'system', content: system });
+  const toolEvents = [];
+  let assistantContent = '';
 
-  let response;
-  try {
-    response = await providerFetch(upstreamUrl(provider.baseUrl, '/chat/completions'), credentials, {
-      method: 'POST',
-      timeoutMs,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: selectedModelId, messages })
+  for (let round = 0; round < 4; round += 1) {
+    let response;
+    try {
+      response = await providerFetch(upstreamUrl(provider.baseUrl, '/chat/completions'), credentials, {
+        method: 'POST',
+        timeoutMs,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: selectedModelId,
+          messages,
+          ...(tools.length ? { tools: openAiToolDefinitions(tools), tool_choice: 'auto' } : {})
+        })
+      });
+    } catch (error) {
+      throw new AppError(502, 'PROVIDER_UNAVAILABLE', error.message, { expose: true });
+    }
+    if (!response?.ok) {
+      const status = response?.status ? ` (HTTP ${response.status})` : '';
+      throw new AppError(502, 'PROVIDER_RESPONSE_ERROR', `The provider could not complete this request${status}.`, { expose: true });
+    }
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new AppError(502, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.', { expose: true });
+    }
+    const providerMessage = payload?.choices?.[0]?.message;
+    const toolCalls = Array.isArray(providerMessage?.tool_calls) ? providerMessage.tool_calls.slice(0, 5) : [];
+    if (toolCalls.length === 0) {
+      assistantContent = normalizeAssistantContent(providerMessage?.content);
+      break;
+    }
+    messages.push({
+      role: 'assistant',
+      content: providerMessage.content ?? null,
+      tool_calls: toolCalls
     });
-  } catch (error) {
-    throw new AppError(502, 'PROVIDER_UNAVAILABLE', error.message, { expose: true });
+    for (const call of toolCalls) {
+      const execution = executeToolCall(call, new Set(tools.map((tool) => tool.id)));
+      toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
+      messages.push({
+        role: 'tool',
+        tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(),
+        content: JSON.stringify(execution.result)
+      });
+    }
   }
-  if (!response?.ok) {
-    const status = response?.status ? ` (HTTP ${response.status})` : '';
-    throw new AppError(502, 'PROVIDER_RESPONSE_ERROR', `The provider could not complete this request${status}.`, { expose: true });
-  }
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new AppError(502, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.', { expose: true });
-  }
-  const assistantContent = normalizeAssistantContent(payload?.choices?.[0]?.message?.content);
   if (!assistantContent) {
-    throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider returned an empty chat response.', { expose: true });
+    throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider did not return a final chat response after tool use.', { expose: true });
   }
   const assistantMessage = persistMessage(db, {
     conversationId: conversation.id,
     role: 'assistant',
     content: assistantContent,
     providerId,
-    selectedModelId
+    selectedModelId,
+    toolEvents
   });
   const title = conversation.title === 'New conversation' ? content.slice(0, 72) : conversation.title;
   db.prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?').run(title, now(), conversation.id);

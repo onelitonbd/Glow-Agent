@@ -11,7 +11,7 @@
     "start": "node --no-warnings server/server.js",
     "dev": "node --watch --no-warnings server/server.js",
     "test": "node --no-warnings --test",
-    "check": "node --check server/server.js && node --check client/assets/js/chat.js && node --check client/assets/js/providers.js && node --check client/assets/js/models.js && node --check client/assets/js/skills.js"
+    "check": "node --check server/server.js && node --check server/services/tools.js && node --check client/assets/js/chat.js && node --check client/assets/js/providers.js && node --check client/assets/js/models.js && node --check client/assets/js/skills.js && node --check client/assets/js/tools.js"
   },
   "dependencies": {
     "express": "5.2.1"
