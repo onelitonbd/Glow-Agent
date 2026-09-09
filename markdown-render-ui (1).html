@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Markdown rendering — table & code</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root{
+    --paper:#EDEAE2;
+    --card:#FFFFFF;
+    --ink:#20241F;
+    --muted:#5C6058;
+    --rule:#D8D3C6;
+    --accent:#2F6F5E;
+    --accent-soft:#E4EEEB;
+    --code-bg:#1B2430;
+    --code-bar:#141B24;
+    --code-text:#DCE3EA;
+    --code-muted:#7C8A99;
+  }
+
+  *{ box-sizing:border-box; }
+
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    display:flex;
+    justify-content:center;
+    padding:56px 20px;
+  }
+
+  .wrap{ width:100%; max-width:640px; }
+
+  .msg-label{
+    font-size:13px;
+    color:var(--muted);
+    margin-bottom:10px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .dot{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--accent);
+    flex-shrink:0;
+  }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--rule);
+    border-radius:10px;
+    padding:28px 30px;
+  }
+
+  p{
+    font-size:15.5px;
+    line-height:1.65;
+    margin:0 0 18px 0;
+  }
+  p:last-child{ margin-bottom:0; }
+
+  h3{
+    font-size:16px;
+    font-weight:600;
+    margin:0 0 12px 0;
+  }
+
+  /* ---- table ---- */
+  table{
+    width:100%;
+    border-collapse:collapse;
+    margin:0 0 24px 0;
+    font-size:14px;
+  }
+  thead th{
+    text-align:left;
+    font-weight:600;
+    padding:0 14px 10px 14px;
+    border-bottom:2px solid var(--accent);
+    color:var(--ink);
+  }
+  tbody td{
+    padding:11px 14px;
+    border-bottom:1px solid var(--rule);
+    color:var(--ink);
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  td.num, th.num{ font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--muted); }
+  td:first-child, th:first-child{ padding-left:0; }
+  td:last-child, th:last-child{ padding-right:0; }
+
+  /* ---- wide / overflowing table ---- */
+  .table-scroll{
+    position:relative;
+    margin:0 0 8px 0;
+  }
+  .table-scroll-inner{
+    overflow-x:auto;
+    border:1px solid var(--rule);
+    border-radius:8px;
+    -webkit-overflow-scrolling:touch;
+  }
+  .table-scroll-inner::-webkit-scrollbar{ height:8px; }
+  .table-scroll-inner::-webkit-scrollbar-thumb{ background:var(--rule); border-radius:4px; }
+  .table-scroll-inner::-webkit-scrollbar-track{ background:transparent; }
+
+  table.wide{
+    width:auto;
+    min-width:100%;
+    margin:0;
+  }
+  table.wide thead th, table.wide tbody td{
+    padding:11px 16px;
+    white-space:nowrap;
+  }
+  table.wide thead th:first-child, table.wide tbody td:first-child{
+    position:sticky;
+    left:0;
+    background:var(--card);
+    box-shadow:1px 0 0 var(--rule);
+  }
+  .fade-edge{
+    position:absolute;
+    top:0; right:0; bottom:0;
+    width:28px;
+    background:linear-gradient(to right, transparent, var(--card));
+    pointer-events:none;
+    border-radius:0 8px 8px 0;
+  }
+  .scroll-hint{
+    font-size:12px;
+    color:var(--muted);
+    margin:8px 0 24px 0;
+    display:flex;
+    align-items:center;
+    gap:5px;
+  }
+  .scroll-hint svg{ width:12px; height:12px; }
+
+  /* ---- code block ---- */
+  .code-block{
+    background:var(--code-bg);
+    border-radius:8px;
+    overflow:hidden;
+    margin:0 0 24px 0;
+  }
+  .code-bar{
+    background:var(--code-bar);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:8px 14px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    color:var(--code-muted);
+  }
+  .copy-btn{
+    background:none;
+    border:none;
+    color:var(--code-muted);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:12.5px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:4px 8px;
+    border-radius:5px;
+    transition:color .15s ease, background .15s ease;
+  }
+  .copy-btn:hover{ color:var(--code-text); background:rgba(255,255,255,0.06); }
+  .copy-btn svg{ width:13px; height:13px; }
+
+  pre{
+    margin:0;
+    padding:16px 18px 18px 18px;
+    overflow-x:auto;
+  }
+  code{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13.5px;
+    line-height:1.7;
+    color:var(--code-text);
+    white-space:pre;
+  }
+  .kw{ color:#7FB0E0; }
+  .str{ color:#B9CE8F; }
+  .com{ color:#6B7A8C; }
+  .fn{ color:#E0B279; }
+
+  .note{
+    margin-top:22px;
+    font-size:13px;
+    color:var(--muted);
+    line-height:1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="msg-label"><span class="dot"></span>Assistant</div>
+
+  <div class="card">
+    <p>Here's the response breakdown by status. Rows are sorted by count, descending.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th class="num">Count</th>
+          <th class="num">Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Completed</td><td class="num">1,204</td><td class="num">76%</td></tr>
+        <tr><td>Pending</td><td class="num">312</td><td class="num">20%</td></tr>
+        <tr><td>Failed</td><td class="num">64</td><td class="num">4%</td></tr>
+      </tbody>
+    </table>
+
+    <p>Same data with a few more columns — this one's wider than the card, so it scrolls on its own instead of stretching the page:</p>
+
+    <div class="table-scroll">
+      <div class="table-scroll-inner" onscroll="handleTableScroll(this)">
+        <table class="wide">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th class="num">Count</th>
+              <th class="num">Share</th>
+              <th class="num">Avg. time (s)</th>
+              <th class="num">Median (s)</th>
+              <th class="num">p95 (s)</th>
+              <th class="num">Retries</th>
+              <th class="num">Last 24h Δ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Completed</td><td class="num">1,204</td><td class="num">76%</td><td class="num">2.1</td><td class="num">1.8</td><td class="num">4.6</td><td class="num">18</td><td class="num">+3.2%</td></tr>
+            <tr><td>Pending</td><td class="num">312</td><td class="num">20%</td><td class="num">0.4</td><td class="num">0.3</td><td class="num">1.1</td><td class="num">0</td><td class="num">−1.0%</td></tr>
+            <tr><td>Failed</td><td class="num">64</td><td class="num">4%</td><td class="num">5.7</td><td class="num">4.9</td><td class="num">11.2</td><td class="num">41</td><td class="num">+0.4%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="fade-edge" id="fadeEdge"></div>
+    </div>
+    <div class="scroll-hint">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+      Scroll to see more columns — first column stays put
+    </div>
+
+    <p>And here's the function that produces that grouping:</p>
+
+    <div class="code-block">
+      <div class="code-bar">
+        <span>python</span>
+        <button class="copy-btn" onclick="copyCode(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span class="copy-label">Copy</span>
+        </button>
+      </div>
+      <pre><code id="snippet"><span class="com"># group and count by status</span>
+<span class="kw">def</span> <span class="fn">status_breakdown</span>(rows):
+    counts = {}
+    <span class="kw">for</span> row <span class="kw">in</span> rows:
+        key = row[<span class="str">"status"</span>]
+        counts[key] = counts.get(key, <span class="kw">0</span>) + <span class="kw">1</span>
+    <span class="kw">return</span> <span class="fn">sorted</span>(counts.items(), key=<span class="kw">lambda</span> x: -x[<span class="kw">1</span>])</code></pre>
+    </div>
+
+    <p>Want this broken down by day instead of totals?</p>
+  </div>
+
+  <div class="note">
+    Layout notes: dark panel isolates code from prose at a glance; the table relies on a single accent rule under the header instead of shading, so it stays quiet next to the code block's contrast.
+  </div>
+</div>
+
+<script>
+function handleTableScroll(el){
+  const fade = document.getElementById('fadeEdge');
+  const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+  fade.style.opacity = atEnd ? '0' : '1';
+}
+
+function copyCode(btn){
+  const text = document.getElementById('snippet').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    const label = btn.querySelector('.copy-label');
+    const original = label.textContent;
+    label.textContent = 'Copied';
+    setTimeout(() => label.textContent = original, 1400);
+  });
+}
+</script>
+
+</body>
+</html>
