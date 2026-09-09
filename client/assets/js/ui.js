@@ -21,6 +21,8 @@ export function icon(name) {
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
     close: '<path d="m18 6-12 12M6 6l12 12"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
+    moon: '<path d="M20.7 15.1A8.5 8.5 0 0 1 8.9 3.3 8.5 8.5 0 1 0 20.7 15.1Z"/>',
     wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.2-2.8-.4-.4-2.8Z"/>',
     clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/>',
     calculator: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>'

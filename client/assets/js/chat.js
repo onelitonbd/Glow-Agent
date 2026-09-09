@@ -31,9 +31,20 @@ const chatToolOptions = document.getElementById('chatToolOptions');
 const chatSkillOptions = document.getElementById('chatSkillOptions');
 const historyDrawer = document.getElementById('historyDrawer');
 const conversationList = document.getElementById('conversationList');
+const themeToggle = document.getElementById('toggleTheme');
 
 function selectedModel() {
   return state.availableModels.find((entry) => entry.providerId === state.selectedProviderId && entry.modelId === state.selectedModelId) || null;
+}
+
+function syncThemeToggle() {
+  if (!themeToggle) return;
+  const theme = window.GlowTheme?.current?.() || document.documentElement.dataset.theme || 'dark';
+  const nextTheme = theme === 'dark' ? 'light' : 'dark';
+  themeToggle.replaceChildren(icon(nextTheme === 'light' ? 'sun' : 'moon'));
+  themeToggle.setAttribute('aria-label', `Switch to ${nextTheme} theme`);
+  themeToggle.title = `Switch to ${nextTheme} theme`;
+  themeToggle.setAttribute('aria-pressed', String(theme === 'light'));
 }
 
 function renderLog() {
@@ -293,6 +304,8 @@ document.getElementById('openModelPicker').addEventListener('click', () => { ren
 document.getElementById('openSkills').addEventListener('click', () => { renderSkillPicker(); skillsDialog.showModal(); });
 document.getElementById('openTools').addEventListener('click', () => { renderToolPicker(); toolsDialog.showModal(); });
 document.getElementById('attachButton').addEventListener('click', () => showToast('Attachments are the next capability phase.'));
+themeToggle?.addEventListener('click', () => { window.GlowTheme?.toggle?.(); });
+document.addEventListener('glow-theme-change', syncThemeToggle);
 document.getElementById('openHistory').addEventListener('click', () => { renderConversationList(); historyDrawer.showModal(); });
 document.getElementById('closeHistory').addEventListener('click', () => historyDrawer.close());
 document.getElementById('newConversation').addEventListener('click', startNewConversation);
@@ -302,5 +315,6 @@ document.querySelectorAll('.coming-soon').forEach((button) => button.addEventLis
   showToast(`${button.dataset.route} is the next workspace capability.`);
 }));
 messageInput.addEventListener('input', () => { messageInput.style.height = 'auto'; messageInput.style.height = `${Math.min(messageInput.scrollHeight, 180)}px`; });
+syncThemeToggle();
 renderLog();
 loadWorkspace();
