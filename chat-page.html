@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Neural Ink mobile chat page design for Glow Agent.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <title>Glow Agent — Neural Ink Chat</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #090a0d;
+      --bg: #0d0f13;
+      --surface: #16191f;
+      --surface-raised: #1d2129;
+      --surface-soft: #121419;
+      --text: #f7f8fb;
+      --text-soft: #d5d9e1;
+      --muted: #99a1ad;
+      --quiet: #676e79;
+      --line: rgba(255, 255, 255, .095);
+      --accent: #c6ff6b;
+      --accent-ink: #10150a;
+      --accent-wash: rgba(198, 255, 107, .11);
+      --violet: #a99cff;
+      --violet-wash: rgba(169, 156, 255, .13);
+      --blue: #81d9ff;
+      --danger: #ff8797;
+      --radius-xl: 25px;
+      --radius-lg: 19px;
+      --radius-md: 14px;
+      --font: "Manrope", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "DM Mono", "SFMono-Regular", Consolas, monospace;
+      --shadow: 0 26px 66px rgba(0, 0, 0, .42);
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body {
+      min-width: 320px;
+      min-height: 100dvh;
+      margin: 0;
+      background: radial-gradient(circle at 90% 0%, rgba(169, 156, 255, .14), transparent 31rem), var(--canvas);
+      color: var(--text);
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    button, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .mono, .status, .eyebrow, .endpoint-copy span, .endpoint-state, .thread-meta, .time,
+    .activity-label, .activity-caption, .chip, .composer-hint, .context-chip, .notice { font-family: var(--mono); }
+
+    .phone {
+      position: relative;
+      width: min(100%, 470px);
+      min-height: 100dvh;
+      margin: 0 auto;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 100% -2%, rgba(198, 255, 107, .07), transparent 25rem),
+        var(--bg);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.035), var(--shadow);
+    }
+
+    /* App chrome */
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: calc(29px + env(safe-area-inset-top));
+      padding: env(safe-area-inset-top) 21px 0;
+      color: var(--text);
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .status-signals { display: flex; align-items: center; gap: 6px; }
+    .signal { display: inline-flex; align-items: end; gap: 1px; height: 10px; }
+    .signal i { display: block; width: 2px; border-radius: 2px; background: currentColor; }
+    .signal i:nth-child(1) { height: 3px; }.signal i:nth-child(2) { height: 5px; }.signal i:nth-child(3) { height: 7px; }.signal i:nth-child(4) { height: 9px; }
+    .wifi { width: 12px; height: 9px; border: 1.5px solid currentColor; border-bottom: 0; border-radius: 12px 12px 0 0; opacity: .94; }
+    .battery { width: 19px; height: 9px; padding: 1px; border: 1.2px solid currentColor; border-radius: 3px; }
+    .battery::before { content: ""; display: block; width: 70%; height: 100%; border-radius: 1px; background: currentColor; }
+
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px 12px; }
+    .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .brand-mark {
+      display: grid;
+      width: 33px;
+      height: 33px;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 11px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      box-shadow: 0 8px 18px var(--accent-wash);
+    }
+    .brand-mark svg { width: 19px; height: 19px; fill: currentColor; }
+    .brand-copy { min-width: 0; }
+    .brand-copy b { display: block; font-size: 13px; font-weight: 800; letter-spacing: -.04em; }
+    .brand-copy span { display: flex; align-items: center; gap: 5px; margin-top: 1px; color: var(--muted); font-family: var(--mono); font-size: 8.5px; }
+    .presence { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+    .topbar-actions { display: flex; align-items: center; gap: 7px; }
+    .icon-button, .new-chat {
+      display: grid;
+      height: 33px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--text);
+    }
+    .icon-button { width: 33px; }
+    .icon-button svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .new-chat { grid-auto-flow: column; gap: 5px; padding: 0 10px; color: var(--accent); font-size: 10px; font-weight: 800; }
+    .new-chat svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 2; fill: none; }
+
+    .endpoint {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 16px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgba(22, 25, 31, .84);
+    }
+    .endpoint-icon { display: grid; width: 23px; height: 23px; place-items: center; border-radius: 8px; background: var(--accent-wash); color: var(--accent); }
+    .endpoint-icon svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 2; fill: none; }
+    .endpoint-copy { min-width: 0; flex: 1; }
+    .endpoint-copy b, .endpoint-copy span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .endpoint-copy b { color: var(--text-soft); font-size: 9.5px; font-weight: 750; }
+    .endpoint-copy span { margin-top: 2px; color: var(--muted); font-size: 8px; }
+    .endpoint-state { flex: 0 0 auto; padding: 5px 6px; border-radius: 6px; background: var(--accent-wash); color: var(--accent); font-size: 7px; font-weight: 500; letter-spacing: .045em; }
+
+    /* Conversation */
+    .thread {
+      padding: 20px 16px 168px;
+      scroll-behavior: smooth;
+    }
+    .thread-top { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+    .eyebrow { margin: 0 0 5px; color: var(--accent); font-size: 8px; font-weight: 500; letter-spacing: .115em; text-transform: uppercase; }
+    h1 { margin: 0; color: var(--text); font-size: 20px; font-weight: 800; letter-spacing: -.055em; line-height: 1.1; }
+    .thread-meta { display: flex; align-items: center; gap: 5px; padding-bottom: 2px; color: var(--quiet); font-size: 8px; white-space: nowrap; }
+    .thread-meta i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+
+    .day-stamp { display: flex; align-items: center; gap: 9px; margin: 0 0 16px; color: var(--quiet); font-family: var(--mono); font-size: 8px; }
+    .day-stamp::before, .day-stamp::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+    .message { max-width: 100%; margin: 0 0 16px; }
+    .message-top { display: flex; align-items: center; gap: 7px; margin: 0 2px 7px; }
+    .avatar { display: grid; width: 19px; height: 19px; place-items: center; flex: 0 0 auto; border-radius: 7px; font-size: 10px; font-weight: 900; }
+    .avatar.agent { background: var(--accent); color: var(--accent-ink); }.avatar.user { background: var(--violet-wash); color: var(--violet); }
+    .message-name { color: var(--text); font-size: 10px; font-weight: 800; }
+    .message-role { color: var(--quiet); font-family: var(--mono); font-size: 8px; }
+    .time { margin-left: auto; color: var(--quiet); font-size: 8px; }
+    .bubble { border: 1px solid var(--line); border-radius: 4px var(--radius-lg) var(--radius-lg) var(--radius-lg); background: var(--surface); }
+    .agent .bubble { padding: 13px; border-radius: var(--radius-lg) 4px var(--radius-lg) var(--radius-lg); background: linear-gradient(135deg, rgba(198,255,107,.065), transparent 60%), var(--surface); }
+    .user-message { display: flex; flex-direction: column; align-items: flex-end; }
+    .user-message .message-top { width: min(82%, 350px); }
+    .user-message .bubble { width: min(82%, 350px); padding: 12px 13px; background: var(--surface-raised); }
+    .bubble p { margin: 0; color: var(--text-soft); font-size: 12px; line-height: 1.53; letter-spacing: -.012em; }
+    .user-message .bubble p { color: var(--text); }
+    .bubble p + p { margin-top: 9px; }
+    .reply-key { color: var(--accent); font-weight: 750; }
+
+    .run-card { overflow: hidden; margin: 4px 0 16px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); }
+    .run-toggle { display: flex; width: 100%; align-items: center; gap: 9px; padding: 11px; border: 0; background: transparent; color: var(--text); text-align: left; }
+    .run-symbol { display: grid; width: 25px; height: 25px; place-items: center; flex: 0 0 auto; border: 1px solid rgba(169,156,255,.22); border-radius: 8px; background: var(--violet-wash); color: var(--violet); }
+    .run-symbol svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .run-copy { min-width: 0; flex: 1; }
+    .run-copy b, .run-copy span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .run-copy b { font-size: 10px; font-weight: 800; }
+    .run-copy span { margin-top: 2px; color: var(--muted); font-family: var(--mono); font-size: 8px; }
+    .run-chev { color: var(--muted); font-size: 15px; transition: transform .2s ease; }
+    .run-card[data-expanded="true"] .run-chev { transform: rotate(180deg); }
+    .run-details { display: grid; gap: 7px; max-height: 0; padding: 0 11px; overflow: hidden; border-top: 0 solid var(--line); opacity: 0; transition: max-height .25s ease, padding .25s ease, opacity .2s ease; }
+    .run-card[data-expanded="true"] .run-details { max-height: 200px; padding: 10px 11px 12px; border-top-width: 1px; opacity: 1; }
+    .activity { display: flex; align-items: center; gap: 8px; }
+    .activity-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }.activity-dot.violet { background: var(--violet); box-shadow: 0 0 0 3px var(--violet-wash); }.activity-dot.blue { background: var(--blue); box-shadow: 0 0 0 3px rgba(129,217,255,.12); }
+    .activity-copy { min-width: 0; flex: 1; }.activity-label, .activity-caption { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }.activity-label { color: var(--text-soft); font-size: 8.5px; }.activity-caption { margin-top: 2px; color: var(--quiet); font-size: 7.5px; }
+    .activity-status { color: var(--accent); font-family: var(--mono); font-size: 8px; }
+
+    .answer-card { margin-top: 11px; padding: 11px; border: 1px solid rgba(198,255,107,.16); border-radius: 12px; background: var(--accent-wash); }
+    .answer-card span { display: block; color: var(--accent); font-family: var(--mono); font-size: 8px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; }
+    .answer-card p { margin: 5px 0 0; color: var(--text); font-size: 11px; line-height: 1.45; }
+    .quick-actions { display: flex; gap: 7px; margin: 2px 0 2px; overflow-x: auto; scrollbar-width: none; }
+    .quick-actions::-webkit-scrollbar { display: none; }
+    .chip { flex: 0 0 auto; padding: 8px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font-size: 8.5px; font-weight: 500; transition: color .15s ease, border-color .15s ease, background .15s ease; }
+    .chip:hover, .chip:focus-visible { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); outline: 0; }
+
+    /* Composer. No bottom navigation: this is the only fixed action area. */
+    .composer-area {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      padding: 22px 12px calc(12px + env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, rgba(13,15,19,0), var(--bg) 29%);
+    }
+    .context-row { display: flex; gap: 6px; margin: 0 4px 7px; overflow-x: auto; scrollbar-width: none; }
+    .context-row::-webkit-scrollbar { display: none; }
+    .context-chip { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; background: rgba(22,25,31,.9); color: var(--muted); font-size: 7.5px; }
+    .context-chip b { color: var(--accent); font-weight: 500; }.context-chip .close { color: var(--quiet); font-size: 10px; line-height: 7px; }
+    .composer { display: grid; grid-template-columns: 31px minmax(0, 1fr) 31px; align-items: end; gap: 7px; padding: 7px; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: rgba(30,34,42,.96); box-shadow: 0 14px 34px rgba(0,0,0,.32); backdrop-filter: blur(14px); }
+    .composer-button { display: grid; width: 31px; height: 31px; place-items: center; border: 0; border-radius: 10px; background: var(--surface); color: var(--muted); }
+    .composer-button svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    #prompt { display: block; width: 100%; max-height: 92px; padding: 7px 0; overflow-y: auto; resize: none; border: 0; outline: none; background: transparent; color: var(--text); font-size: 11px; line-height: 1.45; }
+    #prompt::placeholder { color: var(--muted); opacity: 1; }
+    .send { background: var(--accent); color: var(--accent-ink); }.send:disabled { background: var(--surface); color: var(--quiet); cursor: default; }.send svg { stroke-width: 2.2; }
+    .composer-hint { margin: 7px 3px 0; color: var(--quiet); font-size: 7.5px; text-align: center; }.composer-hint strong { color: var(--muted); font-weight: 500; }
+
+    .toast { position: absolute; top: 154px; left: 50%; z-index: 3; width: max-content; max-width: calc(100% - 36px); padding: 8px 10px; transform: translate(-50%, -12px); border: 1px solid rgba(198,255,107,.22); border-radius: 9px; background: #1d2520; color: var(--accent); box-shadow: 0 10px 24px rgba(0,0,0,.28); font-family: var(--mono); font-size: 8px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }.toast.show { transform: translate(-50%, 0); opacity: 1; }
+    .empty-state { display: grid; min-height: 400px; place-content: center; padding: 20px; text-align: center; }.empty-state .brand-mark { width: 44px; height: 44px; margin: 0 auto; border-radius: 15px; }.empty-state h2 { margin: 14px 0 6px; font-size: 20px; letter-spacing: -.05em; }.empty-state p { max-width: 270px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }.empty-state .quick-actions { justify-content: center; margin-top: 18px; }
+
+    @media (min-width: 600px) { body { padding: 24px 0; }.phone { min-height: calc(100dvh - 48px); border-radius: 30px; } }
+    @media (max-height: 720px) { .thread { padding-top: 14px; }.thread-top { margin-bottom: 13px; }.message { margin-bottom: 11px; }.run-card { margin-bottom: 11px; }.composer-area { padding-top: 12px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="phone" aria-label="Glow Agent mobile chat page design">
+    <div class="status" aria-hidden="true"><span>9:41</span><span class="status-signals"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"></span></span></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 1.9c.4 6.2 3.3 9.5 9.4 10.1-6.1.5-9 3.8-9.4 10.1C11.5 15.8 8.6 12.5 2.5 12 8.6 11.4 11.5 8.1 12 1.9Z"/></svg></span>
+        <span class="brand-copy"><b>Glow Agent</b><span><i class="presence"></i> Your private workspace</span></span>
+      </div>
+      <div class="topbar-actions">
+        <button class="new-chat" id="newChat" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New</button>
+        <button class="icon-button" type="button" aria-label="Chat settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.3a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56v.1h-3v-.1a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.1 15a1.7 1.7 0 0 0-1.56-1.03h-.1v-3h.1A1.7 1.7 0 0 0 7.1 9.94a1.7 1.7 0 0 0-.34-1.88L6.7 8l2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56v-.1h3v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.1v3h-.1A1.7 1.7 0 0 0 19.4 15Z"/></svg></button>
+      </div>
+    </header>
+
+    <section class="endpoint" aria-label="Connected model endpoint">
+      <span class="endpoint-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 0 0-2 2v3m18 0V9a2 2 0 0 0-2-2h-3M8 17H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3"/><path d="M8 12h8M12 8v8"/></svg></span>
+      <span class="endpoint-copy"><b>OpenAI-compatible endpoint</b><span>api.your-provider.com/v1 · gpt-4.1-mini</span></span>
+      <span class="endpoint-state">KEY LOCAL</span>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <section class="thread" id="thread" aria-label="Conversation">
+      <div class="thread-top">
+        <div><p class="eyebrow">Active conversation</p><h1>Launch brief</h1></div>
+        <div class="thread-meta"><i></i>3 skills ready</div>
+      </div>
+      <div id="conversation">
+        <p class="day-stamp">Today, 09:38</p>
+
+        <article class="message agent-message">
+          <div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Glow</span><span class="message-role">product agent</span><time class="time">09:38</time></div>
+          <div class="bubble"><p>Ready when you are. I can work with your connected skills and tools, while your provider key stays on this device.</p></div>
+        </article>
+
+        <article class="message user-message">
+          <div class="message-top"><span class="avatar user" aria-hidden="true">Y</span><span class="message-name">You</span><time class="time">09:40</time></div>
+          <div class="bubble"><p>Turn my rough launch notes into a confident product brief, then flag the missing decisions.</p></div>
+        </article>
+
+        <article class="message agent-message">
+          <div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Glow</span><span class="message-role">product agent</span><time class="time">09:41</time></div>
+          <div class="bubble">
+            <p>I’ve organized the notes into a clear first draft. I found two decisions that are worth settling before we publish anything.</p>
+            <div class="answer-card"><span>Draft ready</span><p>Glow Agent is a private, bring-your-own-key workspace for directing capable AI agents with tools and reusable skills.</p></div>
+          </div>
+        </article>
+
+        <section class="run-card" id="runCard" data-expanded="false" aria-label="Agent run activity">
+          <button class="run-toggle" id="runToggle" type="button" aria-expanded="false" aria-controls="runDetails">
+            <span class="run-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg></span>
+            <span class="run-copy"><b>2 skills and 1 tool completed</b><span>Workspace reader · Positioning brief · Decision check</span></span>
+            <span class="run-chev" aria-hidden="true">⌄</span>
+          </button>
+          <div class="run-details" id="runDetails">
+            <div class="activity"><i class="activity-dot"></i><span class="activity-copy"><span class="activity-label">Workspace reader</span><span class="activity-caption">Read 2 connected documents</span></span><span class="activity-status">DONE</span></div>
+            <div class="activity"><i class="activity-dot violet"></i><span class="activity-copy"><span class="activity-label">Positioning brief</span><span class="activity-caption">Structured a concise first draft</span></span><span class="activity-status">DONE</span></div>
+            <div class="activity"><i class="activity-dot blue"></i><span class="activity-copy"><span class="activity-label">Decision check</span><span class="activity-caption">Flagged gaps for your review</span></span><span class="activity-status">DONE</span></div>
+          </div>
+        </section>
+
+        <div class="quick-actions" aria-label="Suggested prompts">
+          <button class="chip" type="button" data-prompt="Show the two missing decisions.">Show missing decisions</button>
+          <button class="chip" type="button" data-prompt="Make the brief shorter and sharper.">Make it sharper</button>
+          <button class="chip" type="button" data-prompt="Turn this into a launch checklist.">Create checklist</button>
+        </div>
+      </div>
+    </section>
+
+    <form class="composer-area" id="composerForm">
+      <div class="context-row" aria-label="Active chat context"><span class="context-chip"><b>✦</b> Product brief <span class="close">×</span></span><span class="context-chip"><b>⌁</b> 2 workspace docs <span class="close">×</span></span></div>
+      <div class="composer">
+        <button class="composer-button" type="button" aria-label="Attach context or tools"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <textarea id="prompt" rows="1" aria-label="Message Glow Agent" placeholder="Message Glow…"></textarea>
+        <button class="composer-button send" id="sendButton" type="submit" aria-label="Send message" disabled><svg viewBox="0 0 24 24"><path d="m5 12 14-7-4 14-3-5-5-2Z"/><path d="m12 12 3-3"/></svg></button>
+      </div>
+      <p class="composer-hint"><strong>Enter</strong> to send · <strong>Shift + Enter</strong> for a new line</p>
+    </form>
+  </main>
+
+  <script>
+    const prompt = document.getElementById('prompt');
+    const sendButton = document.getElementById('sendButton');
+    const composerForm = document.getElementById('composerForm');
+    const conversation = document.getElementById('conversation');
+    const thread = document.getElementById('thread');
+    const runCard = document.getElementById('runCard');
+    const runToggle = document.getElementById('runToggle');
+    const toast = document.getElementById('toast');
+    let toastTimer;
+
+    function resizePrompt() {
+      prompt.style.height = 'auto';
+      prompt.style.height = `${Math.min(prompt.scrollHeight, 92)}px`;
+      sendButton.disabled = !prompt.value.trim();
+    }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    function appendMessage(text) {
+      const safeText = document.createTextNode(text);
+      const article = document.createElement('article');
+      article.className = 'message user-message';
+      article.innerHTML = '<div class="message-top"><span class="avatar user" aria-hidden="true">Y</span><span class="message-name">You</span><time class="time">now</time></div><div class="bubble"><p></p></div>';
+      article.querySelector('p').append(safeText);
+      conversation.append(article);
+
+      const reply = document.createElement('article');
+      reply.className = 'message agent-message';
+      reply.innerHTML = '<div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Glow</span><span class="message-role">product agent</span><time class="time">now</time></div><div class="bubble"><p>Captured. This interaction is a UI prototype, so a live model response will arrive when we connect the Termux backend in the implementation phase.</p></div>';
+      conversation.append(reply);
+      thread.scrollTo({ top: thread.scrollHeight, behavior: 'smooth' });
+    }
+
+    prompt.addEventListener('input', resizePrompt);
+    prompt.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); composerForm.requestSubmit(); }
+    });
+    composerForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const value = prompt.value.trim();
+      if (!value) return;
+      appendMessage(value);
+      prompt.value = '';
+      resizePrompt();
+    });
+    document.querySelectorAll('[data-prompt]').forEach((button) => button.addEventListener('click', () => {
+      prompt.value = button.dataset.prompt;
+      resizePrompt();
+      prompt.focus();
+    }));
+    runToggle.addEventListener('click', () => {
+      const expanded = runCard.dataset.expanded === 'true';
+      runCard.dataset.expanded = String(!expanded);
+      runToggle.setAttribute('aria-expanded', String(!expanded));
+    });
+    document.getElementById('newChat').addEventListener('click', () => {
+      conversation.innerHTML = '<div class="empty-state"><span class="brand-mark" aria-hidden="true">✦</span><h2>A fresh thread.</h2><p>Start with an outcome. Glow will choose only the skills and tools that help move it forward.</p><div class="quick-actions"><button class="chip" type="button" data-empty-prompt="Plan a product launch.">Plan a launch</button><button class="chip" type="button" data-empty-prompt="Research a topic.">Research a topic</button></div></div>';
+      document.querySelectorAll('[data-empty-prompt]').forEach((button) => button.addEventListener('click', () => { prompt.value = button.dataset.emptyPrompt; resizePrompt(); prompt.focus(); }));
+      showToast('Fresh conversation started');
+      prompt.focus();
+    });
+  </script>
+</body>
+</html>
