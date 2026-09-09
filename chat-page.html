@@ -204,9 +204,9 @@
     .composer-button { display: grid; width: 32px; height: 32px; place-items: center; flex: 0 0 auto; border: 1px solid transparent; border-radius: 10px; background: var(--surface); color: var(--muted); }
     .composer-button:hover, .composer-button:focus-visible { border-color: var(--line); color: var(--text); outline: 0; }
     .composer-button svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-    .model-picker-button { display: grid; grid-template-columns: 15px minmax(0, 1fr) 11px; align-items: center; width: min(168px, 46vw); height: 32px; gap: 5px; padding: 0 8px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--text-soft); text-align: left; }
-    .model-picker-button > svg { width: 15px; height: 15px; stroke: var(--violet); stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }.model-picker-button .model-chevron { width: 11px; height: 11px; stroke: var(--quiet); }
-    .model-button-copy { min-width: 0; }.model-button-copy b, .model-button-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.model-button-copy b { font-size: 8.5px; font-weight: 800; letter-spacing: -.018em; }.model-button-copy span { margin-top: 1px; color: var(--quiet); font-family: var(--mono); font-size: 6.5px; }.model-picker-button.has-model { border-color: rgba(198,255,107,.28); background: var(--accent-wash); }.model-picker-button.has-model > svg { stroke: var(--accent); }.model-picker-button.has-model .model-button-copy b { color: var(--accent); }
+    .model-picker-button { color: var(--violet); }
+    .model-picker-button.has-model { border-color: rgba(198,255,107,.28); background: var(--accent-wash); color: var(--accent); }
+    .model-picker-button.has-model > svg { stroke: var(--accent); }
     .send { background: var(--accent); color: var(--accent-ink); }.send:disabled { background: var(--surface); color: var(--quiet); cursor: default; }.send svg { stroke-width: 2.2; }
     .composer-hint { margin: 7px 3px 0; color: var(--quiet); font-size: 7.5px; text-align: center; }.composer-hint strong { color: var(--muted); font-weight: 500; }
 
@@ -308,7 +308,7 @@
         <div class="button-stage" aria-label="Message capabilities">
           <div class="composer-tools">
             <button class="composer-button" id="attachButton" type="button" aria-label="Attach a file or add context"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11.6-8.8 8.8a6 6 0 0 1-8.5-8.5l8.8-8.8a4 4 0 0 1 5.7 5.7l-8.8 8.8a2 2 0 0 1-2.8-2.8l8.1-8.1"/></svg></button>
-            <button class="model-picker-button" id="modelPickerButton" type="button" aria-haspopup="dialog" aria-controls="modelPickerSheet" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg><span class="model-button-copy"><b id="modelButtonLabel">Select model</b><span id="modelProviderLabel">Across providers</span></span><svg class="model-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="composer-button model-picker-button" id="modelPickerButton" type="button" aria-label="Choose a model across providers" title="Choose model" aria-haspopup="dialog" aria-controls="modelPickerSheet" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg></button>
           </div>
           <button class="composer-button send" id="sendButton" type="submit" aria-label="Send message" disabled><svg viewBox="0 0 24 24"><path d="M12 5v14m0-14-5 5m5-5 5 5"/></svg></button>
         </div>
@@ -353,8 +353,6 @@
     const modelPickerLayer = document.getElementById('modelPickerLayer');
     const modelPickerScrim = document.getElementById('modelPickerScrim');
     const modelPickerClose = document.getElementById('modelPickerClose');
-    const modelButtonLabel = document.getElementById('modelButtonLabel');
-    const modelProviderLabel = document.getElementById('modelProviderLabel');
     let toastTimer;
     let modelPickerCloseTimer;
 
@@ -418,8 +416,8 @@
       document.querySelectorAll('.picker-model').forEach((item) => { item.setAttribute('aria-pressed', 'false'); item.querySelector('.picker-check').textContent = '+'; });
       option.setAttribute('aria-pressed', 'true');
       option.querySelector('.picker-check').textContent = '✓';
-      modelButtonLabel.textContent = option.dataset.model;
-      modelProviderLabel.textContent = option.dataset.provider;
+      modelPickerButton.setAttribute('aria-label', `Selected ${option.dataset.model} from ${option.dataset.provider}. Choose a different model`);
+      modelPickerButton.title = `${option.dataset.model} · ${option.dataset.provider}`;
       modelPickerButton.classList.add('has-model');
       setModelPicker(false);
       showToast(`${option.dataset.model} selected`);
