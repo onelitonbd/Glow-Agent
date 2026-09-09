@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Neural Ink mobile settings page design for Glow Agent.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <title>Settings — Glow Agent</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #090a0d;
+      --bg: #0d0f13;
+      --surface: #16191f;
+      --surface-raised: #1d2129;
+      --surface-soft: #121419;
+      --text: #f7f8fb;
+      --text-soft: #d5d9e1;
+      --muted: #99a1ad;
+      --quiet: #676e79;
+      --line: rgba(255,255,255,.095);
+      --accent: #c6ff6b;
+      --accent-ink: #10150a;
+      --accent-wash: rgba(198,255,107,.11);
+      --violet: #a99cff;
+      --violet-wash: rgba(169,156,255,.13);
+      --blue: #81d9ff;
+      --danger: #ff8797;
+      --font: "Manrope", Inter, ui-sans-serif, system-ui, sans-serif;
+      --mono: "DM Mono", "SFMono-Regular", Consolas, monospace;
+      --shadow: 0 26px 66px rgba(0,0,0,.42);
+    }
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--canvas); }
+    body { min-width: 320px; min-height: 100dvh; margin: 0; background: radial-gradient(circle at 85% 0%, rgba(169,156,255,.14), transparent 29rem), var(--canvas); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+    button, a { font: inherit; } button { cursor: pointer; } button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .mono, .status, .section-label, .item-meta, .item-value, .badge, .build, .toast { font-family: var(--mono); }
+    .phone { width: min(100%,470px); min-height:100dvh; margin:0 auto; padding-bottom:calc(30px + env(safe-area-inset-bottom)); background:radial-gradient(circle at 100% -2%,rgba(198,255,107,.07),transparent 25rem),var(--bg); box-shadow:0 0 0 1px rgba(255,255,255,.035),var(--shadow); }
+
+    .status { display:flex; align-items:center; justify-content:space-between; height:calc(29px + env(safe-area-inset-top)); padding:env(safe-area-inset-top) 21px 0; color:var(--text); font-size:10px; font-weight:500; }
+    .status-signals { display:flex; align-items:center; gap:6px; }.signal { display:inline-flex; align-items:end; gap:1px; height:10px; }.signal i { display:block; width:2px; border-radius:2px; background:currentColor; }.signal i:nth-child(1){height:3px}.signal i:nth-child(2){height:5px}.signal i:nth-child(3){height:7px}.signal i:nth-child(4){height:9px}.wifi { width:12px;height:9px;border:1.5px solid currentColor;border-bottom:0;border-radius:12px 12px 0 0;opacity:.94}.battery{width:19px;height:9px;padding:1px;border:1.2px solid currentColor;border-radius:3px}.battery::before{content:"";display:block;width:70%;height:100%;border-radius:1px;background:currentColor}
+
+    .topbar { display:grid; grid-template-columns:34px minmax(0,1fr) 34px; align-items:center; gap:9px; padding:13px 16px 14px; }.back, .top-spacer { display:grid; width:34px; height:34px; place-items:center; border:1px solid var(--line); border-radius:11px; background:var(--surface); color:var(--text); }.back svg { width:16px;height:16px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.9; }.top-spacer { visibility:hidden; }.topbar h1 { overflow:hidden; margin:0; color:var(--text); font-size:14px; font-weight:800; letter-spacing:-.035em; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
+    .intro { padding:4px 20px 21px; }.eyebrow { margin:0 0 6px; color:var(--accent); font-family:var(--mono); font-size:8px; font-weight:500; letter-spacing:.105em; text-transform:uppercase; }.intro p { max-width:350px; margin:0; color:var(--muted); font-size:11px; line-height:1.5; }.intro p strong { color:var(--text-soft); font-weight:700; }
+
+    .settings { display:grid; gap:22px; padding:0 16px; }.settings-section { min-width:0; }.section-label { display:flex; align-items:center; justify-content:space-between; margin:0 4px 8px; color:var(--quiet); font-size:8px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; }.section-label .count { color:var(--accent); }
+    .group { overflow:hidden; border:1px solid var(--line); border-radius:16px; background:var(--surface); }.setting-row { display:grid; grid-template-columns:31px minmax(0,1fr) auto; align-items:center; gap:10px; width:100%; min-height:62px; padding:10px 12px; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--text); text-align:left; text-decoration:none; }.setting-row:last-child { border-bottom:0; }.setting-row:hover { background:var(--surface-raised); }.row-icon { display:grid; width:31px; height:31px; place-items:center; border-radius:10px; background:var(--violet-wash); color:var(--violet); }.row-icon.accent { background:var(--accent-wash); color:var(--accent); }.row-icon.blue { background:rgba(129,217,255,.12); color:var(--blue); }.row-icon svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }.row-copy { min-width:0; }.row-title, .row-description { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.row-title { color:var(--text); font-size:10.5px; font-weight:750; letter-spacing:-.018em; }.row-description { margin-top:3px; color:var(--muted); font-size:8.5px; line-height:1.35; }.row-tail { display:flex; align-items:center; gap:8px; min-width:0; }.item-value { max-width:90px; overflow:hidden; color:var(--quiet); font-size:8px; text-align:right; text-overflow:ellipsis; white-space:nowrap; }.chevron { color:var(--quiet); }.chevron svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8; }
+
+    .connection-card { padding:13px; border:1px solid rgba(198,255,107,.18); border-radius:16px; background:linear-gradient(135deg,rgba(198,255,107,.09),transparent 62%),var(--surface); }.connection-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }.connection-left { display:flex; align-items:center; min-width:0; gap:9px; }.connection-icon { display:grid; width:31px; height:31px; place-items:center; flex:0 0 auto; border-radius:10px; background:var(--accent); color:var(--accent-ink); }.connection-icon svg { width:16px;height:16px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:2; }.connection-title { display:block; color:var(--text); font-size:10.5px; font-weight:800; }.connection-meta { display:block; overflow:hidden; max-width:240px; margin-top:3px; color:var(--muted); font-family:var(--mono); font-size:8px; text-overflow:ellipsis; white-space:nowrap; }.badge { flex:0 0 auto; padding:5px 6px; border-radius:6px; background:var(--accent-wash); color:var(--accent); font-size:7px; font-weight:500; letter-spacing:.045em; }.connection-actions { display:flex; gap:7px; margin-top:12px; }.connection-action { flex:1; height:30px; border:1px solid var(--line); border-radius:9px; background:var(--surface-soft); color:var(--text-soft); font-size:8.5px; font-weight:750; }.connection-action.primary { border-color:transparent; background:var(--accent); color:var(--accent-ink); }
+
+    .toggle { position:relative; width:32px; height:19px; padding:0; border:0; border-radius:99px; background:#363b45; transition:background .18s ease; }.toggle i { position:absolute; top:3px; left:3px; width:13px; height:13px; border-radius:50%; background:#c2c6cf; box-shadow:0 1px 3px rgba(0,0,0,.32); transition:transform .18s ease,background .18s ease; }.toggle[aria-pressed="true"] { background:var(--accent); }.toggle[aria-pressed="true"] i { transform:translateX(13px); background:var(--accent-ink); }
+    .danger .row-icon { background:rgba(255,135,151,.12); color:var(--danger); }.danger .row-title { color:#ffd9df; }.danger .item-value { color:var(--danger); }
+    .build { margin:0; padding:2px 20px; color:var(--quiet); font-size:7.5px; text-align:center; }.toast { position:fixed; bottom:22px; left:50%; z-index:5; max-width:calc(100% - 36px); padding:9px 11px; transform:translate(-50%,14px); border:1px solid rgba(198,255,107,.22); border-radius:9px; background:#1d2520; color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.28); font-size:8px; opacity:0; pointer-events:none; transition:opacity .2s ease,transform .2s ease; }.toast.show { transform:translate(-50%,0); opacity:1; }
+    @media (min-width:600px){ body{padding:24px 0}.phone{min-height:calc(100dvh - 48px);border-radius:30px} } @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important}}
+  </style>
+</head>
+<body>
+  <main class="phone" aria-label="Glow Agent settings page design">
+    <div class="status" aria-hidden="true"><span>9:41</span><span class="status-signals"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"></span></span></div>
+    <header class="topbar"><a class="back" href="chat-page.html" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a><h1>Settings</h1><span class="top-spacer" aria-hidden="true"></span></header>
+
+    <section class="intro"><p class="eyebrow">Workspace preferences</p><p>Shape the experience, manage your <strong>OpenAI-compatible connections</strong>, and control how the assistant works.</p></section>
+
+    <div class="settings">
+      <section class="settings-section" aria-labelledby="connections-title">
+        <div class="section-label"><span id="connections-title">Model connections</span><span class="count">1 active</span></div>
+        <article class="connection-card">
+          <div class="connection-top"><div class="connection-left"><span class="connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 0 0-2 2v3m18 0V9a2 2 0 0 0-2-2h-3M8 17H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3"/><path d="M8 12h8M12 8v8"/></svg></span><span><span class="connection-title">OpenAI-compatible</span><span class="connection-meta">gpt-4.1-mini · custom provider</span></span></div><span class="badge">READY</span></div>
+          <div class="connection-actions"><button class="connection-action" type="button" data-action="Edit connection">Edit</button><button class="connection-action primary" type="button" data-action="Manage connections">Manage</button></div>
+        </article>
+      </section>
+
+      <section class="settings-section" aria-labelledby="appearance-title">
+        <div class="section-label"><span id="appearance-title">Appearance</span></div>
+        <div class="group">
+          <button class="setting-row" type="button" data-action="Theme selector"><span class="row-icon accent" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-5-4-9-9-9Z"/><path d="M12 3v18M3.4 9h17.2M3.4 15h17.2"/></svg></span><span class="row-copy"><span class="row-title">Theme</span><span class="row-description">Dark, precise, low-distraction</span></span><span class="row-tail"><span class="item-value">Neural Ink</span><span class="chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></span></button>
+          <button class="setting-row" type="button" data-action="Text size"><span class="row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7V5h12v2M10 5v14M7 19h6M16 12h4M18 10v4"/></svg></span><span class="row-copy"><span class="row-title">Text size</span><span class="row-description">Adjust chat and interface type</span></span><span class="row-tail"><span class="item-value">Default</span><span class="chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></span></button>
+        </div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="chat-title">
+        <div class="section-label"><span id="chat-title">Chat behavior</span></div>
+        <div class="group">
+          <div class="setting-row"><span class="row-icon blue" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg></span><span class="row-copy"><span class="row-title">Stream responses</span><span class="row-description">Show output as it is generated</span></span><button class="toggle" type="button" aria-label="Toggle streaming responses" aria-pressed="true"><i></i></button></div>
+          <div class="setting-row"><span class="row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h10M4 19h16"/></svg></span><span class="row-copy"><span class="row-title">Compact activity</span><span class="row-description">Keep tool and skill runs collapsed</span></span><button class="toggle" type="button" aria-label="Toggle compact activity" aria-pressed="false"><i></i></button></div>
+        </div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="workspace-title">
+        <div class="section-label"><span id="workspace-title">Workspace</span></div>
+        <div class="group">
+          <button class="setting-row" type="button" data-action="Chat history"><span class="row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5M12 7v5l3 2"/></svg></span><span class="row-copy"><span class="row-title">Chat history</span><span class="row-description">Review, rename, or delete conversations</span></span><span class="row-tail"><span class="chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></span></button>
+          <button class="setting-row" type="button" data-action="Export workspace"><span class="row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/></svg></span><span class="row-copy"><span class="row-title">Export workspace</span><span class="row-description">Download chats and preferences</span></span><span class="row-tail"><span class="chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></span></button>
+        </div>
+      </section>
+
+      <section class="settings-section danger" aria-labelledby="advanced-title">
+        <div class="section-label"><span id="advanced-title">Advanced</span></div>
+        <div class="group"><button class="setting-row" type="button" data-action="Reset workspace"><span class="row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 15h8l1-15M10 10v7m4-7v7"/></svg></span><span class="row-copy"><span class="row-title">Reset workspace</span><span class="row-description">Remove local chats and preferences</span></span><span class="row-tail"><span class="item-value">Reset</span><span class="chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></span></button></div>
+      </section>
+    </div>
+    <p class="build">GLOW AGENT · NEURAL INK · SETTINGS DESIGN v0.1</p>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+  <script>
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    function showToast(message) { toast.textContent = message; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2200); }
+    document.querySelectorAll('.toggle').forEach((toggle) => toggle.addEventListener('click', () => { const enabled = toggle.getAttribute('aria-pressed') === 'true'; toggle.setAttribute('aria-pressed', String(!enabled)); }));
+    document.querySelectorAll('[data-action]').forEach((control) => control.addEventListener('click', () => showToast(`${control.dataset.action} opens in the implementation phase`)));
+  </script>
+</body>
+</html>
