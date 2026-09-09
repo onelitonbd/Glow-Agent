@@ -86,22 +86,23 @@
     .battery { width: 19px; height: 9px; padding: 1px; border: 1.2px solid currentColor; border-radius: 3px; }
     .battery::before { content: ""; display: block; width: 70%; height: 100%; border-radius: 1px; background: currentColor; }
 
-    .topbar { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center; gap: 9px; padding: 13px 16px 12px; }
-    .history-launcher, .icon-button {
+    .topbar { display: grid; grid-template-columns: 34px minmax(0, 1fr) 55px; align-items: center; gap: 9px; padding: 13px 16px 12px; }
+    .history-launcher {
       display: grid;
       width: 34px;
       height: 34px;
       place-items: center;
-      border: 1px solid var(--line);
+      border: 1px solid transparent;
       border-radius: 11px;
-      background: var(--surface);
-      color: var(--text);
+      background: var(--accent);
+      color: var(--accent-ink);
+      box-shadow: 0 8px 18px var(--accent-wash);
     }
-    .history-launcher { border-color: transparent; background: var(--accent); color: var(--accent-ink); box-shadow: 0 8px 18px var(--accent-wash); }
     .history-launcher svg { width: 19px; height: 19px; fill: currentColor; }
-    .icon-button svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
     .session-title { min-width: 0; padding: 0 2px; }
     .session-title b { display: block; overflow: hidden; color: var(--text); font-size: 12px; font-weight: 800; letter-spacing: -.027em; text-overflow: ellipsis; white-space: nowrap; }
+    .new-chat { display: grid; grid-auto-flow: column; align-items: center; justify-content: center; gap: 4px; width: 55px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--accent); font-size: 9px; font-weight: 800; }
+    .new-chat svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; }
 
     /* Left-side chat history drawer */
     .drawer-scrim { position: absolute; inset: 0; z-index: 10; padding: 0; border: 0; background: rgba(0,0,0,.54); opacity: 0; visibility: hidden; transition: opacity .22s ease, visibility .22s ease; }
@@ -111,8 +112,14 @@
     .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 15px; }
     .drawer-head h2 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -.045em; }
     .drawer-close { display: grid; width: 31px; height: 31px; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 19px; }
-    .drawer-new { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 39px; margin: 0 0 18px; border: 0; border-radius: 11px; background: var(--accent); color: var(--accent-ink); font-size: 10px; font-weight: 850; }
-    .drawer-new span { font-size: 15px; font-weight: 500; }
+    .drawer-menu { display: grid; gap: 3px; margin: 0 4px 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+    .drawer-route { display: grid; grid-template-columns: 27px minmax(0, 1fr) 18px; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 38px; padding: 0 8px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--muted); text-align: left; }
+    .drawer-route:hover, .drawer-route:focus-visible { border-color: var(--line); background: var(--surface); color: var(--text); outline: 0; }
+    .drawer-route.settings { background: var(--surface); color: var(--text); }
+    .route-symbol { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 8px; background: var(--surface-raised); color: var(--violet); font-size: 13px; font-weight: 700; }
+    .drawer-route.settings .route-symbol { background: var(--accent-wash); color: var(--accent); }
+    .route-name { overflow: hidden; font-size: 10px; font-weight: 750; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
+    .route-arrow { color: var(--quiet); font-family: var(--mono); font-size: 14px; text-align: right; }
     .history-search { display: flex; align-items: center; gap: 8px; height: 35px; margin: 0 4px 15px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--quiet); font-family: var(--mono); font-size: 8.5px; }
     .history-search svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; fill: none; }
     .history-list { min-height: 0; padding: 0 4px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
@@ -210,7 +217,13 @@
     <button class="drawer-scrim" id="drawerScrim" type="button" tabindex="-1" aria-label="Close chat history"></button>
     <aside class="history-drawer" id="historyDrawer" aria-label="Chat history" aria-hidden="true">
       <header class="drawer-head"><h2>Chats</h2><button class="drawer-close" id="drawerClose" type="button" aria-label="Close chat history">×</button></header>
-      <button class="drawer-new" id="newChat" type="button"><span aria-hidden="true">+</span> Start new chat</button>
+      <nav class="drawer-menu" aria-label="Workspace pages">
+        <button class="drawer-route settings" type="button" data-route="Settings"><span class="route-symbol" aria-hidden="true">⚙</span><span class="route-name">Settings</span><span class="route-arrow" aria-hidden="true">›</span></button>
+        <button class="drawer-route" type="button" data-route="Skills"><span class="route-symbol" aria-hidden="true">✦</span><span class="route-name">Skills</span><span class="route-arrow" aria-hidden="true">›</span></button>
+        <button class="drawer-route" type="button" data-route="Tools"><span class="route-symbol" aria-hidden="true">⌁</span><span class="route-name">Tools</span><span class="route-arrow" aria-hidden="true">›</span></button>
+        <button class="drawer-route" type="button" data-route="Library"><span class="route-symbol" aria-hidden="true">▦</span><span class="route-name">Library</span><span class="route-arrow" aria-hidden="true">›</span></button>
+        <button class="drawer-route" type="button" data-route="Tasks"><span class="route-symbol" aria-hidden="true">✓</span><span class="route-name">Tasks</span><span class="route-arrow" aria-hidden="true">›</span></button>
+      </nav>
       <div class="history-search" aria-label="Search chat history"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.7" cy="10.7" r="5.7"/><path d="m15 15 4 4"/></svg>Search chats</div>
       <nav class="history-list" aria-label="Previous conversations">
         <section class="history-group"><h3>Today</h3>
@@ -231,7 +244,7 @@
     <header class="topbar">
       <button class="history-launcher" id="historyLauncher" type="button" aria-label="Open chat history" aria-controls="historyDrawer" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.9c.4 6.2 3.3 9.5 9.4 10.1-6.1.5-9 3.8-9.4 10.1C11.5 15.8 8.6 12.5 2.5 12 8.6 11.4 11.5 8.1 12 1.9Z"/></svg></button>
       <div class="session-title"><b id="sessionName" title="Product launch brief for the new private AI workspace">Product launch brief for the new private AI workspace</b></div>
-      <button class="icon-button" type="button" aria-label="Chat settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.3a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56v.1h-3v-.1a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.1 15a1.7 1.7 0 0 0-1.56-1.03h-.1v-3h.1A1.7 1.7 0 0 0 7.1 9.94a1.7 1.7 0 0 0-.34-1.88L6.7 8l2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56v-.1h3v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.1v3h-.1A1.7 1.7 0 0 0 19.4 15Z"/></svg></button>
+      <button class="new-chat" id="newChat" type="button" aria-label="Start a new chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New</span></button>
     </header>
 
 
@@ -358,6 +371,11 @@
       sessionName.title = title;
       setDrawer(false);
       showToast('Conversation selected — content loads in implementation');
+    }));
+    document.querySelectorAll('[data-route]').forEach((button) => button.addEventListener('click', () => {
+      const pageName = button.dataset.route;
+      setDrawer(false);
+      showToast(`${pageName} opens as a dedicated page in implementation`);
     }));
 
     prompt.addEventListener('input', resizePrompt);
