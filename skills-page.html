@@ -16,7 +16,7 @@
     .topbar { display:grid;grid-template-columns:34px minmax(0,1fr) 55px;align-items:center;gap:9px;padding:13px 16px 14px }.back { display:grid;width:34px;height:34px;place-items:center;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--text);text-decoration:none }.back svg { width:16px;height:16px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.9 }.topbar h1 { overflow:hidden;margin:0;color:var(--text);font-size:14px;font-weight:800;letter-spacing:-.035em;text-align:center;text-overflow:ellipsis;white-space:nowrap }.add-skill { display:flex;align-items:center;justify-content:center;gap:4px;width:55px;height:34px;padding:0;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--accent);font-size:9px;font-weight:800 }.add-skill svg { width:13px;height:13px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-width:2.1 }
     .intro { padding:4px 20px 21px }.eyebrow { margin:0 0 6px;color:var(--accent);font-size:8px;font-weight:500;letter-spacing:.105em;text-transform:uppercase }.intro p { max-width:370px;margin:0;color:var(--muted);font-size:11px;line-height:1.5 }.intro strong { color:var(--text-soft);font-weight:750 }.skills-content { padding:0 16px }.section-label { display:flex;align-items:center;justify-content:space-between;margin:0 4px 8px;color:var(--quiet);font-size:8px;font-weight:500;letter-spacing:.08em;text-transform:uppercase }.section-label span:last-child { color:var(--accent) }
     .skills-empty { display:grid;min-height:355px;place-content:center;padding:28px;border:1px dashed rgba(255,255,255,.16);border-radius:20px;background:var(--surface-soft);text-align:center }.skills-empty-icon { display:grid;width:45px;height:45px;place-items:center;margin:0 auto;border-radius:15px;background:var(--accent-wash);color:var(--accent) }.skills-empty-icon svg { width:22px;height:22px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8 }.skills-empty h2 { margin:14px 0 6px;font-size:16px;letter-spacing:-.04em }.skills-empty p { max-width:255px;margin:0;color:var(--muted);font-size:10px;line-height:1.55 }.empty-add { display:flex;align-items:center;justify-content:center;gap:7px;width:100%;height:39px;margin-top:17px;border:0;border-radius:11px;background:var(--accent);color:var(--accent-ink);font-size:10px;font-weight:850 }.empty-add svg { width:14px;height:14px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-width:2.1 }
-    .skills-list { display:grid;gap:9px }.skill-card { padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface) }.skill-card-top { display:grid;grid-template-columns:31px minmax(0,1fr) 29px;align-items:center;gap:9px }.skill-icon { display:grid;width:31px;height:31px;place-items:center;border-radius:10px;background:var(--accent-wash);color:var(--accent) }.skill-icon svg { width:15px;height:15px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8 }.skill-name,.skill-description { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }.skill-name { color:var(--text);font-size:10.5px;font-weight:800;letter-spacing:-.018em }.skill-description { margin-top:3px;color:var(--muted);font-size:8.5px }.skill-menu { display:grid;width:29px;height:29px;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);color:var(--muted);font-size:14px;line-height:1 }.skill-meta { display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted);font-size:7.5px }.skill-meta i { width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-wash) }.add-another { display:flex;align-items:center;justify-content:center;gap:7px;width:100%;height:38px;margin-top:2px;border:1px dashed rgba(198,255,107,.38);border-radius:11px;background:transparent;color:var(--accent);font-family:var(--mono);font-size:8.5px;font-weight:500 }.add-another svg { width:13px;height:13px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-width:2 }
+    .skills-list { display:grid;gap:9px }.skill-card-shell{position:relative}.skill-card-shell.is-actions-open{padding-bottom:76px}.skill-card { padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--surface) }.skill-card-top { display:grid;grid-template-columns:31px minmax(0,1fr) 29px;align-items:center;gap:9px }.skill-icon { display:grid;width:31px;height:31px;place-items:center;border-radius:10px;background:var(--accent-wash);color:var(--accent) }.skill-icon svg { width:15px;height:15px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8 }.skill-name,.skill-description { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }.skill-name { color:var(--text);font-size:10.5px;font-weight:800;letter-spacing:-.018em }.skill-description { margin-top:3px;color:var(--muted);font-size:8.5px }.skill-menu { display:grid;width:29px;height:29px;place-items:center;padding:0;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);color:var(--muted) }.skill-menu[aria-expanded="true"]{border-color:rgba(198,255,107,.48);background:var(--accent-wash);color:var(--accent)}.skill-menu svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-width:2}.skill-meta { display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted);font-size:7.5px }.skill-meta i { width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-wash) }.skill-actions-menu{position:absolute;top:calc(100% - 70px);right:0;z-index:3;display:grid;gap:2px;width:142px;padding:5px;border:1px solid rgba(255,255,255,.13);border-radius:12px;background:var(--surface-raised);box-shadow:0 15px 35px rgba(0,0,0,.4)}.skill-actions-menu button{display:flex;align-items:center;gap:8px;width:100%;height:27px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--text-soft);font-size:8.5px;font-weight:750;text-align:left}.skill-actions-menu button:hover,.skill-actions-menu button:focus-visible{background:rgba(255,255,255,.07)}.skill-actions-menu button.delete-skill{color:#ff9e9e}.skill-actions-menu svg{width:13px;height:13px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8}.add-another { display:flex;align-items:center;justify-content:center;gap:7px;width:100%;height:38px;margin-top:2px;border:1px dashed rgba(198,255,107,.38);border-radius:11px;background:transparent;color:var(--accent);font-family:var(--mono);font-size:8.5px;font-weight:500 }.add-another svg { width:13px;height:13px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-width:2 }
     .skill-modal-layer { position:fixed;inset:0;z-index:10;display:grid;align-items:end;justify-items:center }.skill-modal-layer[hidden]{display:none}.skill-modal-scrim { position:absolute;inset:0;padding:0;border:0;background:rgba(4,5,7,.62);backdrop-filter:blur(13px) saturate(.72);opacity:0;transition:opacity .22s ease }.skill-modal { position:relative;width:min(100%,470px);max-height:min(90dvh,800px);padding:12px 16px calc(20px + env(safe-area-inset-bottom));transform:translateY(105%);overflow:auto;border:1px solid rgba(255,255,255,.12);border-bottom:0;border-radius:24px 24px 0 0;background:linear-gradient(135deg,rgba(198,255,107,.06),transparent 35%),var(--surface);box-shadow:0 -18px 60px rgba(0,0,0,.5);transition:transform .28s cubic-bezier(.2,.8,.2,1) }.skill-modal-layer.is-open .skill-modal-scrim{opacity:1}.skill-modal-layer.is-open .skill-modal{transform:translateY(0)}.modal-handle{width:34px;height:4px;margin:0 auto 15px;border-radius:99px;background:#454b55}.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 1px 16px}.modal-head h2{margin:0;font-size:16px;font-weight:800;letter-spacing:-.045em}.modal-head p{margin:3px 0 0;color:var(--muted);font-size:8px}.modal-close{display:grid;width:30px;height:30px;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);color:var(--muted)}.modal-close svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8}.skill-form{display:grid;gap:12px}.field{display:grid;gap:6px}.field label{display:flex;align-items:center;justify-content:space-between;color:var(--text-soft);font-size:9px;font-weight:750}.field label span{color:var(--quiet);font-size:7px;font-weight:400}.field input,.field textarea{display:block;width:100%;resize:vertical;border:1px solid var(--line);border-radius:11px;outline:0;background:var(--surface-soft);color:var(--text);font-size:10px;line-height:1.45;transition:border-color .16s ease,box-shadow .16s ease}.field input{height:42px;padding:0 11px;font-family:var(--mono)}.field textarea{padding:10px 11px}.field textarea::placeholder,.field input::placeholder{color:var(--quiet)}.field input:focus,.field textarea:focus{border-color:rgba(198,255,107,.62);box-shadow:0 0 0 3px var(--accent-wash)}.description-field textarea{min-height:84px}.instructions-field textarea{min-height:168px;font-family:var(--mono);font-size:9px}.field-hint{margin:0;color:var(--quiet);font-family:var(--mono);font-size:7px;line-height:1.4}.form-actions{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;margin-top:2px}.form-actions button{height:40px;border-radius:11px;font-size:9px;font-weight:800}.cancel-skill{border:1px solid var(--line);background:var(--surface-soft);color:var(--text-soft)}.save-skill{border:0;background:var(--accent);color:var(--accent-ink)}
     .toast { position:fixed;bottom:22px;left:50%;z-index:15;max-width:calc(100% - 36px);padding:9px 11px;transform:translate(-50%,14px);border:1px solid rgba(198,255,107,.22);border-radius:9px;background:#1d2520;color:var(--accent);box-shadow:0 10px 24px rgba(0,0,0,.28);font-size:8px;opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease }.toast.show{transform:translate(-50%,0);opacity:1}.build{margin:26px 0 0;padding:0 20px;color:var(--quiet);font-family:var(--mono);font-size:7.5px;text-align:center}@media(min-width:600px){body{padding:24px 0}.phone{min-height:calc(100dvh - 48px);border-radius:30px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important}}
   </style>
@@ -38,7 +38,7 @@
           <div class="field name-field"><label for="skillName">Name <span>REQUIRED</span></label><input id="skillName" name="skillName" autocomplete="off" maxlength="80" placeholder="e.g. Product positioning" required></div>
           <div class="field description-field"><label for="skillDescription">Description <span>REQUIRED</span></label><textarea id="skillDescription" name="skillDescription" rows="4" maxlength="280" placeholder="Briefly explain when this skill is useful." required></textarea><p class="field-hint">2× the name field height</p></div>
           <div class="field instructions-field"><label for="skillInstructions">Instructions <span>REQUIRED</span></label><textarea id="skillInstructions" name="skillInstructions" rows="8" placeholder="Write the step-by-step guidance the assistant should follow." required></textarea><p class="field-hint">2× the description field height</p></div>
-          <div class="form-actions"><button class="cancel-skill" id="cancelSkill" type="button">Cancel</button><button class="save-skill" type="submit">Save skill</button></div>
+          <div class="form-actions"><button class="cancel-skill" id="cancelSkill" type="button">Cancel</button><button class="save-skill" id="saveSkill" type="submit">Save skill</button></div>
         </form>
       </section>
     </div>
@@ -48,32 +48,166 @@
     const skillModalLayer = document.getElementById('skillModalLayer');
     const skillModalClose = document.getElementById('skillModalClose');
     const skillModalScrim = document.getElementById('skillModalScrim');
+    const skillModalTitle = document.getElementById('skillModalTitle');
     const skillName = document.getElementById('skillName');
     const skillDescription = document.getElementById('skillDescription');
     const skillInstructions = document.getElementById('skillInstructions');
     const skillForm = document.getElementById('skillForm');
+    const saveSkill = document.getElementById('saveSkill');
     const skillsState = document.getElementById('skillsState');
     const skillCount = document.getElementById('skillCount');
     const toast = document.getElementById('toast');
     const skills = [];
     let modalOpener = document.getElementById('openSkillModal');
+    let editingSkillIndex = null;
+    let activeSkillMenu = null;
     let closeTimer;
     let toastTimer;
-    function showToast(message) { toast.textContent = message; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2200); }
-    function setSkillModal(open) { clearTimeout(closeTimer); if (open) { skillModalLayer.hidden = false; requestAnimationFrame(() => skillModalLayer.classList.add('is-open')); setTimeout(() => skillName.focus(), 180); } else { skillModalLayer.classList.remove('is-open'); closeTimer = setTimeout(() => { skillModalLayer.hidden = true; modalOpener?.focus(); }, 280); } }
-    function openSkillModal(opener) { modalOpener = opener; skillForm.reset(); setSkillModal(true); }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    function setSkillModal(open) {
+      clearTimeout(closeTimer);
+      if (open) {
+        skillModalLayer.hidden = false;
+        requestAnimationFrame(() => skillModalLayer.classList.add('is-open'));
+        setTimeout(() => skillName.focus(), 180);
+      } else {
+        skillModalLayer.classList.remove('is-open');
+        closeTimer = setTimeout(() => {
+          skillModalLayer.hidden = true;
+          modalOpener?.focus();
+        }, 280);
+      }
+    }
+
+    function openSkillModal(opener, skillIndex = null) {
+      modalOpener = opener;
+      editingSkillIndex = skillIndex;
+      const isEditing = skillIndex !== null;
+      skillModalTitle.textContent = isEditing ? 'Configure skill' : 'Add skill';
+      saveSkill.textContent = isEditing ? 'Save changes' : 'Save skill';
+      if (isEditing) {
+        const skill = skills[skillIndex];
+        skillName.value = skill.name;
+        skillDescription.value = skill.description;
+        skillInstructions.value = skill.instructions;
+      } else {
+        skillForm.reset();
+      }
+      setSkillModal(true);
+    }
+
     function renderSkills() {
       skillsState.replaceChildren();
       skillCount.textContent = `${skills.length} ${skills.length === 1 ? 'skill' : 'skills'}`;
-      const list = document.createElement('div'); list.className = 'skills-list';
-      skills.forEach((skill) => { const card = document.createElement('article'); card.className = 'skill-card'; card.innerHTML = '<div class="skill-card-top"><span class="skill-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3-1.91 5.81a2 2 0 0 1-1.28 1.28L3 12l5.81 1.91a2 2 0 0 1 1.28 1.28L12 21l1.91-5.81a2 2 0 0 1 1.28-1.28L21 12l-5.81-1.91a2 2 0 0 1-1.28-1.28L12 3Z"/></svg></span><span><b class="skill-name"></b><span class="skill-description"></span></span><button class="skill-menu" type="button" aria-label="Skill actions">•••</button></div><div class="skill-meta"><i></i> Instructions ready</div>'; card.querySelector('.skill-name').textContent = skill.name; card.querySelector('.skill-description').textContent = skill.description; card.querySelector('.skill-menu').addEventListener('click', () => showToast('Skill actions open in the implementation phase')); list.append(card); });
-      const addAnother = document.createElement('button'); addAnother.className = 'add-another'; addAnother.type = 'button'; addAnother.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add another skill'; addAnother.addEventListener('click', () => openSkillModal(addAnother)); list.append(addAnother); skillsState.append(list);
+      if (skills.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'skills-empty';
+        empty.innerHTML = '<span class="skills-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3-1.91 5.81a2 2 0 0 1-1.28 1.28L3 12l5.81 1.91a2 2 0 0 1 1.28 1.28L12 21l1.91-5.81a2 2 0 0 1 1.28-1.28L21 12l-5.81-1.91a2 2 0 0 1-1.28-1.28L12 3Z"/></svg></span><h2>No skills yet</h2><p>Add a reusable skill with clear instructions for your assistant.</p><button class="empty-add" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add your first skill</button>';
+        empty.querySelector('.empty-add').addEventListener('click', (event) => openSkillModal(event.currentTarget));
+        skillsState.append(empty);
+        return;
+      }
+      const list = document.createElement('div');
+      list.className = 'skills-list';
+
+      skills.forEach((skill, index) => {
+        const shell = document.createElement('div');
+        shell.className = `skill-card-shell${activeSkillMenu === index ? ' is-actions-open' : ''}`;
+        const card = document.createElement('article');
+        card.className = 'skill-card';
+        card.innerHTML = '<div class="skill-card-top"><span class="skill-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3-1.91 5.81a2 2 0 0 1-1.28 1.28L3 12l5.81 1.91a2 2 0 0 1 1.28 1.28L12 21l1.91-5.81a2 2 0 0 1 1.28-1.28L21 12l-5.81-1.91a2 2 0 0 1-1.28-1.28L12 3Z"/></svg></span><span><b class="skill-name"></b><span class="skill-description"></span></span><button class="skill-menu" type="button" aria-label="Actions for this skill" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button></div><div class="skill-meta"><i></i> Instructions ready</div>';
+        card.querySelector('.skill-name').textContent = skill.name;
+        card.querySelector('.skill-description').textContent = skill.description;
+        const menuButton = card.querySelector('.skill-menu');
+        menuButton.dataset.skillIndex = index;
+        menuButton.setAttribute('aria-expanded', String(activeSkillMenu === index));
+        menuButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          activeSkillMenu = activeSkillMenu === index ? null : index;
+          renderSkills();
+          if (activeSkillMenu === index) {
+            requestAnimationFrame(() => document.querySelector('.skill-action-configure')?.focus());
+          }
+        });
+        shell.append(card);
+
+        if (activeSkillMenu === index) {
+          const menu = document.createElement('div');
+          menu.className = 'skill-actions-menu';
+          menu.setAttribute('role', 'menu');
+          menu.setAttribute('aria-label', `Actions for ${skill.name}`);
+          menu.innerHTML = '<button class="skill-action-configure" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>Configure</button><button class="delete-skill" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m-7 4v7m4-7v7m4-7v7M6 6l1 15h10l1-15"/></svg>Delete</button>';
+          menu.querySelector('.skill-action-configure').addEventListener('click', (event) => {
+            event.stopPropagation();
+            activeSkillMenu = null;
+            renderSkills();
+            openSkillModal(document.querySelector(`.skill-menu[data-skill-index="${index}"]`), index);
+          });
+          menu.querySelector('.delete-skill').addEventListener('click', (event) => {
+            event.stopPropagation();
+            skills.splice(index, 1);
+            activeSkillMenu = null;
+            renderSkills();
+            showToast('Skill deleted — design prototype only');
+          });
+          shell.append(menu);
+        }
+        list.append(shell);
+      });
+
+      const addAnother = document.createElement('button');
+      addAnother.className = 'add-another';
+      addAnother.type = 'button';
+      addAnother.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add another skill';
+      addAnother.addEventListener('click', () => openSkillModal(addAnother));
+      list.append(addAnother);
+      skillsState.append(list);
     }
+
     document.getElementById('openSkillModal').addEventListener('click', (event) => openSkillModal(event.currentTarget));
     document.getElementById('emptyAddSkill').addEventListener('click', (event) => openSkillModal(event.currentTarget));
-    skillModalClose.addEventListener('click', () => setSkillModal(false)); skillModalScrim.addEventListener('click', () => setSkillModal(false)); document.getElementById('cancelSkill').addEventListener('click', () => setSkillModal(false));
-    skillForm.addEventListener('submit', (event) => { event.preventDefault(); skills.push({ name: skillName.value.trim(), description: skillDescription.value.trim(), instructions: skillInstructions.value.trim() }); renderSkills(); setSkillModal(false); showToast('Skill saved — design prototype only'); });
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !skillModalLayer.hidden) setSkillModal(false); });
+    skillModalClose.addEventListener('click', () => setSkillModal(false));
+    skillModalScrim.addEventListener('click', () => setSkillModal(false));
+    document.getElementById('cancelSkill').addEventListener('click', () => setSkillModal(false));
+    skillForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const skill = {
+        name: skillName.value.trim(),
+        description: skillDescription.value.trim(),
+        instructions: skillInstructions.value.trim()
+      };
+      const isEditing = editingSkillIndex !== null;
+      if (isEditing) {
+        skills[editingSkillIndex] = skill;
+      } else {
+        skills.push(skill);
+      }
+      renderSkills();
+      setSkillModal(false);
+      showToast(isEditing ? 'Skill updated — design prototype only' : 'Skill saved — design prototype only');
+    });
+    document.addEventListener('click', (event) => {
+      if (activeSkillMenu !== null && !event.target.closest('.skill-card-shell')) {
+        activeSkillMenu = null;
+        renderSkills();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (!skillModalLayer.hidden) {
+        setSkillModal(false);
+      } else if (activeSkillMenu !== null) {
+        activeSkillMenu = null;
+        renderSkills();
+      }
+    });
   </script>
 </body>
 </html>
