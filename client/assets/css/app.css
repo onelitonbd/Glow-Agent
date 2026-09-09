@@ -132,6 +132,13 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .message { font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
 .message.user { justify-self: end; max-width: 88%; padding: 10px 11px; border-radius: 14px 0 0 14px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .message.assistant { justify-self: stretch; max-width: none; padding: 4px 1px 14px; border: 0; border-radius: 0; background: transparent; color: var(--text-soft); }
+.thinking { margin: 0 0 11px; padding-left: 10px; border-left: 2px solid rgba(198,255,107,.65); color: var(--muted); }
+.thinking summary { display: flex; align-items: center; gap: 7px; color: var(--accent); cursor: pointer; font: 8px var(--mono); list-style: none; }
+.thinking summary::-webkit-details-marker { display: none; }
+.thinking summary::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
+.thinking.is-streaming summary::before { animation: thinking-pulse 1s ease-in-out infinite; }
+.thinking-content { max-height: 180px; margin: 7px 0 0; overflow: auto; color: var(--muted); font: 9px/1.55 var(--mono); white-space: pre-wrap; }
+@keyframes thinking-pulse { 50% { opacity: .28; transform: scale(.72); } }
 .composer { padding: 10px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: 0 12px 32px rgba(0,0,0,.18); }
 .composer textarea { display: block; width: 100%; min-height: 58px; padding: 5px 4px 10px; resize: none; border: 0; outline: 0; background: transparent; color: var(--text); font: 11px/1.5 var(--font); }
 .composer textarea::placeholder { color: var(--quiet); }

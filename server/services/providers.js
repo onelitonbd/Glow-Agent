@@ -160,14 +160,14 @@ function upstreamUrl(baseUrl, path) {
 async function providerFetch(url, keys, options) {
   let lastResponse;
   for (const apiKey of [keys.primaryKey, ...keys.backupKeys]) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
+    const controller = options.signal ? null : new AbortController();
+    const timeout = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
     try {
       const response = await fetch(url, {
         method: options.method,
         headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', ...(options.headers || {}) },
         body: options.body,
-        signal: controller.signal
+        signal: options.signal ?? controller.signal
       });
       lastResponse = response;
       if (response.ok || ![401, 403, 429].includes(response.status)) return response;

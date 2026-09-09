@@ -47,7 +47,16 @@ function renderLog() {
     return;
   }
   messages.forEach((message) => {
-    chatLog.append(element('article', `message ${message.role}`, message.content));
+    const bubble = element('article', `message ${message.role}`);
+    if (message.role === 'assistant' && message.reasoning) {
+      const thinking = element('details', `thinking${message.isStreaming ? ' is-streaming' : ''}`);
+      thinking.open = Boolean(message.isStreaming);
+      thinking.append(element('summary', '', 'Thinking'));
+      thinking.append(element('div', 'thinking-content', message.reasoning));
+      bubble.append(thinking);
+    }
+    if (message.content) bubble.append(document.createTextNode(message.content));
+    chatLog.append(bubble);
   });
   chatLog.scrollTop = chatLog.scrollHeight;
 }
@@ -208,6 +217,19 @@ async function ensureConversation() {
   return state.conversation;
 }
 
+function appendStreamDelta(type, text) {
+  if (!text || !state.conversation) return;
+  const messages = state.conversation.messages || (state.conversation.messages = []);
+  let assistant = messages.find((message) => message.id === 'streaming-assistant');
+  if (!assistant) {
+    assistant = { id: 'streaming-assistant', role: 'assistant', content: '', reasoning: '', isStreaming: true };
+    messages.push(assistant);
+  }
+  if (type === 'thinking') assistant.reasoning += text;
+  if (type === 'token') assistant.content += text;
+  renderLog();
+}
+
 composer.addEventListener('submit', async (event) => {
   event.preventDefault();
   const message = messageInput.value.trim();
@@ -233,12 +255,15 @@ composer.addEventListener('submit', async (event) => {
     messageInput.value = '';
     messageInput.style.height = 'auto';
     renderLog();
-    const result = await api.conversations.respond(conversation.id, {
+    const result = await api.conversations.streamRespond(conversation.id, {
       message,
       providerId: state.selectedProviderId,
       modelId: state.selectedModelId,
       skillIds: [...state.selectedSkillIds],
       toolIds: [...state.selectedToolIds]
+    }, async (eventName, payload) => {
+      if (eventName === 'thinking') appendStreamDelta('thinking', payload.text);
+      if (eventName === 'token') appendStreamDelta('token', payload.text);
     });
     state.conversation = result.conversation;
     state.selectedSkillIds.clear();

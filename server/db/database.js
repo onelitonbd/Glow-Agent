@@ -60,6 +60,10 @@ const migrations = [
         db.exec('ALTER TABLE providers RENAME COLUMN credential_ciphertext TO credential_data;');
       }
     }
+  },
+  {
+    version: 4,
+    sql: `ALTER TABLE messages ADD COLUMN reasoning TEXT;`
   }
 ];
 

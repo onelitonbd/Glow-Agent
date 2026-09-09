@@ -43,6 +43,15 @@ test('local API persists safe providers, skills, models, and a provider-backed r
       for await (const chunk of request) raw += chunk;
       const body = JSON.parse(raw);
       sawSkillInstruction = body.messages.some((message) => message.role === 'system' && message.content.includes('Answer in a compact checklist.'));
+      if (body.stream) {
+        response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' });
+        response.write('data: {"choices":[{"delta":{"reasoning_content":"Checking the details. "}}]}\n\n');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        response.write('data: {"choices":[{"delta":{"content":"Streaming "}}]}\n\n');
+        response.write('data: {"choices":[{"delta":{"content":"answer."}}]}\n\n');
+        response.end('data: [DONE]\n\n');
+        return;
+      }
       const toolResult = body.messages.find((message) => message.role === 'tool');
       if (!toolResult) {
         response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -126,6 +135,23 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   assert.equal(response.payload.data.assistantMessage.toolEvents[0].summary, 'Calculator: 12 * (5 + 1) = 72');
   assert.equal(sawSkillInstruction, true);
   assert.equal(sawToolResult, true);
+
+  const streamingConversation = await json(`${base}/conversations`, { method: 'POST' });
+  const streamingResponse = await fetch(`${base}/conversations/${streamingConversation.payload.data.id}/respond/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({ message: 'Stream this answer.', providerId: provider.id, modelId: 'gpt-test-mini' })
+  });
+  assert.equal(streamingResponse.headers.get('content-type').startsWith('text/event-stream'), true);
+  const streamBody = await streamingResponse.text();
+  assert.match(streamBody, /event: started/u);
+  assert.match(streamBody, /event: thinking/u);
+  assert.match(streamBody, /event: token/u);
+  assert.match(streamBody, /event: completed/u);
+  assert.ok(streamBody.indexOf('event: thinking') < streamBody.indexOf('event: token'));
+  const streamedConversation = await json(`${base}/conversations/${streamingConversation.payload.data.id}`);
+  assert.equal(streamedConversation.payload.data.messages[1].content, 'Streaming answer.');
+  assert.equal(streamedConversation.payload.data.messages[1].reasoning, 'Checking the details. ');
 });
 
 test('allowlisted tools use a bounded arithmetic parser and safe time-zone handling', () => {

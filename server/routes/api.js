@@ -12,7 +12,7 @@ import {
   updateProvider
 } from '../services/providers.js';
 import { createSkill, deleteSkill, getSkill, listSkills, updateSkill } from '../services/skills.js';
-import { createConversation, getConversation, listConversations, respondToConversation } from '../services/conversations.js';
+import { createConversation, getConversation, listConversations, respondToConversation, respondToConversationStream } from '../services/conversations.js';
 import { listTools } from '../services/tools.js';
 
 function success(response, data, status = 200) {
@@ -105,5 +105,23 @@ export function createApiRouter({ db, config }) {
   router.post('/conversations/:conversationId/respond', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), asyncRoute(async (request, response) => {
     success(response, await respondToConversation(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs));
   }));
+  router.post('/conversations/:conversationId/respond/stream', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), async (request, response) => {
+    response.status(200).set({
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+    response.flushHeaders?.();
+    const emit = (event, data) => response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    try {
+      await respondToConversationStream(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, emit);
+    } catch (error) {
+      const appError = error instanceof AppError ? error : new AppError(500, 'INTERNAL_ERROR', 'An unexpected server error occurred.', { expose: true });
+      emit('error', { code: appError.code, message: appError.expose ? appError.message : 'An unexpected server error occurred.' });
+    } finally {
+      response.end();
+    }
+  });
   return router;
 }

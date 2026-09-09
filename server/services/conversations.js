@@ -28,6 +28,7 @@ function toMessage(row) {
     content: row.content,
     providerId: row.provider_id,
     modelId: row.model_id,
+    reasoning: row.reasoning || '',
     toolEvents,
     createdAt: row.created_at
   };
@@ -104,16 +105,16 @@ function conversationMessages(db, conversationId) {
   `).all(conversationId).reverse();
 }
 
-function persistMessage(db, { conversationId, role, content, providerId = null, selectedModelId = null, toolEvents = [] }) {
+function persistMessage(db, { conversationId, role, content, providerId = null, selectedModelId = null, reasoning = '', toolEvents = [] }) {
   const id = randomUUID();
   const createdAt = now();
-  db.prepare(`INSERT INTO messages (id, conversation_id, role, content, provider_id, model_id, created_at, tool_events)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, conversationId, role, content, providerId, selectedModelId, createdAt, toolEvents.length ? JSON.stringify(toolEvents) : null);
-  return { id, role, content, providerId, modelId: selectedModelId, toolEvents, createdAt };
+  db.prepare(`INSERT INTO messages (id, conversation_id, role, content, provider_id, model_id, created_at, tool_events, reasoning)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, conversationId, role, content, providerId, selectedModelId, createdAt, toolEvents.length ? JSON.stringify(toolEvents) : null, reasoning || null);
+  return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, createdAt };
 }
 
-export async function respondToConversation(db, rawConversationId, body, timeoutMs) {
+function prepareResponse(db, rawConversationId, body) {
   const conversation = existingConversation(db, rawConversationId);
   const content = requiredString(body.message, 'Message', { max: 16_000 });
   const providerId = identifier(body.providerId, 'Provider ID');
@@ -123,33 +124,188 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   const skills = selectedSkills(db, body.skillIds);
   const tools = selectedTools(body.toolIds);
   const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
-  const { provider, credentials } = providerCredentials(db, providerId);
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
   const system = systemMessage(skills);
   if (system) messages.unshift({ role: 'system', content: system });
-  const toolEvents = [];
-  let assistantContent = '';
+  return { conversation, content, providerId, selectedModelId, tools, userMessage, messages };
+}
 
-  for (let round = 0; round < 4; round += 1) {
+async function providerCompletion(provider, credentials, selectedModelId, messages, tools, timeoutMs) {
+  let response;
+  try {
+    response = await providerFetch(upstreamUrl(provider.baseUrl, '/chat/completions'), credentials, {
+      method: 'POST',
+      timeoutMs,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: selectedModelId,
+        messages,
+        ...(tools.length ? { tools: openAiToolDefinitions(tools), tool_choice: 'auto' } : {})
+      })
+    });
+  } catch (error) {
+    throw new AppError(502, 'PROVIDER_UNAVAILABLE', error.message, { expose: true });
+  }
+  if (!response?.ok) {
+    const status = response?.status ? ` (HTTP ${response.status})` : '';
+    throw new AppError(502, 'PROVIDER_RESPONSE_ERROR', `The provider could not complete this request${status}.`, { expose: true });
+  }
+  return response;
+}
+
+function finishResponse(db, context, assistantContent, reasoning, toolEvents) {
+  if (!assistantContent) {
+    throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider did not return a final chat response after tool use.', { expose: true });
+  }
+  const assistantMessage = persistMessage(db, {
+    conversationId: context.conversation.id,
+    role: 'assistant',
+    content: assistantContent,
+    providerId: context.providerId,
+    selectedModelId: context.selectedModelId,
+    reasoning,
+    toolEvents
+  });
+  const title = context.conversation.title === 'New conversation' ? context.content.slice(0, 72) : context.conversation.title;
+  db.prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?').run(title, now(), context.conversation.id);
+  return { conversation: getConversation(db, context.conversation.id), userMessage: context.userMessage, assistantMessage };
+}
+
+function collectToolCalls(target, delta) {
+  if (!Array.isArray(delta?.tool_calls)) return;
+  for (const partial of delta.tool_calls) {
+    const index = Number.isInteger(partial.index) ? partial.index : target.length;
+    target[index] ||= { id: '', type: 'function', function: { name: '', arguments: '' } };
+    const call = target[index];
+    if (typeof partial.id === 'string') call.id += partial.id;
+    if (typeof partial.type === 'string') call.type = partial.type;
+    if (typeof partial.function?.name === 'string') call.function.name += partial.function.name;
+    if (typeof partial.function?.arguments === 'string') call.function.arguments += partial.function.arguments;
+  }
+}
+
+function streamedReasoning(delta) {
+  for (const value of [delta?.reasoning_content, delta?.reasoning, delta?.analysis_content]) {
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value.map((part) => typeof part?.text === 'string' ? part.text : '').join('');
+  }
+  return '';
+}
+
+async function* upstreamSsePayloads(response) {
+  if (!response.body) throw new AppError(502, 'PROVIDER_INVALID_RESPONSE', 'The provider did not return a streaming response.', { expose: true });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const flush = function* (final = false) {
+    const normalized = buffer.replace(/\r\n/gu, '\n');
+    const boundaries = normalized.split('\n\n');
+    buffer = final ? '' : boundaries.pop();
+    for (const block of boundaries) {
+      const data = block.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
+      if (data) yield data;
+    }
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      yield* flush();
+    }
+    buffer += decoder.decode();
+    yield* flush(true);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(502, 'PROVIDER_STREAM_INTERRUPTED', 'The provider streaming response was interrupted.', { expose: true });
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timedOut = () => new AppError(502, 'PROVIDER_TIMEOUT', 'The provider streaming request timed out.', { expose: true });
+  try {
     let response;
     try {
       response = await providerFetch(upstreamUrl(provider.baseUrl, '/chat/completions'), credentials, {
         method: 'POST',
         timeoutMs,
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModelId,
           messages,
+          stream: true,
           ...(tools.length ? { tools: openAiToolDefinitions(tools), tool_choice: 'auto' } : {})
         })
       });
     } catch (error) {
+      if (controller.signal.aborted) throw timedOut();
       throw new AppError(502, 'PROVIDER_UNAVAILABLE', error.message, { expose: true });
     }
     if (!response?.ok) {
       const status = response?.status ? ` (HTTP ${response.status})` : '';
       throw new AppError(502, 'PROVIDER_RESPONSE_ERROR', `The provider could not complete this request${status}.`, { expose: true });
     }
+    if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        if (controller.signal.aborted) throw timedOut();
+        throw new AppError(502, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.', { expose: true });
+      }
+      const message = payload?.choices?.[0]?.message;
+      const content = normalizeAssistantContent(message?.content);
+      if (content) emit('token', { text: content });
+      return { content, reasoning: '', toolCalls: Array.isArray(message?.tool_calls) ? message.tool_calls.slice(0, 5) : [] };
+    }
+    let content = '';
+    let reasoning = '';
+    const toolCalls = [];
+    try {
+      for await (const data of upstreamSsePayloads(response)) {
+        if (data === '[DONE]') break;
+        let payload;
+        try {
+          payload = JSON.parse(data);
+        } catch {
+          continue;
+        }
+        const delta = payload?.choices?.[0]?.delta;
+        if (!delta) continue;
+        if (typeof delta.content === 'string' && delta.content) {
+          content += delta.content;
+          emit('token', { text: delta.content });
+        }
+        const reasoningChunk = streamedReasoning(delta);
+        if (reasoningChunk) {
+          reasoning += reasoningChunk;
+          emit('thinking', { text: reasoningChunk });
+        }
+        collectToolCalls(toolCalls, delta);
+      }
+    } catch (error) {
+      if (controller.signal.aborted) throw timedOut();
+      throw error;
+    }
+    return { content, reasoning, toolCalls: toolCalls.filter((call) => call.function.name) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function respondToConversation(db, rawConversationId, body, timeoutMs) {
+  const context = prepareResponse(db, rawConversationId, body);
+  const { provider, credentials } = providerCredentials(db, context.providerId);
+  const toolEvents = [];
+  let assistantContent = '';
+  let reasoning = '';
+  for (let round = 0; round < 4; round += 1) {
+    const response = await providerCompletion(provider, credentials, context.selectedModelId, context.messages, context.tools, timeoutMs);
     let payload;
     try {
       payload = await response.json();
@@ -162,33 +318,46 @@ export async function respondToConversation(db, rawConversationId, body, timeout
       assistantContent = normalizeAssistantContent(providerMessage?.content);
       break;
     }
-    messages.push({
-      role: 'assistant',
-      content: providerMessage.content ?? null,
-      tool_calls: toolCalls
-    });
+    context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
     for (const call of toolCalls) {
-      const execution = executeToolCall(call, new Set(tools.map((tool) => tool.id)));
+      const execution = executeToolCall(call, new Set(context.tools.map((tool) => tool.id)));
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
-      messages.push({
-        role: 'tool',
-        tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(),
-        content: JSON.stringify(execution.result)
-      });
+      context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
     }
   }
-  if (!assistantContent) {
-    throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider did not return a final chat response after tool use.', { expose: true });
+  return finishResponse(db, context, assistantContent, reasoning, toolEvents);
+}
+
+export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit) {
+  const context = prepareResponse(db, rawConversationId, body);
+  const { provider, credentials } = providerCredentials(db, context.providerId);
+  emit('started', { conversationId: context.conversation.id });
+  const toolEvents = [];
+  let assistantContent = '';
+  let reasoning = '';
+  for (let round = 0; round < 4; round += 1) {
+    const result = await streamProviderRound({
+      provider,
+      credentials,
+      selectedModelId: context.selectedModelId,
+      messages: context.messages,
+      tools: context.tools,
+      timeoutMs,
+      emit
+    });
+    reasoning += result.reasoning;
+    if (result.toolCalls.length === 0) {
+      assistantContent = result.content;
+      break;
+    }
+    context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
+    for (const call of result.toolCalls) {
+      const execution = executeToolCall(call, new Set(context.tools.map((tool) => tool.id)));
+      toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
+      context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
+    }
   }
-  const assistantMessage = persistMessage(db, {
-    conversationId: conversation.id,
-    role: 'assistant',
-    content: assistantContent,
-    providerId,
-    selectedModelId,
-    toolEvents
-  });
-  const title = conversation.title === 'New conversation' ? content.slice(0, 72) : conversation.title;
-  db.prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?').run(title, now(), conversation.id);
-  return { conversation: getConversation(db, conversation.id), userMessage, assistantMessage };
+  const result = finishResponse(db, context, assistantContent, reasoning, toolEvents);
+  emit('completed', result);
+  return result;
 }
