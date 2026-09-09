@@ -21,11 +21,31 @@ const toolCatalog = Object.freeze({
       additionalProperties: false,
       properties: { timeZone: { type: 'string', description: 'IANA time zone such as Asia/Dhaka. Defaults to UTC.' } }
     }
+  }),
+  read_skill: Object.freeze({
+    id: 'read_skill',
+    name: 'Read skill',
+    description: 'Load the full instructions of a reusable skill by its id so you can follow them to answer the user request. Skill ids are listed in the available skills catalog.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['skillId'],
+      properties: { skillId: { type: 'string', description: 'The id of the skill to read, as listed in the available skills catalog.' } }
+    }
   })
 });
 
 export function listTools() {
-  return Object.values(toolCatalog).map(({ id, name, description, parameters }) => ({ id, name, description, parameters }));
+  return Object.values(toolCatalog)
+    .filter((tool) => tool.id !== 'read_skill')
+    .map(({ id, name, description, parameters }) => ({ id, name, description, parameters }));
+}
+
+// read_skill is an internal mechanism that lets the model load skill instructions on demand,
+// so it is not exposed as a user-selectable capability in the public tool list.
+export function readSkillTool() {
+  const tool = toolCatalog.read_skill;
+  return { id: tool.id, name: tool.name, description: tool.description, parameters: tool.parameters };
 }
 
 export function selectedTools(rawToolIds) {
@@ -116,10 +136,11 @@ function currentTime(timeZone) {
 function summary(tool, result) {
   if (result.error) return `${tool.name} could not run: ${result.error}`;
   if (tool.id === 'calculator') return `Calculator: ${result.expression} = ${result.result}`;
+  if (tool.id === 'read_skill') return `Read skill: ${result.name}`;
   return `Current time: ${result.localTime} (${result.timeZone})`;
 }
 
-export function executeToolCall(call, allowedToolIds) {
+export function executeToolCall(call, allowedToolIds, { getSkill } = {}) {
   const id = typeof call?.function?.name === 'string' ? call.function.name : '';
   const tool = Object.hasOwn(toolCatalog, id) ? toolCatalog[id] : null;
   if (!tool || !allowedToolIds.has(id)) {
@@ -131,6 +152,19 @@ export function executeToolCall(call, allowedToolIds) {
     if (!argumentsObject || Array.isArray(argumentsObject) || typeof argumentsObject !== 'object') throw new Error();
   } catch {
     const result = { error: 'Tool arguments must be a JSON object.' };
+    return { toolId: id, result, summary: summary(tool, result) };
+  }
+  if (id === 'read_skill') {
+    if (typeof getSkill !== 'function') {
+      const result = { error: 'Skill loading is not available for this request.' };
+      return { toolId: id, result, summary: summary(tool, result) };
+    }
+    const skill = getSkill(argumentsObject.skillId);
+    if (!skill) {
+      const result = { error: 'Skill not found. Use an id listed in the available skills catalog.' };
+      return { toolId: id, result, summary: summary(tool, result) };
+    }
+    const result = { skillId: skill.id, name: skill.name, description: skill.description, instructions: skill.instructions };
     return { toolId: id, result, summary: summary(tool, result) };
   }
   const result = id === 'calculator' ? calculator(argumentsObject.expression) : currentTime(argumentsObject.timeZone);

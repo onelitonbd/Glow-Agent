@@ -10,8 +10,7 @@ const state = {
   skills: [],
   tools: [],
   selectedProviderId: null,
-  selectedModelId: null,
-  selectedSkillIds: new Set()
+  selectedModelId: null
 };
 const chatLog = document.getElementById('chatLog');
 const title = document.getElementById('conversationTitle');
@@ -144,7 +143,7 @@ function renderModelPicker() {
     const option = element('button', `model-option${isSelected ? ' selected' : ''}`);
     option.type = 'button';
     const badge = element('span', 'data-icon violet'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon('database'));
-    const copy = element('span'); copy.append(element('b', 'data-name', entry.modelId), element('span', 'data-subtitle', entry.providerName));
+    const copy = element('span', 'copy'); copy.append(element('b', 'data-name', entry.modelId), element('span', 'data-subtitle', entry.providerName));
     option.append(badge, copy);
     if (isSelected) option.append(icon('check'));
     option.addEventListener('click', () => {
@@ -162,26 +161,22 @@ function renderModelPicker() {
 }
 
 function renderSkillPicker() {
-  skillTrigger.classList.toggle('selected', state.selectedSkillIds.size > 0);
-  skillTrigger.setAttribute('aria-label', state.selectedSkillIds.size ? `${state.selectedSkillIds.size} skill${state.selectedSkillIds.size === 1 ? '' : 's'} selected. Select skills.` : 'Select skills');
+  skillTrigger.classList.add('selected');
+  skillTrigger.setAttribute('aria-label', 'Skills are always available to the assistant.');
+  skillTrigger.title = 'Skills are always available';
   chatSkillOptions.replaceChildren();
   if (state.skills.length === 0) {
     chatSkillOptions.append(element('p', 'hint', 'No skills are available yet. Create one from the Skills page.'));
     return;
   }
+  chatSkillOptions.append(element('p', 'hint', 'These skills are always available to the assistant. It reads their instructions when needed.'));
   state.skills.forEach((skill) => {
-    const isSelected = state.selectedSkillIds.has(skill.id);
-    const option = element('button', `model-option${isSelected ? ' selected' : ''}`);
+    const option = element('button', 'model-option selected');
     option.type = 'button';
     const badge = element('span', 'data-icon'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon('spark'));
-    const copy = element('span'); copy.append(element('b', 'data-name', skill.name), element('span', 'data-subtitle', skill.description));
-    option.append(badge, copy);
-    if (isSelected) option.append(icon('check'));
-    option.addEventListener('click', () => {
-      if (isSelected) state.selectedSkillIds.delete(skill.id);
-      else state.selectedSkillIds.add(skill.id);
-      renderSkillPicker();
-    });
+    const copy = element('span', 'copy'); copy.append(element('b', 'data-name', skill.name), element('span', 'data-subtitle', skill.description));
+    option.append(badge, copy, icon('check'));
+    option.addEventListener('click', () => showToast(`${skill.name} is always available.`));
     chatSkillOptions.append(option);
   });
 }
@@ -205,7 +200,7 @@ function renderToolPicker() {
     const option = element('button', 'model-option selected');
     option.type = 'button';
     const badge = element('span', 'data-icon violet'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon(toolIcon(tool.id)));
-    const copy = element('span'); copy.append(element('b', 'data-name', tool.name), element('span', 'data-subtitle', tool.description));
+    const copy = element('span', 'copy'); copy.append(element('b', 'data-name', tool.name), element('span', 'data-subtitle', tool.description));
     option.append(badge, copy, icon('check'));
     option.addEventListener('click', () => showToast(`${tool.name} is always enabled.`));
     chatToolOptions.append(option);
@@ -301,14 +296,12 @@ composer.addEventListener('submit', async (event) => {
       message,
       providerId: state.selectedProviderId,
       modelId: state.selectedModelId,
-      skillIds: [...state.selectedSkillIds],
       toolIds: state.tools.map((tool) => tool.id)
     }, async (eventName, payload) => {
       if (eventName === 'thinking') appendStreamDelta('thinking', payload.text);
       if (eventName === 'token') appendStreamDelta('token', payload.text);
     });
     state.conversation = result.conversation;
-    state.selectedSkillIds.clear();
     await loadWorkspace();
     renderLog();
   } catch (error) {

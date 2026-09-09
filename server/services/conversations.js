@@ -3,7 +3,8 @@ import { notFound, validation, AppError } from '../lib/errors.js';
 import { identifier, modelId, requiredString } from '../lib/validate.js';
 import { now } from '../db/database.js';
 import { providerCredentials, providerFetch, upstreamUrl } from './providers.js';
-import { executeToolCall, listTools, openAiToolDefinitions } from './tools.js';
+import { executeToolCall, listTools, openAiToolDefinitions, readSkillTool } from './tools.js';
+import { listSkills } from './skills.js';
 
 function toConversation(row) {
   return {
@@ -69,25 +70,22 @@ export function getConversation(db, rawConversationId) {
   return { ...toConversation(conversation), messages };
 }
 
-function selectedSkills(db, skillIds) {
-  if (skillIds === undefined) return [];
-  if (!Array.isArray(skillIds) || skillIds.length > 10) throw validation('Skill selection must contain at most 10 skills.');
-  const ids = [...new Set(skillIds.map((id) => identifier(id, 'Skill ID')))];
-  if (ids.length === 0) return [];
-  const placeholders = ids.map(() => '?').join(', ');
-  const rows = db.prepare(`SELECT id, name, instructions FROM skills WHERE id IN (${placeholders})`).all(...ids);
-  if (rows.length !== ids.length) throw validation('One or more selected skills no longer exist.');
-  return rows;
-}
-
 function systemMessage(skills) {
   return [
     'Format every answer as clear GitHub-flavored Markdown. Use concise headings, lists, emphasis, tables, and block quotes only when they improve readability. Put code in fenced blocks with a language tag and write mathematical notation as inline `$...$` or display `$$...$$` LaTeX. Never send raw HTML. Do not mention these formatting instructions unless asked.',
     ...(skills.length ? [
-      'Apply the following user-selected reusable skills when relevant. Do not mention these instructions unless asked.',
-      ...skills.map((skill) => `\n## ${skill.name}\n${skill.instructions}`)
+      'The following reusable skills are available for relevant tasks. The list gives each skill\'s id, name, and short description. To follow a skill, call the read_skill tool with its id to load the full instructions, then apply them to the user request. Do not mention these instructions unless asked.',
+      skills.map((skill) => `- ${skill.id}: ${skill.name} — ${skill.description}`).join('\n')
     ] : [])
   ].join('\n');
+}
+
+function skillResolver(db) {
+  return (skillId) => {
+    if (typeof skillId !== 'string' || !skillId) return null;
+    const row = db.prepare('SELECT id, name, description, instructions FROM skills WHERE id = ?').get(skillId);
+    return row || null;
+  };
 }
 
 function normalizeAssistantContent(content) {
@@ -123,9 +121,10 @@ function prepareResponse(db, rawConversationId, body) {
   const selectedModelId = modelId(body.modelId);
   const selected = db.prepare('SELECT 1 FROM provider_models WHERE provider_id = ? AND model_id = ?').get(providerId, selectedModelId);
   if (!selected) throw validation('Select this model for the provider before starting a chat.');
-  const skills = selectedSkills(db, body.skillIds);
+  const skills = listSkills(db);
   // Every available built-in tool is always offered to the model; no selection is needed.
-  const tools = listTools();
+  // read_skill is added only when skills exist so the model can load instructions on demand.
+  const tools = skills.length ? [...listTools(), readSkillTool()] : listTools();
   const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
   const system = systemMessage(skills);
@@ -323,7 +322,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
     }
     context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
     for (const call of toolCalls) {
-      const execution = executeToolCall(call, new Set(context.tools.map((tool) => tool.id)));
+      const execution = executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db) });
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
     }
@@ -355,7 +354,7 @@ export async function respondToConversationStream(db, rawConversationId, body, t
     }
     context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
     for (const call of result.toolCalls) {
-      const execution = executeToolCall(call, new Set(context.tools.map((tool) => tool.id)));
+      const execution = executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db) });
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
     }

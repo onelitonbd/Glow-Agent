@@ -29,9 +29,10 @@ async function json(url, { method = 'GET', body } = {}) {
 test('local API persists safe providers, skills, models, and a provider-backed response', async (t) => {
   const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-test-'));
   let sawCredential = false;
-  let sawSkillInstruction = false;
+  let sawSkillCatalog = false;
   let sawMarkdownInstruction = false;
   let sawToolResult = false;
+  let sawReadSkillTool = false;
   const upstream = createServer(async (request, response) => {
     if (request.headers.authorization === 'Bearer local-test-key') sawCredential = true;
     if (request.url === '/v1/models') {
@@ -43,8 +44,11 @@ test('local API persists safe providers, skills, models, and a provider-backed r
       let raw = '';
       for await (const chunk of request) raw += chunk;
       const body = JSON.parse(raw);
-      sawSkillInstruction = body.messages.some((message) => message.role === 'system' && message.content.includes('Answer in a compact checklist.'));
-      sawMarkdownInstruction = body.messages.some((message) => message.role === 'system' && message.content.includes('GitHub-flavored Markdown'));
+      const systemContent = body.messages.find((message) => message.role === 'system')?.content || '';
+      // Skills are advertised by id, name, and description; instructions are read on demand via read_skill.
+      sawSkillCatalog = systemContent.includes('Checklist') && systemContent.includes('Keep responses compact and actionable.') && !systemContent.includes('Answer in a compact checklist.');
+      sawMarkdownInstruction = systemContent.includes('GitHub-flavored Markdown');
+      sawReadSkillTool = Array.isArray(body.tools) && body.tools.some((tool) => tool.function.name === 'read_skill');
       if (body.stream) {
         response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' });
         response.write('data: {"choices":[{"delta":{"reasoning_content":"Checking the details. "}}]}\n\n');
@@ -135,8 +139,9 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   assert.equal(response.payload.data.assistantMessage.content, 'A real local provider response.');
   assert.equal(response.payload.data.conversation.messages.length, 2);
   assert.equal(response.payload.data.assistantMessage.toolEvents[0].summary, 'Calculator: 12 * (5 + 1) = 72');
-  assert.equal(sawSkillInstruction, true);
+  assert.equal(sawSkillCatalog, true);
   assert.equal(sawMarkdownInstruction, true);
+  assert.equal(sawReadSkillTool, true);
   assert.equal(sawToolResult, true);
 
   const streamingConversation = await json(`${base}/conversations`, { method: 'POST' });
@@ -169,6 +174,18 @@ test('allowlisted tools use a bounded arithmetic parser and safe time-zone handl
   assert.equal(blocked.result.error, 'This tool is not available.');
   const prototypeName = executeToolCall({ function: { name: '__proto__', arguments: '{}' } }, new Set(['calculator']));
   assert.equal(prototypeName.result.error, 'This tool is not available.');
+});
+
+test('read_skill returns a skill\'s instructions on demand and blocks missing skills', () => {
+  const fakeSkill = { id: 'skill_id', name: 'Checklist', description: 'Keep responses actionable.', instructions: 'Answer in a compact checklist.' };
+  const getSkill = (skillId) => skillId === fakeSkill.id ? fakeSkill : null;
+  const loaded = executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"skill_id"}' } }, new Set(['read_skill']), { getSkill });
+  assert.equal(loaded.result.instructions, 'Answer in a compact checklist.');
+  assert.equal(loaded.summary, 'Read skill: Checklist');
+  const missing = executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"nope"}' } }, new Set(['read_skill']), { getSkill });
+  assert.match(missing.result.error, /Skill not found/u);
+  const gated = executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"skill_id"}' } }, new Set([]), { getSkill });
+  assert.equal(gated.summary, 'An unavailable tool call was blocked.');
 });
 
 test('invalid provider input is rejected without creating a record', async (t) => {
