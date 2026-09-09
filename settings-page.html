@@ -65,6 +65,9 @@
     .danger .row-icon { background:rgba(255,135,151,.12); color:var(--danger); }.danger .row-title { color:#ffd9df; }.danger .item-value { color:var(--danger); }
     .build { margin:0; padding:2px 20px; color:var(--quiet); font-size:7.5px; text-align:center; }.toast { position:fixed; bottom:22px; left:50%; z-index:5; max-width:calc(100% - 36px); padding:9px 11px; transform:translate(-50%,14px); border:1px solid rgba(198,255,107,.22); border-radius:9px; background:#1d2520; color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.28); font-size:8px; opacity:0; pointer-events:none; transition:opacity .2s ease,transform .2s ease; }.toast.show { transform:translate(-50%,0); opacity:1; }
     @media (min-width:600px){ body{padding:24px 0}.phone{min-height:calc(100dvh - 48px);border-radius:30px} } @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important}}
+    /* On a real handheld the browser already draws a status bar, so the prototype's
+       mock one only wastes a 29px dead strip at the top of the screen. */
+    @media (hover: none) and (pointer: coarse) { .status { display: none; } .phone { padding-top: env(safe-area-inset-top, 0px); } }
   </style>
 </head>
 <body>
