@@ -201,6 +201,13 @@ function appendInline(parent, source) {
       index += 2;
       continue;
     }
+    const lineBreak = source.slice(index).match(/^<br\s*\/?\s*>/iu);
+    if (lineBreak) {
+      flush();
+      parent.append(htmlNode('br'));
+      index += lineBreak[0].length;
+      continue;
+    }
     if (character === '`') {
       const end = closingIndex(source, '`', index + 1);
       if (end !== -1) {
@@ -264,11 +271,19 @@ function tableSeparators(line) {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
 }
 
-function tableAt(lines, index) {
-  return lines[index]?.includes('|') && tableSeparators(lines[index + 1] || '');
+function tableAt(lines, index, streaming = false) {
+  const header = lines[index] || '';
+  const divider = lines[index + 1] || '';
+  if (!header.includes('|') || !tableSeparators(divider)) return false;
+  if (!streaming) return true;
+  const firstRow = lines[index + 2] || '';
+  return header.trimEnd().endsWith('|')
+    && divider.trimEnd().endsWith('|')
+    && firstRow.trimEnd().endsWith('|')
+    && tableCells(firstRow).some(Boolean);
 }
 
-function blockStart(lines, index) {
+function blockStart(lines, index, streaming = false) {
   const line = lines[index] || '';
   const trimmed = line.trim();
   return /^```/u.test(trimmed)
@@ -277,7 +292,7 @@ function blockStart(lines, index) {
     || /^\s*(?:[-+*]|\d+\.)\s+/u.test(line)
     || /^\s*>/u.test(line)
     || /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/u.test(line)
-    || tableAt(lines, index);
+    || tableAt(lines, index, streaming);
 }
 
 function appendParagraph(fragment, lines) {
@@ -316,7 +331,7 @@ function appendList(fragment, lines, start, ordered) {
   return index;
 }
 
-function appendTable(fragment, lines, start) {
+function appendTable(fragment, lines, start, streaming = false) {
   const headers = tableCells(lines[start]);
   const alignments = tableCells(lines[start + 1]).map((cell) => cell.startsWith(':') && cell.endsWith(':') ? 'center' : cell.endsWith(':') ? 'right' : 'left');
   const wrap = htmlNode('div', 'markdown-table-wrap');
@@ -336,7 +351,13 @@ function appendTable(fragment, lines, start) {
   let index = start + 2;
   let rows = 0;
   while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
+    if (streaming && index === lines.length - 1 && !lines[index].trimEnd().endsWith('|')) {
+      index = lines.length;
+      break;
+    }
     const cells = tableCells(lines[index]);
+    index += 1;
+    if (!cells.some(Boolean)) continue;
     const row = htmlNode('tr');
     headers.forEach((_header, column) => {
       const cell = htmlNode('td');
@@ -345,7 +366,6 @@ function appendTable(fragment, lines, start) {
       row.append(cell);
     });
     body.append(row);
-    index += 1;
     rows += 1;
     if (rows >= 200) break;
   }
@@ -405,7 +425,7 @@ function appendMathBlock(fragment, lines, start) {
   return index;
 }
 
-export function renderMarkdown(markdown) {
+export function renderMarkdown(markdown, { streaming = false } = {}) {
   const fragment = document.createDocumentFragment();
   const lines = String(markdown || '').replace(/\r\n?/gu, '\n').split('\n');
   let index = 0;
@@ -424,8 +444,8 @@ export function renderMarkdown(markdown) {
       index = appendMathBlock(fragment, lines, index);
       continue;
     }
-    if (tableAt(lines, index)) {
-      index = appendTable(fragment, lines, index);
+    if (tableAt(lines, index, streaming)) {
+      index = appendTable(fragment, lines, index, streaming);
       continue;
     }
     const heading = trimmed.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/u);
@@ -463,7 +483,7 @@ export function renderMarkdown(markdown) {
     }
     const paragraphLines = [];
     while (index < lines.length && lines[index].trim()) {
-      if (paragraphLines.length && blockStart(lines, index)) break;
+      if (paragraphLines.length && blockStart(lines, index, streaming)) break;
       paragraphLines.push(lines[index]);
       index += 1;
     }

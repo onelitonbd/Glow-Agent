@@ -56,7 +56,7 @@ test('assistant Markdown renders structured text, tables, code, and common LaTeX
     '',
     '| Plan | Price |',
     '| :--- | ---: |',
-    '| Pro | $12$ |',
+    '| Pro | $12$<br>per month |',
     '',
     '```js',
     'const answer = 42;',
@@ -74,6 +74,7 @@ test('assistant Markdown renders structured text, tables, code, and common LaTeX
   assert.equal(nodesWithTag(output, 'input').length, 1);
   assert.equal(nodesWithTag(output, 'table').length, 1);
   assert.equal(nodesWithTag(output, 'th').length, 2);
+  assert.equal(nodesWithTag(output, 'br').length, 1);
   assert.equal(nodesWithTag(output, 'pre').length, 1);
   assert.equal(nodesWithTag(output, 'mfrac').length, 1);
   assert.equal(nodesWithTag(output, 'msup').length, 1);
@@ -83,4 +84,12 @@ test('assistant Markdown renders structured text, tables, code, and common LaTeX
   assert.equal(links[0].href, 'https://example.com/');
   assert.equal(nodesWithTag(output, 'script').length, 0);
   assert.match(output.textContent, /<script>window\.bad = true<\/script>/u);
+});
+
+test('partial streamed tables wait for a complete first row instead of showing empty cells', () => {
+  const incomplete = renderMarkdown('| Name | Value |\n| --- | --- |\n| First', { streaming: true });
+  assert.equal(nodesWithTag(incomplete, 'table').length, 0);
+  const complete = renderMarkdown('| Name | Value |\n| --- | --- |\n| First | Ready |', { streaming: true });
+  assert.equal(nodesWithTag(complete, 'table').length, 1);
+  assert.equal(nodesWithTag(complete, 'td').length, 2);
 });

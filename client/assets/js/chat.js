@@ -57,7 +57,7 @@ function renderLog() {
       bubble.append(thinking);
     }
     if (message.content) {
-      if (message.role === 'assistant') bubble.append(renderMarkdown(message.content));
+      if (message.role === 'assistant') bubble.append(renderMarkdown(message.content, { streaming: Boolean(message.isStreaming) }));
       else bubble.append(document.createTextNode(message.content));
     }
     chatLog.append(bubble);
