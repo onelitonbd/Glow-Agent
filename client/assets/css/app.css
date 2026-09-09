@@ -162,24 +162,15 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .code-string { color: #c4d99b; }
 .code-comment { color: #718095; }
 .code-function { color: #e0b679; }
-.markdown-table-wrap { position: relative; width: 100%; margin: 0 0 24px; }
-.markdown-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.markdown-table-wrap { width: 100%; min-width: 0; max-width: 100%; margin: 0 0 24px; }
+.markdown-table-scroll { width: 100%; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
 .markdown-table { width: max-content; min-width: 100%; margin: 0; border-collapse: collapse; color: var(--text-soft); font-size: 14px; }
-.markdown-table th { padding: 0 14px 10px; border-bottom: 2px solid var(--accent); color: var(--text); font-weight: 800; white-space: nowrap; }
-.markdown-table td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
-.markdown-table th:first-child, .markdown-table td:first-child { padding-left: 0; }
-.markdown-table th:last-child, .markdown-table td:last-child { padding-right: 0; }
+.markdown-table th { padding: 11px 16px; border-bottom: 2px solid var(--accent); color: var(--text); font-weight: 800; white-space: nowrap; }
+.markdown-table td { padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+.markdown-table th:first-child, .markdown-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface-soft); box-shadow: 1px 0 0 var(--line); }
+.markdown-table th:first-child { z-index: 2; }
 .markdown-table .table-number { color: var(--muted); font-family: var(--mono); font-size: 13px; }
 .markdown-table tr:last-child td { border-bottom: 0; }
-.markdown-table-wrap.is-wide .markdown-table-scroll { border: 1px solid var(--line); border-radius: 8px; }
-.markdown-table-wrap.is-wide .markdown-table th, .markdown-table-wrap.is-wide .markdown-table td { padding: 11px 16px; }
-.markdown-table-wrap.is-wide .markdown-table th:first-child, .markdown-table-wrap.is-wide .markdown-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--bg); box-shadow: 1px 0 0 var(--line); }
-.markdown-table-wrap.is-wide .markdown-table th:first-child { z-index: 2; }
-.table-fade-edge { position: absolute; top: 0; right: 0; bottom: 29px; display: none; width: 28px; border-radius: 0 8px 8px 0; background: linear-gradient(to right, transparent, var(--bg)); pointer-events: none; }
-.markdown-table-wrap.is-wide:not(.at-end) .table-fade-edge { display: block; }
-.table-scroll-hint { display: none; align-items: center; gap: 5px; margin: 8px 0 0; color: var(--muted); font: 11px/1.4 var(--font); }
-.table-scroll-hint svg { width: 13px; height: 13px; flex: 0 0 auto; }
-.markdown-table-wrap.is-wide .table-scroll-hint { display: flex; }
 .markdown-link { color: var(--accent); text-decoration: underline; text-decoration-color: rgba(198,255,107,.45); text-underline-offset: .16em; }
 .markdown-math-block { margin: 0 0 16px; padding: 14px; overflow-x: auto; border: 1px solid rgba(169,156,255,.22); border-radius: 11px; background: rgba(169,156,255,.07); color: #ece9ff; text-align: center; }
 .math-inline, .math-display { font-family: "Cambria Math", "STIX Two Math", serif; }

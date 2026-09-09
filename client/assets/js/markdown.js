@@ -331,17 +331,6 @@ function appendList(fragment, lines, start, ordered) {
   return index;
 }
 
-function appendArrowIcon(parent) {
-  const namespace = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(namespace, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(namespace, 'path');
-  path.setAttribute('d', 'm9 18 6-6-6-6');
-  svg.append(path);
-  parent.append(svg);
-}
-
 function appendCopyIcon(parent) {
   const namespace = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(namespace, 'svg');
@@ -363,19 +352,6 @@ function setClass(node, name, enabled) {
   if (!node.classList) return;
   if (typeof node.classList.toggle === 'function') node.classList.toggle(name, enabled);
   else if (enabled) node.classList.add(name);
-}
-
-function setTableScrollState(wrap, scroller) {
-  if (!scroller.clientWidth) return;
-  const wide = scroller.scrollWidth > scroller.clientWidth + 2;
-  setClass(wrap, 'is-wide', wide);
-  setClass(wrap, 'at-end', !wide || scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 2);
-}
-
-function scheduleTableScrollState(wrap, scroller) {
-  const update = () => setTableScrollState(wrap, scroller);
-  if (typeof scroller.addEventListener === 'function') scroller.addEventListener('scroll', update, { passive: true });
-  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(update);
 }
 
 function appendTable(fragment, lines, start, streaming = false) {
@@ -421,14 +397,7 @@ function appendTable(fragment, lines, start, streaming = false) {
   }
   table.append(body);
   scroller.append(table);
-  const fade = htmlNode('span', 'table-fade-edge');
-  fade.setAttribute('aria-hidden', 'true');
-  const hint = htmlNode('p', 'table-scroll-hint');
-  hint.setAttribute('aria-hidden', 'true');
-  appendArrowIcon(hint);
-  appendText(hint, 'Scroll to see more columns — first column stays put');
-  wrap.append(scroller, fade, hint);
-  scheduleTableScrollState(wrap, scroller);
+  wrap.append(scroller);
   fragment.append(wrap);
   return index;
 }

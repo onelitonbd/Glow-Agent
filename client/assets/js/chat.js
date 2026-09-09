@@ -37,6 +37,8 @@ function selectedModel() {
 }
 
 function renderLog() {
+  const followLatest = chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 56;
+  const tableOffsets = [...chatLog.querySelectorAll('.markdown-table-scroll')].map((table) => table.scrollLeft);
   chatLog.replaceChildren();
   title.textContent = state.conversation?.title || 'New conversation';
   const messages = state.conversation?.messages || [];
@@ -62,7 +64,10 @@ function renderLog() {
     }
     chatLog.append(bubble);
   });
-  chatLog.scrollTop = chatLog.scrollHeight;
+  [...chatLog.querySelectorAll('.markdown-table-scroll')].forEach((table, index) => {
+    table.scrollLeft = tableOffsets[index] || 0;
+  });
+  if (followLatest) chatLog.scrollTop = chatLog.scrollHeight;
 }
 
 function renderConversationList() {
