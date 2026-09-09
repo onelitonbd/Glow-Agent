@@ -81,10 +81,12 @@ function selectedSkills(db, skillIds) {
 }
 
 function systemMessage(skills) {
-  if (skills.length === 0) return null;
   return [
-    'Apply the following user-selected reusable skills when relevant. Do not mention these instructions unless asked.',
-    ...skills.map((skill) => `\n## ${skill.name}\n${skill.instructions}`)
+    'Format every answer as clear GitHub-flavored Markdown. Use concise headings, lists, emphasis, tables, and block quotes only when they improve readability. Put code in fenced blocks with a language tag and write mathematical notation as inline `$...$` or display `$$...$$` LaTeX. Never send raw HTML. Do not mention these formatting instructions unless asked.',
+    ...(skills.length ? [
+      'Apply the following user-selected reusable skills when relevant. Do not mention these instructions unless asked.',
+      ...skills.map((skill) => `\n## ${skill.name}\n${skill.instructions}`)
+    ] : [])
   ].join('\n');
 }
 

@@ -131,7 +131,35 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .chat-empty p { max-width: 280px; margin: 0 auto; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .message { font-size: 16px; line-height: 1.6; white-space: pre-wrap; }
 .message.user { justify-self: end; max-width: 88%; padding: 10px 11px; border-radius: 14px 0 0 14px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.message.assistant { justify-self: stretch; max-width: none; padding: 4px 1px 14px; border: 0; border-radius: 0; background: transparent; color: var(--text-soft); }
+.message.assistant { justify-self: stretch; max-width: none; padding: 4px 1px 14px; border: 0; border-radius: 0; background: transparent; color: var(--text-soft); white-space: normal; }
+.message.assistant .markdown-paragraph { margin: 0 0 15px; }
+.message.assistant > .markdown-paragraph:last-child { margin-bottom: 0; }
+.markdown-heading { margin: 22px 0 10px; color: var(--text); font-weight: 800; letter-spacing: -.035em; line-height: 1.25; }
+.markdown-heading:first-child { margin-top: 0; }
+.markdown-heading-1 { font-size: 1.45em; }
+.markdown-heading-2 { font-size: 1.28em; }
+.markdown-heading-3 { font-size: 1.12em; }
+.markdown-heading-4, .markdown-heading-5, .markdown-heading-6 { font-size: 1em; }
+.markdown-list { margin: 0 0 15px; padding-left: 1.4em; }
+.markdown-list li + li { margin-top: 6px; }
+.task-box { width: 1em; height: 1em; margin: 0 7px 0 0; accent-color: var(--accent); vertical-align: -.08em; }
+.markdown-quote { margin: 0 0 15px; padding: 3px 0 3px 13px; border-left: 3px solid rgba(198,255,107,.65); color: var(--muted); }
+.markdown-quote .markdown-paragraph { margin: 0; }
+.markdown-rule { height: 1px; margin: 20px 0; border: 0; background: var(--line); }
+.inline-code { padding: .13em .36em; border: 1px solid rgba(169,156,255,.25); border-radius: 5px; background: rgba(169,156,255,.12); color: #d7d1ff; font: .84em var(--mono); }
+.markdown-code-block { position: relative; margin: 0 0 16px; overflow: hidden; border: 1px solid rgba(255,255,255,.11); border-radius: 12px; background: #0a0c10; }
+.markdown-code-block pre { margin: 0; padding: 15px; overflow: auto; color: #e7ebf2; font: 12px/1.6 var(--mono); white-space: pre; }
+.markdown-code-block .code-language { display: block; padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.035); color: var(--accent); font: 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.markdown-table-wrap { width: 100%; margin: 0 0 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); }
+.markdown-table { width: 100%; min-width: max-content; border-collapse: collapse; font-size: .83em; }
+.markdown-table th, .markdown-table td { padding: 10px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.markdown-table th { background: rgba(198,255,107,.07); color: var(--text); font-weight: 800; }
+.markdown-table tr:last-child td { border-bottom: 0; }
+.markdown-link { color: var(--accent); text-decoration: underline; text-decoration-color: rgba(198,255,107,.45); text-underline-offset: .16em; }
+.markdown-math-block { margin: 0 0 16px; padding: 14px; overflow-x: auto; border: 1px solid rgba(169,156,255,.22); border-radius: 11px; background: rgba(169,156,255,.07); color: #ece9ff; text-align: center; }
+.math-inline, .math-display { font-family: "Cambria Math", "STIX Two Math", serif; }
+.math-inline { display: inline-block; margin: 0 .1em; font-size: 1.08em; vertical-align: middle; }
+.math-display { font-size: 1.18em; }
 .thinking { margin: 0 0 11px; padding-left: 10px; border-left: 2px solid rgba(198,255,107,.65); color: var(--muted); }
 .thinking summary { display: flex; align-items: center; gap: 7px; color: var(--accent); cursor: pointer; font: 11px var(--mono); list-style: none; }
 .thinking summary::-webkit-details-marker { display: none; }

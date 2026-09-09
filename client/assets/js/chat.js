@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { renderMarkdown } from './markdown.js';
 import { element, icon, showToast } from './ui.js';
 
 const state = {
@@ -55,7 +56,10 @@ function renderLog() {
       thinking.append(element('div', 'thinking-content', message.reasoning));
       bubble.append(thinking);
     }
-    if (message.content) bubble.append(document.createTextNode(message.content));
+    if (message.content) {
+      if (message.role === 'assistant') bubble.append(renderMarkdown(message.content));
+      else bubble.append(document.createTextNode(message.content));
+    }
     chatLog.append(bubble);
   });
   chatLog.scrollTop = chatLog.scrollHeight;

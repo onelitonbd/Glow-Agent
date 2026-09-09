@@ -2,7 +2,7 @@
 
 **Glow Agent** is a mobile-first, local-first AI workspace designed to run from Termux. It uses plain HTML, CSS, and browser JavaScript on the frontend, with a same-origin Node.js/Express API and local SQLite database on the backend.
 
-The current implementation supports OpenAI-compatible BYOK providers, server-side model discovery, persistent selected models, reusable skills, safe built-in tools, local conversation history, and live streaming chat completions. Provider API keys are used only by the local server and are never returned to the browser after save.
+The current implementation supports OpenAI-compatible BYOK providers, server-side model discovery, persistent selected models, reusable skills, safe built-in tools, local conversation history, live streaming chat completions, and safe client-side Markdown rendering for assistant answers. Provider API keys are used only by the local server and are never returned to the browser after save.
 
 ## Run locally in Termux
 
@@ -45,7 +45,7 @@ For development with file watching, run `npm run dev`. Run automated API checks 
 4. In the chat composer, optionally permit the **Calculator** and/or **Current time** tool for the next response. Tool calls are requested by the model but validated and executed only by the server; no model-supplied shell commands or arbitrary JavaScript are allowed.
 5. Select a provider/model using the compact composer icon and send a message. Glow Agent persists the conversation locally, applies selected skills, performs any selected tool calls, and forwards the provider's `/chat/completions` stream as live response text. If that stream includes provider-emitted reasoning, it is shown in the live Thinking disclosure and saved with the local assistant message.
 
-Attachments, accounts, networked deployment, and richer tools are deliberately deferred to later security-focused phases. The Attach control is labelled accordingly rather than pretending those capabilities are active. When a compatible provider streams reasoning text, Glow Agent shows it in a live Thinking disclosure; it never invents reasoning for providers that do not send it.
+Assistant answers are rendered safely as Markdown: headings, emphasis, links, lists, quotes, task lists, fenced code blocks, tables, and common LaTeX-style inline/display math are supported. Raw provider HTML is never injected into the page. Attachments, accounts, networked deployment, and richer tools are deliberately deferred to later security-focused phases. The Attach control is labelled accordingly rather than pretending those capabilities are active. When a compatible provider streams reasoning text, Glow Agent shows it in a live Thinking disclosure; it never invents reasoning for providers that do not send it.
 
 ## Documentation and design references
 

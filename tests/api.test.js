@@ -30,6 +30,7 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-test-'));
   let sawCredential = false;
   let sawSkillInstruction = false;
+  let sawMarkdownInstruction = false;
   let sawToolResult = false;
   const upstream = createServer(async (request, response) => {
     if (request.headers.authorization === 'Bearer local-test-key') sawCredential = true;
@@ -43,6 +44,7 @@ test('local API persists safe providers, skills, models, and a provider-backed r
       for await (const chunk of request) raw += chunk;
       const body = JSON.parse(raw);
       sawSkillInstruction = body.messages.some((message) => message.role === 'system' && message.content.includes('Answer in a compact checklist.'));
+      sawMarkdownInstruction = body.messages.some((message) => message.role === 'system' && message.content.includes('GitHub-flavored Markdown'));
       if (body.stream) {
         response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' });
         response.write('data: {"choices":[{"delta":{"reasoning_content":"Checking the details. "}}]}\n\n');
@@ -134,6 +136,7 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   assert.equal(response.payload.data.conversation.messages.length, 2);
   assert.equal(response.payload.data.assistantMessage.toolEvents[0].summary, 'Calculator: 12 * (5 + 1) = 72');
   assert.equal(sawSkillInstruction, true);
+  assert.equal(sawMarkdownInstruction, true);
   assert.equal(sawToolResult, true);
 
   const streamingConversation = await json(`${base}/conversations`, { method: 'POST' });
