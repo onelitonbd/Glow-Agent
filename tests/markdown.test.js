@@ -76,6 +76,8 @@ test('assistant Markdown renders structured text, tables, code, and common LaTeX
   assert.equal(nodesWithTag(output, 'th').length, 2);
   assert.equal(nodesWithTag(output, 'br').length, 1);
   assert.equal(nodesWithTag(output, 'pre').length, 1);
+  assert.equal(nodesWithTag(output, 'button').length, 1);
+  assert.match(output.textContent, /Copy/u);
   assert.equal(nodesWithTag(output, 'mfrac').length, 1);
   assert.equal(nodesWithTag(output, 'msup').length, 1);
   assert.equal(nodesWithTag(output, 'msqrt').length, 1);

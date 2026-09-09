@@ -331,10 +331,58 @@ function appendList(fragment, lines, start, ordered) {
   return index;
 }
 
+function appendArrowIcon(parent) {
+  const namespace = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(namespace, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(namespace, 'path');
+  path.setAttribute('d', 'm9 18 6-6-6-6');
+  svg.append(path);
+  parent.append(svg);
+}
+
+function appendCopyIcon(parent) {
+  const namespace = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(namespace, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const rectangle = document.createElementNS(namespace, 'rect');
+  rectangle.setAttribute('x', '9');
+  rectangle.setAttribute('y', '9');
+  rectangle.setAttribute('width', '12');
+  rectangle.setAttribute('height', '12');
+  rectangle.setAttribute('rx', '2');
+  const path = document.createElementNS(namespace, 'path');
+  path.setAttribute('d', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1');
+  svg.append(rectangle, path);
+  parent.append(svg);
+}
+
+function setClass(node, name, enabled) {
+  if (!node.classList) return;
+  if (typeof node.classList.toggle === 'function') node.classList.toggle(name, enabled);
+  else if (enabled) node.classList.add(name);
+}
+
+function setTableScrollState(wrap, scroller) {
+  if (!scroller.clientWidth) return;
+  const wide = scroller.scrollWidth > scroller.clientWidth + 2;
+  setClass(wrap, 'is-wide', wide);
+  setClass(wrap, 'at-end', !wide || scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - 2);
+}
+
+function scheduleTableScrollState(wrap, scroller) {
+  const update = () => setTableScrollState(wrap, scroller);
+  if (typeof scroller.addEventListener === 'function') scroller.addEventListener('scroll', update, { passive: true });
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(update);
+}
+
 function appendTable(fragment, lines, start, streaming = false) {
   const headers = tableCells(lines[start]);
   const alignments = tableCells(lines[start + 1]).map((cell) => cell.startsWith(':') && cell.endsWith(':') ? 'center' : cell.endsWith(':') ? 'right' : 'left');
   const wrap = htmlNode('div', 'markdown-table-wrap');
+  const scroller = htmlNode('div', 'markdown-table-scroll');
   const table = htmlNode('table', 'markdown-table');
   const head = htmlNode('thead');
   const headRow = htmlNode('tr');
@@ -342,6 +390,7 @@ function appendTable(fragment, lines, start, streaming = false) {
     const cell = htmlNode('th');
     cell.scope = 'col';
     cell.style.textAlign = alignments[column] || 'left';
+    if (alignments[column] && alignments[column] !== 'left') cell.classList.add('table-number');
     appendInline(cell, header);
     headRow.append(cell);
   });
@@ -362,6 +411,7 @@ function appendTable(fragment, lines, start, streaming = false) {
     headers.forEach((_header, column) => {
       const cell = htmlNode('td');
       cell.style.textAlign = alignments[column] || 'left';
+      if (alignments[column] && alignments[column] !== 'left') cell.classList.add('table-number');
       appendInline(cell, cells[column] || '');
       row.append(cell);
     });
@@ -370,19 +420,133 @@ function appendTable(fragment, lines, start, streaming = false) {
     if (rows >= 200) break;
   }
   table.append(body);
-  wrap.append(table);
+  scroller.append(table);
+  const fade = htmlNode('span', 'table-fade-edge');
+  fade.setAttribute('aria-hidden', 'true');
+  const hint = htmlNode('p', 'table-scroll-hint');
+  hint.setAttribute('aria-hidden', 'true');
+  appendArrowIcon(hint);
+  appendText(hint, 'Scroll to see more columns — first column stays put');
+  wrap.append(scroller, fade, hint);
+  scheduleTableScrollState(wrap, scroller);
   fragment.append(wrap);
   return index;
+}
+
+const languageKeywords = {
+  javascript: new Set(['as', 'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'default', 'delete', 'do', 'else', 'export', 'extends', 'false', 'finally', 'for', 'from', 'function', 'if', 'import', 'in', 'instanceof', 'let', 'new', 'null', 'of', 'return', 'static', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'undefined', 'while', 'yield']),
+  python: new Set(['and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'false', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'none', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'true', 'try', 'while', 'with', 'yield']),
+  json: new Set(['false', 'null', 'true']),
+  bash: new Set(['case', 'do', 'done', 'echo', 'elif', 'else', 'esac', 'export', 'fi', 'for', 'function', 'if', 'in', 'then', 'while']),
+  sql: new Set(['and', 'as', 'asc', 'by', 'create', 'delete', 'desc', 'drop', 'from', 'group', 'having', 'inner', 'insert', 'into', 'join', 'left', 'limit', 'not', 'null', 'on', 'or', 'order', 'select', 'set', 'table', 'update', 'values', 'where'])
+};
+
+function normalizedLanguage(language) {
+  const value = language.toLowerCase();
+  if (['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs'].includes(value)) return 'javascript';
+  if (['py', 'py3'].includes(value)) return 'python';
+  if (['sh', 'shell', 'zsh'].includes(value)) return 'bash';
+  return languageKeywords[value] ? value : '';
+}
+
+function commentAndStringPattern(language) {
+  if (language === 'python' || language === 'bash') return /(#.*$|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/gu;
+  if (language === 'sql') return /(--.*$|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/gu;
+  if (language === 'javascript') return /(\/\/.*$|\/\*[\s\S]*?\*\/|`(?:\\.|[^`\\])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/gu;
+  if (language === 'json') return /("(?:\\.|[^"\\])*")/gu;
+  return null;
+}
+
+function appendCodeWords(parent, source, language) {
+  const keywords = languageKeywords[language];
+  if (!keywords) {
+    appendText(parent, source);
+    return;
+  }
+  const token = /\b[A-Za-z_$][\w$]*\b/gu;
+  let offset = 0;
+  for (const match of source.matchAll(token)) {
+    appendText(parent, source.slice(offset, match.index));
+    const value = match[0];
+    const next = source.slice((match.index || 0) + value.length);
+    if (keywords.has(value.toLowerCase())) {
+      const keyword = htmlNode('span', 'code-keyword');
+      keyword.textContent = value;
+      parent.append(keyword);
+    } else if (/^\s*\(/u.test(next)) {
+      const functionName = htmlNode('span', 'code-function');
+      functionName.textContent = value;
+      parent.append(functionName);
+    } else {
+      appendText(parent, value);
+    }
+    offset = (match.index || 0) + value.length;
+  }
+  appendText(parent, source.slice(offset));
+}
+
+function appendHighlightedCode(code, source, rawLanguage) {
+  const language = normalizedLanguage(rawLanguage);
+  const protectedPattern = commentAndStringPattern(language);
+  if (!language || !protectedPattern) {
+    code.textContent = source;
+    return;
+  }
+  source.split('\n').forEach((line, lineIndex, allLines) => {
+    let offset = 0;
+    for (const match of line.matchAll(protectedPattern)) {
+      appendCodeWords(code, line.slice(offset, match.index), language);
+      const token = htmlNode('span', match[0].startsWith('#') || match[0].startsWith('//') || match[0].startsWith('--') || match[0].startsWith('/*') ? 'code-comment' : 'code-string');
+      token.textContent = match[0];
+      code.append(token);
+      offset = (match.index || 0) + match[0].length;
+    }
+    appendCodeWords(code, line.slice(offset), language);
+    if (lineIndex < allLines.length - 1) code.append(document.createTextNode('\n'));
+  });
+}
+
+async function copyCode(source, label, button) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(source);
+    } else {
+      const fallback = htmlNode('textarea');
+      fallback.value = source;
+      fallback.setAttribute('readonly', '');
+      fallback.style.position = 'fixed';
+      fallback.style.opacity = '0';
+      document.body.append(fallback);
+      fallback.select();
+      const copied = document.execCommand?.('copy');
+      fallback.remove();
+      if (!copied) throw new Error('Copy is unavailable.');
+    }
+    label.textContent = 'Copied';
+    setClass(button, 'copied', true);
+  } catch {
+    label.textContent = 'Copy failed';
+  }
+  setTimeout(() => {
+    label.textContent = 'Copy';
+    setClass(button, 'copied', false);
+  }, 1_400);
 }
 
 function appendCodeBlock(fragment, lines, start) {
   const language = lines[start].trim().slice(3).trim().replace(/[^a-zA-Z0-9_+.-]/gu, '').slice(0, 30);
   const block = htmlNode('div', 'markdown-code-block');
-  if (language) {
-    const label = htmlNode('span', 'code-language');
-    label.textContent = language;
-    block.append(label);
-  }
+  const bar = htmlNode('div', 'code-bar');
+  const label = htmlNode('span', 'code-language');
+  label.textContent = language || 'text';
+  const copyButton = htmlNode('button', 'copy-code');
+  copyButton.type = 'button';
+  copyButton.setAttribute('aria-label', 'Copy code');
+  appendCopyIcon(copyButton);
+  const copyLabel = htmlNode('span', 'copy-label');
+  copyLabel.textContent = 'Copy';
+  copyButton.append(copyLabel);
+  bar.append(label, copyButton);
   const pre = htmlNode('pre');
   const code = htmlNode('code');
   let index = start + 1;
@@ -391,9 +555,11 @@ function appendCodeBlock(fragment, lines, start) {
     content.push(lines[index]);
     index += 1;
   }
-  code.textContent = content.join('\n');
+  const source = content.join('\n');
+  appendHighlightedCode(code, source, language);
+  if (typeof copyButton.addEventListener === 'function') copyButton.addEventListener('click', () => copyCode(source, copyLabel, copyButton));
   pre.append(code);
-  block.append(pre);
+  block.append(bar, pre);
   fragment.append(block);
   return index < lines.length ? index + 1 : index;
 }
