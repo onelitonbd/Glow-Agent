@@ -124,10 +124,10 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .navigation a:hover, .navigation a[aria-current="page"] { background: var(--accent-wash); color: var(--accent); }
 .navigation svg { width: 16px; height: 16px; }
 
-.chat-layout { display: grid; min-height: calc(100dvh - 119px); grid-template-rows: auto 1fr auto; }
+.chat-layout { display: flex; min-height: 100dvh; flex-direction: column; }
 .chat-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .chat-status { color: var(--accent); font: 8px var(--mono); }
-.chat-log { display: grid; align-content: start; gap: 12px; min-height: 250px; padding: 12px 0 18px; overflow: auto; }
+.chat-log { display: grid; flex: 1 1 auto; align-content: start; gap: 12px; min-height: 250px; padding: 12px 0 18px; overflow: auto; }
 .chat-empty { align-self: center; margin: auto 0; text-align: center; }
 .chat-empty .empty-icon { margin-bottom: 13px; }
 .chat-empty h2 { margin: 0 0 5px; font-size: 17px; letter-spacing: -.045em; }
