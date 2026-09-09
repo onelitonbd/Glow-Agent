@@ -16,7 +16,7 @@
       <h1 class="app-title">Providers</h1>
       <button class="header-link" id="openProviderDialog" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add</button>
     </header>
-    <section class="intro"><p class="eyebrow">OpenAI-compatible</p><p>Provider credentials are encrypted on this device and are never returned to the browser after save.</p></section>
+    <section class="intro"><p class="eyebrow">OpenAI-compatible</p><p>Provider credentials stay on this device and are never returned to the browser after save.</p></section>
     <section aria-labelledby="providersLabel">
       <div class="section-head"><h2 class="section-label" id="providersLabel">Configured providers</h2><span class="section-label section-count" id="providerCount"></span></div>
       <div id="providersState" aria-live="polite"><div class="loading">Loading providers</div></div>
@@ -31,7 +31,7 @@
     <form id="providerForm">
       <div class="field"><label for="providerName">Provider name <span>REQUIRED</span></label><input id="providerName" name="name" maxlength="80" autocomplete="off" placeholder="e.g. OpenAI" required></div>
       <div class="field"><label for="providerBaseUrl">Base URL <span>REQUIRED</span></label><input id="providerBaseUrl" name="baseUrl" maxlength="600" inputmode="url" autocapitalize="none" autocomplete="url" placeholder="https://api.openai.com/v1" required></div>
-      <div class="field"><label for="providerApiKey">Primary API key <span id="keyRequirement">REQUIRED</span></label><input id="providerApiKey" name="apiKey" maxlength="500" type="password" autocapitalize="none" autocomplete="off" placeholder="Paste an API key" required><p class="hint" id="keyHint">Stored encrypted on this device. The value cannot be viewed again.</p></div>
+      <div class="field"><label for="providerApiKey">Primary API key <span id="keyRequirement">REQUIRED</span></label><input id="providerApiKey" name="apiKey" maxlength="500" type="password" autocapitalize="none" autocomplete="off" placeholder="Paste an API key" required><p class="hint" id="keyHint">Stored locally on this device. The value cannot be viewed again.</p></div>
       <div id="backupKeyFields"></div>
       <button class="button secondary full" id="addBackupKey" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add backup API key</button>
       <div class="dialog-actions"><button class="button secondary" id="cancelProvider" type="button">Cancel</button><button class="button" id="saveProvider" type="submit">Save provider</button></div>

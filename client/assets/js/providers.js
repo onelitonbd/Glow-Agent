@@ -24,11 +24,13 @@ function openDialog(opener, provider = null) {
   const editing = Boolean(provider);
   dialogTitle.textContent = editing ? 'Configure provider' : 'Add provider';
   saveButton.textContent = editing ? 'Save changes' : 'Save provider';
-  keyRequirement.textContent = editing ? 'OPTIONAL' : 'REQUIRED';
+  keyRequirement.textContent = editing && provider?.keyStatus.primaryAvailable ? 'OPTIONAL' : 'REQUIRED';
   keyHint.textContent = editing
-    ? `Primary key remains encrypted. Paste a new value only to replace it. ${provider.keyStatus.backupKeyCount} backup key(s) are stored.`
-    : 'Stored encrypted on this device. The value cannot be viewed again.';
-  apiKeyInput.required = !editing;
+    ? (provider.keyStatus.primaryAvailable
+      ? `Primary key is stored locally. Paste a new value only to replace it. ${provider.keyStatus.backupKeyCount} backup key(s) are stored.`
+      : 'Enter the primary key again to use this legacy provider.')
+    : 'Stored locally on this device. The value cannot be viewed again.';
+  apiKeyInput.required = !editing || !provider?.keyStatus.primaryAvailable;
   if (editing) {
     nameInput.value = provider.name;
     baseUrlInput.value = provider.baseUrl;
@@ -77,7 +79,10 @@ function providerCard(provider) {
   top.append(providerIcon, copy);
   const meta = element('div', 'data-meta');
   const dot = document.createElement('i');
-  meta.append(dot, document.createTextNode(`Primary key stored · ${provider.keyStatus.backupKeyCount} backup key${provider.keyStatus.backupKeyCount === 1 ? '' : 's'} · ${provider.selectedModelCount} selected model${provider.selectedModelCount === 1 ? '' : 's'}`));
+  const keySummary = provider.keyStatus.primaryAvailable
+    ? `Primary key stored locally · ${provider.keyStatus.backupKeyCount} backup key${provider.keyStatus.backupKeyCount === 1 ? '' : 's'}`
+    : 'API key needs re-entry';
+  meta.append(dot, document.createTextNode(`${keySummary} · ${provider.selectedModelCount} selected model${provider.selectedModelCount === 1 ? '' : 's'}`));
   const actions = element('div', 'card-actions');
   const configure = element('button', 'button secondary small', 'Configure');
   configure.type = 'button';

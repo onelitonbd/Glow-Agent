@@ -10,7 +10,7 @@ const migrations = [
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL COLLATE NOCASE UNIQUE,
         base_url TEXT NOT NULL,
-        credential_ciphertext TEXT NOT NULL,
+        credential_data TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -51,6 +51,15 @@ const migrations = [
   {
     version: 2,
     sql: `ALTER TABLE messages ADD COLUMN tool_events TEXT;`
+  },
+  {
+    version: 3,
+    apply(db) {
+      const columns = db.prepare('PRAGMA table_info(providers)').all();
+      if (columns.some((column) => column.name === 'credential_ciphertext')) {
+        db.exec('ALTER TABLE providers RENAME COLUMN credential_ciphertext TO credential_data;');
+      }
+    }
   }
 ];
 
@@ -68,7 +77,8 @@ export function createDatabase(databasePath) {
     if (applied.has(migration.version)) continue;
     db.exec('BEGIN IMMEDIATE;');
     try {
-      db.exec(migration.sql);
+      if (migration.apply) migration.apply(db);
+      else db.exec(migration.sql);
       db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(migration.version, now());
       db.exec('COMMIT;');
     } catch (error) {

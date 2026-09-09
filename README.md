@@ -2,7 +2,7 @@
 
 **Glow Agent** is a mobile-first, local-first AI workspace designed to run from Termux. It uses plain HTML, CSS, and browser JavaScript on the frontend, with a same-origin Node.js/Express API and local SQLite database on the backend.
 
-The current implementation supports OpenAI-compatible BYOK providers, server-side model discovery, persistent selected models, reusable skills, safe built-in tools, local conversation history, and non-streaming chat completions. Provider API keys are encrypted before they are stored in SQLite and are never returned to the browser after save.
+The current implementation supports OpenAI-compatible BYOK providers, server-side model discovery, persistent selected models, reusable skills, safe built-in tools, local conversation history, and non-streaming chat completions. Provider API keys are used only by the local server and are never returned to the browser after save.
 
 ## Run locally in Termux
 
@@ -13,18 +13,6 @@ pkg update && pkg upgrade
 pkg install nodejs-lts git
 cd ~/Glow-Agent
 npm ci
-cp .env.example .env
-```
-
-Generate a unique encryption key, then paste it as `APP_ENCRYPTION_KEY` in `.env`:
-
-```sh
-node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
-```
-
-Start the app:
-
-```sh
 npm start
 ```
 
@@ -34,14 +22,20 @@ Open `http://127.0.0.1:3000` on the Termux device. Check the service with:
 curl http://127.0.0.1:3000/api/v1/health
 ```
 
+The defaults work without an `.env` file. To use a different local port or database location, copy the optional configuration template:
+
+```sh
+cp .env.example .env
+```
+
 For development with file watching, run `npm run dev`. Run automated API checks with `npm test` and syntax checks with `npm run check`.
 
-## Security boundary
+## Storage and security boundary
 
 - The MVP **only binds to loopback** (`127.0.0.1`, `::1`, or `localhost`). It intentionally refuses LAN/public binding until user authentication, authorization, and an HTTPS deployment design are implemented.
-- Use a long random `APP_ENCRYPTION_KEY`, keep `.env` private, and do not change the key after adding providers: the existing encrypted credentials would become unreadable.
-- The SQLite database lives under `data/`, which is ignored by Git. Back it up only to storage you trust, together with a secure copy of the encryption key.
-- API keys are never included in URLs, client markup, browser storage, normal API responses, or request logs. Model discovery and chat requests are made only by the server.
+- Provider API keys are stored **unencrypted** in the local SQLite database under `data/`, following the requested simplified setup. Protect the Termux device and do not copy the database to untrusted storage.
+- API keys are not included in URLs, client markup, browser storage, normal API responses, or request logs. Model discovery and chat requests are made only by the local server.
+- If you used an earlier encrypted version of Glow Agent, existing provider cards will ask you to enter their API key again after upgrading. The old encrypted key cannot be converted without its previous encryption key.
 
 ## Current workflow
 

@@ -12,7 +12,7 @@ The initial release deliberately binds to `127.0.0.1`. It does not claim to be s
 
 1. **Foundation**
    - Node/Express static server, health endpoint, `.env` configuration, security headers, graceful shutdown, and a SQLite migration runner.
-   - An encrypted-at-rest local credentials store using AES-256-GCM and an operator-provided 32-byte application key.
+   - A simplified local credentials store that does not require an application encryption key. Provider keys remain server-only, but the SQLite data file must be protected because credentials are unencrypted.
 2. **Provider and model workflow**
    - Safe provider CRUD: browser responses contain names, URLs, availability/count metadata, and selected model IDs only—never API keys.
    - Server-side OpenAI-compatible `/models` discovery. API keys are read only by the server and are never placed in URLs, client markup, browser storage, responses, or logs.
@@ -28,7 +28,7 @@ The initial release deliberately binds to `127.0.0.1`. It does not claim to be s
    - The browser sends a message to the same-origin server. The server resolves the selected provider/model, injects explicitly selected skill instructions as a system message, invokes selected tools when the provider requests them, and returns the assistant response. No client code receives the provider secret.
 6. **Verification and handover**
    - Node API tests cover health, safe provider output, model selection, skills, common input failures, tool discovery, server-side tool calling, and skill injection.
-   - README documents install, encryption-key generation, local operation, backup, and the current security boundary.
+   - README documents no-key setup, local operation, backup, and the current security boundary.
 
 ## Concrete API contract
 
@@ -47,14 +47,14 @@ Mutating requests accept JSON only. Every API response uses a `{ "data": ... }` 
 
 ## Local records
 
-- `providers`: display name, normalized base URL, encrypted credential bundle, and timestamps.
+- `providers`: display name, normalized base URL, unencrypted local credential bundle, and timestamps.
 - `provider_models`: selected model IDs, scoped to a provider.
 - `skills`: name, description, instructions, and timestamps.
 - `conversations` and `messages`: local chat history. Provider/model IDs and safe tool-use summaries are recorded with messages, but credentials never are.
 
 ## Explicit security decisions
 
-- `APP_ENCRYPTION_KEY` is a base64-encoded 32-byte key supplied in `.env`, never generated into source control. Credentials are encrypted separately using authenticated AES-256-GCM before entering SQLite.
+- Provider credentials are stored unencrypted in the local SQLite database by request. This removes setup friction but means device and database-file access must be treated as access to provider credentials.
 - SQL uses prepared statements. Inputs are bounded and validated at the server boundary.
 - The upstream OpenAI-compatible request is made only by the server. The UI works with safe provider metadata and IDs.
 - Credential strings are never logged, returned, persisted in browser storage, interpolated into HTML, or included in query strings.

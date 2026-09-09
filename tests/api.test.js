@@ -61,7 +61,6 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   const config = {
     rootDirectory: process.cwd(),
     databasePath: join(tempDirectory, 'glow-agent.sqlite'),
-    encryptionKey: Buffer.alloc(32, 7),
     providerFetchTimeoutMs: 2_000,
     chatTimeoutMs: 2_000
   };
@@ -148,7 +147,6 @@ test('invalid provider input is rejected without creating a record', async (t) =
   const instance = createApp({
     rootDirectory: process.cwd(),
     databasePath: join(tempDirectory, 'glow-agent.sqlite'),
-    encryptionKey: Buffer.alloc(32, 3),
     providerFetchTimeoutMs: 2_000,
     chatTimeoutMs: 2_000
   });

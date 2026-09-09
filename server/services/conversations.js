@@ -113,7 +113,7 @@ function persistMessage(db, { conversationId, role, content, providerId = null, 
   return { id, role, content, providerId, modelId: selectedModelId, toolEvents, createdAt };
 }
 
-export async function respondToConversation(db, encryptionKey, rawConversationId, body, timeoutMs) {
+export async function respondToConversation(db, rawConversationId, body, timeoutMs) {
   const conversation = existingConversation(db, rawConversationId);
   const content = requiredString(body.message, 'Message', { max: 16_000 });
   const providerId = identifier(body.providerId, 'Provider ID');
@@ -123,7 +123,7 @@ export async function respondToConversation(db, encryptionKey, rawConversationId
   const skills = selectedSkills(db, body.skillIds);
   const tools = selectedTools(body.toolIds);
   const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
-  const { provider, credentials } = providerCredentials(db, encryptionKey, providerId);
+  const { provider, credentials } = providerCredentials(db, providerId);
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
   const system = systemMessage(skills);
   if (system) messages.unshift({ role: 'system', content: system });

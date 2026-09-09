@@ -48,24 +48,24 @@ export function createApiRouter({ db, config }) {
   router.get('/tools', (_request, response) => success(response, listTools()));
 
   router.route('/providers')
-    .get((_request, response) => success(response, listProviders(db, config.encryptionKey)))
+    .get((_request, response) => success(response, listProviders(db)))
     .post((request, response, next) => {
       try {
-        success(response, createProvider(db, config.encryptionKey, request.body ?? {}), 201);
+        success(response, createProvider(db, request.body ?? {}), 201);
       } catch (error) { next(error); }
     });
   router.route('/providers/:providerId')
     .get((request, response, next) => {
-      try { success(response, getProvider(db, config.encryptionKey, request.params.providerId)); } catch (error) { next(error); }
+      try { success(response, getProvider(db, request.params.providerId)); } catch (error) { next(error); }
     })
     .put((request, response, next) => {
-      try { success(response, updateProvider(db, config.encryptionKey, request.params.providerId, request.body ?? {})); } catch (error) { next(error); }
+      try { success(response, updateProvider(db, request.params.providerId, request.body ?? {})); } catch (error) { next(error); }
     })
     .delete((request, response, next) => {
       try { deleteProvider(db, request.params.providerId); response.status(204).end(); } catch (error) { next(error); }
     });
   router.post('/providers/:providerId/fetch-models', rateLimit({ windowMs: 60_000, max: 12, code: 'MODEL_FETCH_RATE_LIMITED' }), asyncRoute(async (request, response) => {
-    success(response, await fetchProviderModels(db, config.encryptionKey, request.params.providerId, config.providerFetchTimeoutMs));
+    success(response, await fetchProviderModels(db, request.params.providerId, config.providerFetchTimeoutMs));
   }));
   router.route('/providers/:providerId/models')
     .get((request, response, next) => {
@@ -103,7 +103,7 @@ export function createApiRouter({ db, config }) {
     try { success(response, getConversation(db, request.params.conversationId)); } catch (error) { next(error); }
   });
   router.post('/conversations/:conversationId/respond', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), asyncRoute(async (request, response) => {
-    success(response, await respondToConversation(db, config.encryptionKey, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs));
+    success(response, await respondToConversation(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs));
   }));
   return router;
 }

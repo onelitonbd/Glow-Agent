@@ -33,17 +33,6 @@ function integerSetting(value, fallback, name) {
   return number;
 }
 
-function encryptionKey(value) {
-  if (!value || value === 'replace-with-a-random-base64-encoded-32-byte-key') {
-    throw new Error('APP_ENCRYPTION_KEY is required. Copy .env.example to .env and generate a 32-byte base64 key.');
-  }
-  const key = Buffer.from(value, 'base64');
-  if (key.length !== 32 || key.toString('base64') !== value) {
-    throw new Error('APP_ENCRYPTION_KEY must be a canonical base64-encoded 32-byte key.');
-  }
-  return key;
-}
-
 export function loadConfig({ env = process.env, loadEnv = true } = {}) {
   if (loadEnv) loadDotEnv(resolve(rootDirectory, '.env'));
   const host = env.HOST || '127.0.0.1';
@@ -56,7 +45,6 @@ export function loadConfig({ env = process.env, loadEnv = true } = {}) {
     host,
     port: integerSetting(env.PORT, 3000, 'PORT'),
     databasePath: isAbsolute(databaseSetting) ? databaseSetting : resolve(rootDirectory, databaseSetting),
-    encryptionKey: encryptionKey(env.APP_ENCRYPTION_KEY),
     providerFetchTimeoutMs: 15_000,
     chatTimeoutMs: 60_000
   });
