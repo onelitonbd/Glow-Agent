@@ -497,7 +497,7 @@ async function copyCode(source, label, button) {
     label.textContent = 'Copy failed';
   }
   setTimeout(() => {
-    label.textContent = 'Copy';
+    label.textContent = 'Copy code';
     setClass(button, 'copied', false);
   }, 1_400);
 }
@@ -513,7 +513,7 @@ function appendCodeBlock(fragment, lines, start) {
   copyButton.setAttribute('aria-label', 'Copy code');
   appendCopyIcon(copyButton);
   const copyLabel = htmlNode('span', 'copy-label');
-  copyLabel.textContent = 'Copy';
+  copyLabel.textContent = 'Copy code';
   copyButton.append(copyLabel);
   bar.append(label, copyButton);
   const pre = htmlNode('pre');
