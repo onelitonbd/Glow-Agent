@@ -45,8 +45,79 @@ function syncThemeToggle() {
   themeToggle.setAttribute('aria-pressed', String(theme === 'light'));
 }
 
+const TOOL_NAMES = {
+  calculator: 'Calculator',
+  current_time: 'Current time',
+  read_skill: 'Read skill',
+  list_files: 'List files',
+  read_file: 'Read file',
+  write_file: 'Write file',
+  sql_query: 'SQL query',
+  web_search: 'Web search',
+  fetch_url: 'Fetch URL'
+};
+
+function toolIconName(toolId) {
+  if (toolId === 'calculator') return 'calculator';
+  if (toolId === 'current_time') return 'clock';
+  return 'spark';
+}
+
 function toolDisplay(toolId) {
-  return toolId === 'calculator' ? { label: 'Calculator', icon: 'calculator' } : { label: 'Current time', icon: 'clock' };
+  return { label: TOOL_NAMES[toolId] || toolId || 'Tool', icon: toolIconName(toolId) };
+}
+
+function renderThinking(text, open) {
+  const details = element('details', `thinking${open ? ' is-streaming' : ''}`);
+  details.open = open;
+  details.append(element('summary', '', 'Thinking'));
+  details.append(element('div', 'thinking-content', text));
+  return details;
+}
+
+function renderToolCall(name) {
+  const card = element('div', 'tool-call');
+  const badge = element('span', 'tool-call-icon'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon('spark'));
+  const label = element('span', 'tool-call-label', `Using ${toolDisplay(name).label}…`);
+  card.append(badge, label);
+  return card;
+}
+
+function renderToolResult(toolId, summary) {
+  const info = toolDisplay(toolId);
+  const row = element('div', 'tool-event');
+  const badge = element('span', 'tool-event-icon'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon(info.icon));
+  const text = element('span', 'tool-event-text', summary || info.label);
+  row.append(badge, text);
+  return row;
+}
+
+function renderTimeline(message) {
+  const fragment = document.createDocumentFragment();
+  const timeline = Array.isArray(message.timeline) ? message.timeline : [];
+  const streaming = Boolean(message.isStreaming);
+  let index = 0;
+  while (index < timeline.length) {
+    const entry = timeline[index];
+    if (entry.type === 'thinking') {
+      let text = '';
+      while (index < timeline.length && timeline[index].type === 'thinking') { text += timeline[index].text; index += 1; }
+      fragment.append(renderThinking(text, streaming));
+    } else if (entry.type === 'content') {
+      let text = '';
+      while (index < timeline.length && timeline[index].type === 'content') { text += timeline[index].text; index += 1; }
+      if (text) fragment.append(renderMarkdown(text, { streaming }));
+    } else if (entry.type === 'tool_call') {
+      fragment.append(renderToolCall(entry.name));
+      index += 1;
+    } else if (entry.type === 'tool_result') {
+      fragment.append(renderToolResult(entry.toolId, entry.summary));
+      index += 1;
+    } else {
+      index += 1;
+    }
+  }
+  return fragment;
 }
 
 function renderToolEvents(toolEvents) {
@@ -84,19 +155,18 @@ function renderLog() {
   }
   messages.forEach((message) => {
     const bubble = element('article', `message ${message.role}`);
-    if (message.role === 'assistant' && message.reasoning) {
-      const thinking = element('details', `thinking${message.isStreaming ? ' is-streaming' : ''}`);
-      thinking.open = Boolean(message.isStreaming);
-      thinking.append(element('summary', '', 'Thinking'));
-      thinking.append(element('div', 'thinking-content', message.reasoning));
-      bubble.append(thinking);
-    }
-    if (message.content) {
-      if (message.role === 'assistant') bubble.append(renderMarkdown(message.content, { streaming: Boolean(message.isStreaming) }));
-      else bubble.append(document.createTextNode(message.content));
-    }
-    if (message.role === 'assistant' && Array.isArray(message.toolEvents) && message.toolEvents.length) {
-      bubble.append(renderToolEvents(message.toolEvents));
+    if (message.role === 'assistant') {
+      const streaming = Boolean(message.isStreaming);
+      const hasTimeline = Array.isArray(message.timeline) && message.timeline.length;
+      if (hasTimeline) {
+        bubble.append(renderTimeline(message));
+      } else {
+        if (message.reasoning) bubble.append(renderThinking(message.reasoning, streaming));
+        if (message.content) bubble.append(renderMarkdown(message.content, { streaming }));
+        if (Array.isArray(message.toolEvents) && message.toolEvents.length) bubble.append(renderToolEvents(message.toolEvents));
+      }
+    } else if (message.content) {
+      bubble.append(document.createTextNode(message.content));
     }
     chatLog.append(bubble);
   });
@@ -254,16 +324,26 @@ async function ensureConversation() {
   return state.conversation;
 }
 
-function appendStreamDelta(type, text) {
-  if (!text || !state.conversation) return;
+function appendStreamDelta(event, payload) {
+  if (!payload || !state.conversation) return;
   const messages = state.conversation.messages || (state.conversation.messages = []);
   let assistant = messages.find((message) => message.id === 'streaming-assistant');
   if (!assistant) {
-    assistant = { id: 'streaming-assistant', role: 'assistant', content: '', reasoning: '', isStreaming: true };
+    assistant = { id: 'streaming-assistant', role: 'assistant', content: '', reasoning: '', timeline: [], isStreaming: true };
     messages.push(assistant);
   }
-  if (type === 'thinking') assistant.reasoning += text;
-  if (type === 'token') assistant.content += text;
+  const timeline = assistant.timeline || (assistant.timeline = []);
+  if (event === 'thinking') {
+    assistant.reasoning += payload.text || '';
+    timeline.push({ type: 'thinking', text: payload.text });
+  } else if (event === 'token') {
+    assistant.content += payload.text || '';
+    timeline.push({ type: 'content', text: payload.text });
+  } else if (event === 'tool_call') {
+    timeline.push({ type: 'tool_call', name: payload.name });
+  } else if (event === 'tool_result') {
+    timeline.push({ type: 'tool_result', toolId: payload.toolId, summary: payload.summary });
+  }
   renderLog();
 }
 
@@ -298,8 +378,7 @@ composer.addEventListener('submit', async (event) => {
       modelId: state.selectedModelId,
       toolIds: state.tools.map((tool) => tool.id)
     }, async (eventName, payload) => {
-      if (eventName === 'thinking') appendStreamDelta('thinking', payload.text);
-      if (eventName === 'token') appendStreamDelta('token', payload.text);
+      if (eventName === 'thinking' || eventName === 'token' || eventName === 'tool_call' || eventName === 'tool_result') appendStreamDelta(eventName, payload);
     });
     state.conversation = result.conversation;
     await loadWorkspace();

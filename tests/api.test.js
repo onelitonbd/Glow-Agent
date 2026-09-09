@@ -141,6 +141,11 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   assert.equal(response.payload.data.assistantMessage.content, 'A real local provider response.');
   assert.equal(response.payload.data.conversation.messages.length, 2);
   assert.equal(response.payload.data.assistantMessage.toolEvents[0].summary, 'Calculator: 12 * (5 + 1) = 72');
+  // The ordered timeline is persisted so the UI can replay thinks, response, tool calls, and results truthfully.
+  const timeline = response.payload.data.assistantMessage.timeline || [];
+  assert.equal(timeline.some((entry) => entry.type === 'tool_call' && entry.name === 'calculator'), true);
+  assert.equal(timeline.some((entry) => entry.type === 'tool_result' && entry.summary.includes('= 72')), true);
+  assert.equal(timeline.some((entry) => entry.type === 'content'), true);
   assert.equal(sawSkillCatalog, true);
   assert.equal(sawMarkdownInstruction, true);
   assert.equal(sawReadSkillTool, true);
@@ -162,6 +167,11 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   const streamedConversation = await json(`${base}/conversations/${streamingConversation.payload.data.id}`);
   assert.equal(streamedConversation.payload.data.messages[1].content, 'Streaming answer.');
   assert.equal(streamedConversation.payload.data.messages[1].reasoning, 'Checking the details. ');
+  const streamTimeline = streamedConversation.payload.data.messages[1].timeline || [];
+  // thinking precedes content in the recorded live timeline.
+  const thinkingIndex = streamTimeline.findIndex((entry) => entry.type === 'thinking');
+  const contentIndex = streamTimeline.findIndex((entry) => entry.type === 'content');
+  assert.ok(thinkingIndex !== -1 && contentIndex !== -1 && thinkingIndex < contentIndex);
 });
 
 test('allowlisted tools use a bounded arithmetic parser and safe time-zone handling', async () => {
@@ -239,4 +249,57 @@ test('invalid provider input is rejected without creating a record', async (t) =
   assert.equal(result.payload.error.code, 'VALIDATION_ERROR');
   const providers = await json(`http://127.0.0.1:${port}/api/v1/providers`);
   assert.deepEqual(providers.payload.data, []);
+});
+
+test('streaming emits live tool_call and tool_result events and persists an ordered timeline', async (t) => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-stream-tool-'));
+  const upstream = createServer(async (request, response) => {
+    if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return; }
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    const body = JSON.parse(raw);
+    const hasToolResult = body.messages.some((message) => message.role === 'tool');
+    response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' });
+    if (!hasToolResult) {
+      response.write('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"calculator","arguments":"{\\"expression\\":\\"12 * 6\\"}"}}]}}]}\n\n');
+    } else {
+      response.write('data: {"choices":[{"delta":{"content":"The result is "}}]}\n\n');
+      response.write('data: {"choices":[{"delta":{"content":"72."}}]}\n\n');
+    }
+    response.end('data: [DONE]\n\n');
+  });
+  const upstreamServer = await listen(upstream);
+  const config = {
+    rootDirectory: process.cwd(),
+    databasePath: join(tempDirectory, 'glow-agent.sqlite'),
+    providerFetchTimeoutMs: 2_000,
+    chatTimeoutMs: 2_000
+  };
+  const instance = createApp(config);
+  const appServer = await listen(instance.app);
+  const base = `http://127.0.0.1:${appServer.address().port}/api/v1`;
+  t.after(async () => {
+    await close(appServer);
+    instance.close();
+    await close(upstreamServer);
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+  const provider = (await json(`${base}/providers`, { method: 'POST', body: { name: 'P', baseUrl: `http://127.0.0.1:${upstreamServer.address().port}/v1`, apiKey: 'k' } })).payload.data;
+  await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'm' } });
+  const conversation = (await json(`${base}/conversations`, { method: 'POST' })).payload.data;
+  const streamingResponse = await fetch(`${base}/conversations/${conversation.id}/respond/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({ message: 'Compute 12 * 6.', providerId: provider.id, modelId: 'm' })
+  });
+  const body = await streamingResponse.text();
+  assert.match(body, /event: tool_call/u);
+  assert.match(body, /event: tool_result/u);
+  assert.ok(body.indexOf('event: tool_call') < body.indexOf('event: tool_result'));
+  assert.ok(body.indexOf('event: tool_result') < body.indexOf('event: token'));
+  const saved = (await json(`${base}/conversations/${conversation.id}`)).payload.data;
+  const timeline = saved.messages[1].timeline || [];
+  assert.ok(timeline.some((entry) => entry.type === 'tool_call' && entry.name === 'calculator'));
+  assert.ok(timeline.some((entry) => entry.type === 'tool_result' && entry.summary.includes('= 72')));
+  assert.ok(timeline.some((entry) => entry.type === 'content'));
 });

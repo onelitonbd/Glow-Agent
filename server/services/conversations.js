@@ -16,13 +16,16 @@ function toConversation(row) {
   };
 }
 
-function toMessage(row) {
-  let toolEvents = [];
+function parseJsonArray(value, fallback) {
   try {
-    toolEvents = row.tool_events ? JSON.parse(row.tool_events) : [];
+    const parsed = value ? JSON.parse(value) : [];
+    return Array.isArray(parsed) ? parsed : fallback;
   } catch {
-    toolEvents = [];
+    return fallback;
   }
+}
+
+function toMessage(row) {
   return {
     id: row.id,
     role: row.role,
@@ -30,7 +33,8 @@ function toMessage(row) {
     providerId: row.provider_id,
     modelId: row.model_id,
     reasoning: row.reasoning || '',
-    toolEvents,
+    toolEvents: parseJsonArray(row.tool_events, []),
+    timeline: parseJsonArray(row.timeline, null),
     createdAt: row.created_at
   };
 }
@@ -105,13 +109,13 @@ function conversationMessages(db, conversationId) {
   `).all(conversationId).reverse();
 }
 
-function persistMessage(db, { conversationId, role, content, providerId = null, selectedModelId = null, reasoning = '', toolEvents = [] }) {
+function persistMessage(db, { conversationId, role, content, providerId = null, selectedModelId = null, reasoning = '', toolEvents = [], timeline = null }) {
   const id = randomUUID();
   const createdAt = now();
-  db.prepare(`INSERT INTO messages (id, conversation_id, role, content, provider_id, model_id, created_at, tool_events, reasoning)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, conversationId, role, content, providerId, selectedModelId, createdAt, toolEvents.length ? JSON.stringify(toolEvents) : null, reasoning || null);
-  return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, createdAt };
+  db.prepare(`INSERT INTO messages (id, conversation_id, role, content, provider_id, model_id, created_at, tool_events, reasoning, timeline)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, conversationId, role, content, providerId, selectedModelId, createdAt, toolEvents.length ? JSON.stringify(toolEvents) : null, reasoning || null, timeline && timeline.length ? JSON.stringify(timeline) : null);
+  return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, timeline: timeline || null, createdAt };
 }
 
 function prepareResponse(db, rawConversationId, body) {
@@ -155,7 +159,7 @@ async function providerCompletion(provider, credentials, selectedModelId, messag
   return response;
 }
 
-function finishResponse(db, context, assistantContent, reasoning, toolEvents) {
+function finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline = null) {
   if (!assistantContent) {
     throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider did not return a final chat response after tool use.', { expose: true });
   }
@@ -166,7 +170,8 @@ function finishResponse(db, context, assistantContent, reasoning, toolEvents) {
     providerId: context.providerId,
     selectedModelId: context.selectedModelId,
     reasoning,
-    toolEvents
+    toolEvents,
+    timeline
   });
   const title = context.conversation.title === 'New conversation' ? context.content.slice(0, 72) : context.conversation.title;
   db.prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?').run(title, now(), context.conversation.id);
@@ -268,6 +273,7 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
     let content = '';
     let reasoning = '';
     const toolCalls = [];
+    const emittedToolCalls = new Set();
     try {
       for await (const data of upstreamSsePayloads(response)) {
         if (data === '[DONE]') break;
@@ -289,6 +295,12 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
           emit('thinking', { text: reasoningChunk });
         }
         collectToolCalls(toolCalls, delta);
+        toolCalls.forEach((call, index) => {
+          if (call.function.name && !emittedToolCalls.has(index)) {
+            emittedToolCalls.add(index);
+            emit('tool_call', { index, name: call.function.name });
+          }
+        });
       }
     } catch (error) {
       if (controller.signal.aborted) throw timedOut();
@@ -304,6 +316,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   const context = prepareResponse(db, rawConversationId, body);
   const { provider, credentials } = providerCredentials(db, context.providerId);
   const toolEvents = [];
+  const timeline = [];
   let assistantContent = '';
   let reasoning = '';
   for (let round = 0; round < 4; round += 1) {
@@ -318,16 +331,24 @@ export async function respondToConversation(db, rawConversationId, body, timeout
     const toolCalls = Array.isArray(providerMessage?.tool_calls) ? providerMessage.tool_calls.slice(0, 5) : [];
     if (toolCalls.length === 0) {
       assistantContent = normalizeAssistantContent(providerMessage?.content);
+      const reasoningText = typeof providerMessage?.reasoning_content === 'string' ? providerMessage.reasoning_content : (typeof providerMessage?.reasoning === 'string' ? providerMessage.reasoning : '');
+      if (reasoningText) timeline.push({ type: 'thinking', text: reasoningText });
+      if (assistantContent) timeline.push({ type: 'content', text: assistantContent });
       break;
     }
+    const reasoningText = typeof providerMessage?.reasoning_content === 'string' ? providerMessage.reasoning_content : (typeof providerMessage?.reasoning === 'string' ? providerMessage.reasoning : '');
+    if (reasoningText) timeline.push({ type: 'thinking', text: reasoningText });
+    if (providerMessage?.content) timeline.push({ type: 'content', text: normalizeAssistantContent(providerMessage.content) });
     context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
     for (const call of toolCalls) {
+      timeline.push({ type: 'tool_call', name: typeof call.function?.name === 'string' ? call.function.name : '' });
       const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs });
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
+      timeline.push({ type: 'tool_result', toolId: execution.toolId, summary: execution.summary });
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
     }
   }
-  return finishResponse(db, context, assistantContent, reasoning, toolEvents);
+  return finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
 }
 
 export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, fetchTimeoutMs } = {}) {
@@ -335,6 +356,14 @@ export async function respondToConversationStream(db, rawConversationId, body, t
   const { provider, credentials } = providerCredentials(db, context.providerId);
   emit('started', { conversationId: context.conversation.id });
   const toolEvents = [];
+  const timeline = [];
+  const timelineEmit = (event, data) => {
+    emit(event, data);
+    if (event === 'thinking') timeline.push({ type: 'thinking', text: data.text });
+    else if (event === 'token') timeline.push({ type: 'content', text: data.text });
+    else if (event === 'tool_call') timeline.push({ type: 'tool_call', name: data.name });
+    else if (event === 'tool_result') timeline.push({ type: 'tool_result', toolId: data.toolId, summary: data.summary });
+  };
   let assistantContent = '';
   let reasoning = '';
   for (let round = 0; round < 4; round += 1) {
@@ -345,7 +374,7 @@ export async function respondToConversationStream(db, rawConversationId, body, t
       messages: context.messages,
       tools: context.tools,
       timeoutMs,
-      emit
+      emit: timelineEmit
     });
     reasoning += result.reasoning;
     if (result.toolCalls.length === 0) {
@@ -356,10 +385,11 @@ export async function respondToConversationStream(db, rawConversationId, body, t
     for (const call of result.toolCalls) {
       const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs });
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
+      timelineEmit('tool_result', { toolId: execution.toolId, summary: execution.summary });
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
     }
   }
-  const result = finishResponse(db, context, assistantContent, reasoning, toolEvents);
+  const result = finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
   emit('completed', result);
   return result;
 }

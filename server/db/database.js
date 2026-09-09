@@ -64,6 +64,10 @@ const migrations = [
   {
     version: 4,
     sql: `ALTER TABLE messages ADD COLUMN reasoning TEXT;`
+  },
+  {
+    version: 5,
+    sql: `ALTER TABLE messages ADD COLUMN timeline TEXT;`
   }
 ];
 
