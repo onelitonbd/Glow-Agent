@@ -129,13 +129,9 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .chat-empty .empty-icon { margin-bottom: 13px; }
 .chat-empty h2 { margin: 0 0 5px; font-size: 17px; letter-spacing: -.045em; }
 .chat-empty p { max-width: 280px; margin: 0 auto; color: var(--muted); font-size: 10px; line-height: 1.55; }
-.message { max-width: 88%; padding: 10px 11px; border-radius: 14px; font-size: 11px; line-height: 1.55; white-space: pre-wrap; }
-.message.user { justify-self: end; border-bottom-right-radius: 4px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.message.assistant { justify-self: start; border: 1px solid var(--line); border-bottom-left-radius: 4px; background: var(--surface); color: var(--text-soft); }
-.message-meta { margin-top: 6px; font: 7px var(--mono); opacity: .7; }
-.tool-events { display: grid; gap: 4px; margin-top: 8px; }
-.tool-event { display: flex; align-items: center; gap: 5px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-soft); color: var(--muted); font: 7px/1.35 var(--mono); }
-.tool-event svg { width: 11px; height: 11px; flex: 0 0 auto; color: var(--accent); }
+.message { font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
+.message.user { justify-self: end; max-width: 88%; padding: 10px 11px; border-radius: 14px 0 0 14px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.message.assistant { justify-self: stretch; max-width: none; padding: 4px 1px 14px; border: 0; border-radius: 0; background: transparent; color: var(--text-soft); }
 .composer { padding: 10px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: 0 12px 32px rgba(0,0,0,.18); }
 .composer textarea { display: block; width: 100%; min-height: 58px; padding: 5px 4px 10px; resize: none; border: 0; outline: 0; background: transparent; color: var(--text); font: 11px/1.5 var(--font); }
 .composer textarea::placeholder { color: var(--quiet); }

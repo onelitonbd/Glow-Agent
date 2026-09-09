@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { element, icon, showToast, formatDate } from './ui.js';
+import { element, icon, showToast } from './ui.js';
 
 const state = {
   conversations: [],
@@ -47,19 +47,7 @@ function renderLog() {
     return;
   }
   messages.forEach((message) => {
-    const bubble = element('article', `message ${message.role}`, message.content);
-    const meta = element('div', 'message-meta', message.role === 'assistant' && message.modelId ? message.modelId : formatDate(message.createdAt));
-    bubble.append(meta);
-    if (message.role === 'assistant' && Array.isArray(message.toolEvents) && message.toolEvents.length) {
-      const events = element('div', 'tool-events');
-      message.toolEvents.forEach((event) => {
-        const item = element('div', 'tool-event', event.summary);
-        item.prepend(icon('wrench'));
-        events.append(item);
-      });
-      bubble.append(events);
-    }
-    chatLog.append(bubble);
+    chatLog.append(element('article', `message ${message.role}`, message.content));
   });
   chatLog.scrollTop = chatLog.scrollHeight;
 }
@@ -232,6 +220,19 @@ composer.addEventListener('submit', async (event) => {
   sendButton.disabled = true;
   try {
     const conversation = await ensureConversation();
+    const pendingUserMessage = {
+      id: `pending-${Date.now()}`,
+      role: 'user',
+      content: message,
+      createdAt: new Date().toISOString()
+    };
+    state.conversation = {
+      ...conversation,
+      messages: [...(state.conversation?.messages || []), pendingUserMessage]
+    };
+    messageInput.value = '';
+    messageInput.style.height = 'auto';
+    renderLog();
     const result = await api.conversations.respond(conversation.id, {
       message,
       providerId: state.selectedProviderId,
@@ -242,7 +243,6 @@ composer.addEventListener('submit', async (event) => {
     state.conversation = result.conversation;
     state.selectedSkillIds.clear();
     state.selectedToolIds.clear();
-    messageInput.value = '';
     await loadWorkspace();
     renderLog();
   } catch (error) {
