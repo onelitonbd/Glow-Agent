@@ -185,26 +185,33 @@
     .chip { flex: 0 0 auto; padding: 8px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font-size: 8.5px; font-weight: 500; transition: color .15s ease, border-color .15s ease, background .15s ease; }
     .chip:hover, .chip:focus-visible { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); outline: 0; }
 
-    /* Composer. No bottom navigation: this is the only fixed action area. */
+    /* Two-stage composer: write first, then choose the capabilities that shape the request. */
     .composer-area {
       position: absolute;
       right: 0;
       bottom: 0;
       left: 0;
-      padding: 22px 12px calc(12px + env(safe-area-inset-bottom));
+      padding: 26px 12px calc(12px + env(safe-area-inset-bottom));
       background: linear-gradient(180deg, rgba(13,15,19,0), var(--bg) 29%);
     }
-    .context-row { display: flex; gap: 6px; margin: 0 4px 7px; overflow-x: auto; scrollbar-width: none; }
-    .context-row::-webkit-scrollbar { display: none; }
-    .context-chip { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; background: rgba(22,25,31,.9); color: var(--muted); font-size: 7.5px; }
-    .context-chip b { color: var(--accent); font-weight: 500; }.context-chip .close { color: var(--quiet); font-size: 10px; line-height: 7px; }
-    .composer { display: grid; grid-template-columns: 31px minmax(0, 1fr) 31px; align-items: end; gap: 7px; padding: 7px; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: rgba(30,34,42,.96); box-shadow: 0 14px 34px rgba(0,0,0,.32); backdrop-filter: blur(14px); }
-    .composer-button { display: grid; width: 31px; height: 31px; place-items: center; border: 0; border-radius: 10px; background: var(--surface); color: var(--muted); }
-    .composer-button svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-    #prompt { display: block; width: 100%; max-height: 92px; padding: 7px 0; overflow-y: auto; resize: none; border: 0; outline: none; background: transparent; color: var(--text); font-size: 11px; line-height: 1.45; }
+    .composer { overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: rgba(30,34,42,.96); box-shadow: 0 14px 34px rgba(0,0,0,.32); backdrop-filter: blur(14px); }
+    .input-stage { min-height: 55px; padding: 9px 12px 7px; }
+    #prompt { display: block; width: 100%; max-height: 84px; padding: 0; overflow-y: auto; resize: none; border: 0; outline: none; background: transparent; color: var(--text); font-size: 11px; line-height: 1.48; }
     #prompt::placeholder { color: var(--muted); opacity: 1; }
+    .composer-rule { height: 1px; margin: 0 8px; background: var(--line); }
+    .button-stage { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 47px; padding: 7px; }
+    .composer-tools { display: flex; min-width: 0; gap: 6px; overflow-x: auto; scrollbar-width: none; }.composer-tools::-webkit-scrollbar { display: none; }
+    .composer-button { display: grid; width: 32px; height: 32px; place-items: center; flex: 0 0 auto; border: 1px solid transparent; border-radius: 10px; background: var(--surface); color: var(--muted); }
+    .composer-button:hover, .composer-button:focus-visible { border-color: var(--line); color: var(--text); outline: 0; }
+    .composer-button svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .model-picker-button { display: grid; grid-template-columns: 15px minmax(0, 1fr) 11px; align-items: center; width: min(168px, 46vw); height: 32px; gap: 5px; padding: 0 8px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); color: var(--text-soft); text-align: left; }
+    .model-picker-button > svg { width: 15px; height: 15px; stroke: var(--violet); stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }.model-picker-button .model-chevron { width: 11px; height: 11px; stroke: var(--quiet); }
+    .model-button-copy { min-width: 0; }.model-button-copy b, .model-button-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.model-button-copy b { font-size: 8.5px; font-weight: 800; letter-spacing: -.018em; }.model-button-copy span { margin-top: 1px; color: var(--quiet); font-family: var(--mono); font-size: 6.5px; }.model-picker-button.has-model { border-color: rgba(198,255,107,.28); background: var(--accent-wash); }.model-picker-button.has-model > svg { stroke: var(--accent); }.model-picker-button.has-model .model-button-copy b { color: var(--accent); }
     .send { background: var(--accent); color: var(--accent-ink); }.send:disabled { background: var(--surface); color: var(--quiet); cursor: default; }.send svg { stroke-width: 2.2; }
     .composer-hint { margin: 7px 3px 0; color: var(--quiet); font-size: 7.5px; text-align: center; }.composer-hint strong { color: var(--muted); font-weight: 500; }
+
+    /* Model selection is an expandable capability surface, ready for more request tools later. */
+    .model-picker-layer { position: fixed; inset: 0; z-index: 20; display: grid; align-items: end; justify-items: center; }.model-picker-layer[hidden] { display: none; }.model-picker-scrim { position: absolute; inset: 0; padding: 0; border: 0; background: rgba(4,5,7,.62); backdrop-filter: blur(13px) saturate(.72); opacity: 0; transition: opacity .22s ease; }.model-picker-sheet { position: relative; width: min(100%,470px); max-height: min(77dvh,670px); padding: 12px 16px calc(18px + env(safe-area-inset-bottom)); transform: translateY(105%); overflow: auto; border: 1px solid rgba(255,255,255,.12); border-bottom: 0; border-radius: 24px 24px 0 0; background: linear-gradient(135deg,rgba(169,156,255,.09),transparent 38%),var(--surface); box-shadow: 0 -18px 60px rgba(0,0,0,.5); transition: transform .28s cubic-bezier(.2,.8,.2,1); }.model-picker-layer.is-open .model-picker-scrim { opacity: 1; }.model-picker-layer.is-open .model-picker-sheet { transform: translateY(0); }.picker-handle { width: 34px; height: 4px; margin: 0 auto 15px; border-radius: 99px; background: #454b55; }.picker-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 1px 14px; }.picker-head h2 { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -.045em; }.picker-head p { margin: 3px 0 0; color: var(--muted); font-family: var(--mono); font-size: 8px; }.picker-close { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); color: var(--muted); }.picker-close svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }.picker-group + .picker-group { margin-top: 14px; }.picker-group h3 { margin: 0 3px 7px; color: var(--quiet); font-family: var(--mono); font-size: 8px; font-weight: 500; letter-spacing: .075em; text-transform: uppercase; }.picker-model { display: grid; grid-template-columns: 29px minmax(0,1fr) 24px; align-items: center; gap: 9px; width: 100%; min-height: 51px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--text); text-align: left; }.picker-model + .picker-model { margin-top: 6px; }.picker-model:hover { border-color: rgba(198,255,107,.35); background: var(--surface-raised); }.picker-model[aria-pressed="true"] { border-color: rgba(198,255,107,.42); background: var(--accent-wash); }.picker-orb { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 9px; background: var(--violet-wash); color: var(--violet); font-family: var(--mono); font-size: 8px; font-weight: 500; }.picker-model[aria-pressed="true"] .picker-orb { background: var(--accent); color: var(--accent-ink); }.picker-copy { min-width: 0; }.picker-copy b, .picker-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.picker-copy b { font-family: var(--mono); font-size: 8.5px; font-weight: 500; }.picker-copy span { margin-top: 3px; color: var(--muted); font-size: 7.5px; }.picker-check { display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--line); border-radius: 7px; color: var(--quiet); font-size: 12px; }.picker-model[aria-pressed="true"] .picker-check { border-color: transparent; background: var(--accent); color: var(--accent-ink); }
 
     .toast { position: absolute; top: 92px; left: 50%; z-index: 3; width: max-content; max-width: calc(100% - 36px); padding: 8px 10px; transform: translate(-50%, -12px); border: 1px solid rgba(198,255,107,.22); border-radius: 9px; background: #1d2520; color: var(--accent); box-shadow: 0 10px 24px rgba(0,0,0,.28); font-family: var(--mono); font-size: 8px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }.toast.show { transform: translate(-50%, 0); opacity: 1; }
     .empty-state { display: grid; min-height: 400px; place-content: center; padding: 20px; text-align: center; }.empty-state .brand-mark { display: grid; width: 44px; height: 44px; margin: 0 auto; place-items: center; border-radius: 15px; background: var(--accent); color: var(--accent-ink); box-shadow: 0 8px 18px var(--accent-wash); font-size: 20px; }.empty-state h2 { margin: 14px 0 6px; font-size: 20px; letter-spacing: -.05em; }.empty-state p { max-width: 270px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }.empty-state .quick-actions { justify-content: center; margin-top: 18px; }
@@ -295,14 +302,35 @@
     </section>
 
     <form class="composer-area" id="composerForm">
-      <div class="context-row" aria-label="Active chat context"><span class="context-chip"><b>✦</b> Product brief <span class="close">×</span></span><span class="context-chip"><b>⌁</b> 2 workspace docs <span class="close">×</span></span></div>
       <div class="composer">
-        <button class="composer-button" type="button" aria-label="Attach context or tools"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-        <textarea id="prompt" rows="1" aria-label="Message assistant" placeholder="Message assistant…"></textarea>
-        <button class="composer-button send" id="sendButton" type="submit" aria-label="Send message" disabled><svg viewBox="0 0 24 24"><path d="m5 12 14-7-4 14-3-5-5-2Z"/><path d="m12 12 3-3"/></svg></button>
+        <div class="input-stage"><textarea id="prompt" rows="1" aria-label="Message assistant" placeholder="Message assistant…"></textarea></div>
+        <div class="composer-rule" aria-hidden="true"></div>
+        <div class="button-stage" aria-label="Message capabilities">
+          <div class="composer-tools">
+            <button class="composer-button" id="attachButton" type="button" aria-label="Attach a file or add context"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11.6-8.8 8.8a6 6 0 0 1-8.5-8.5l8.8-8.8a4 4 0 0 1 5.7 5.7l-8.8 8.8a2 2 0 0 1-2.8-2.8l8.1-8.1"/></svg></button>
+            <button class="model-picker-button" id="modelPickerButton" type="button" aria-haspopup="dialog" aria-controls="modelPickerSheet" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg><span class="model-button-copy"><b id="modelButtonLabel">Select model</b><span id="modelProviderLabel">Across providers</span></span><svg class="model-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+          <button class="composer-button send" id="sendButton" type="submit" aria-label="Send message" disabled><svg viewBox="0 0 24 24"><path d="M12 5v14m0-14-5 5m5-5 5 5"/></svg></button>
+        </div>
       </div>
       <p class="composer-hint"><strong>Enter</strong> to send · <strong>Shift + Enter</strong> for a new line</p>
     </form>
+
+    <div class="model-picker-layer" id="modelPickerLayer" hidden>
+      <button class="model-picker-scrim" id="modelPickerScrim" type="button" tabindex="-1" aria-label="Close model picker"></button>
+      <section class="model-picker-sheet" id="modelPickerSheet" role="dialog" aria-modal="true" aria-labelledby="modelPickerTitle">
+        <div class="picker-handle" aria-hidden="true"></div>
+        <header class="picker-head"><div><h2 id="modelPickerTitle">Choose model</h2><p>Available across your providers</p></div><button class="picker-close" id="modelPickerClose" type="button" aria-label="Close model picker"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></header>
+        <section class="picker-group" aria-labelledby="personalModels"><h3 id="personalModels">Personal workspace</h3>
+          <button class="picker-model" type="button" data-provider="Personal workspace" data-model="gpt-4.1-mini" aria-pressed="false"><span class="picker-orb">G4</span><span class="picker-copy"><b>gpt-4.1-mini</b><span>Fast general-purpose model</span></span><span class="picker-check" aria-hidden="true">+</span></button>
+          <button class="picker-model" type="button" data-provider="Personal workspace" data-model="gpt-4.1" aria-pressed="false"><span class="picker-orb">G4</span><span class="picker-copy"><b>gpt-4.1</b><span>Advanced reasoning and coding</span></span><span class="picker-check" aria-hidden="true">+</span></button>
+        </section>
+        <section class="picker-group" aria-labelledby="researchModels"><h3 id="researchModels">Research route</h3>
+          <button class="picker-model" type="button" data-provider="Research route" data-model="gpt-4o-mini" aria-pressed="false"><span class="picker-orb">G4</span><span class="picker-copy"><b>gpt-4o-mini</b><span>Compact multimodal model</span></span><span class="picker-check" aria-hidden="true">+</span></button>
+          <button class="picker-model" type="button" data-provider="Research route" data-model="text-embedding-3-small" aria-pressed="false"><span class="picker-orb">EM</span><span class="picker-copy"><b>text-embedding-3-small</b><span>Embedding model</span></span><span class="picker-check" aria-hidden="true">+</span></button>
+        </section>
+      </section>
+    </div>
   </main>
 
   <script>
@@ -320,7 +348,15 @@
     const drawerScrim = document.getElementById('drawerScrim');
     const drawerClose = document.getElementById('drawerClose');
     const sessionName = document.getElementById('sessionName');
+    const attachButton = document.getElementById('attachButton');
+    const modelPickerButton = document.getElementById('modelPickerButton');
+    const modelPickerLayer = document.getElementById('modelPickerLayer');
+    const modelPickerScrim = document.getElementById('modelPickerScrim');
+    const modelPickerClose = document.getElementById('modelPickerClose');
+    const modelButtonLabel = document.getElementById('modelButtonLabel');
+    const modelProviderLabel = document.getElementById('modelProviderLabel');
     let toastTimer;
+    let modelPickerCloseTimer;
 
     function resizePrompt() {
       prompt.style.height = 'auto';
@@ -343,6 +379,19 @@
       else historyLauncher.focus();
     }
 
+    function setModelPicker(isOpen) {
+      clearTimeout(modelPickerCloseTimer);
+      modelPickerButton.setAttribute('aria-expanded', String(isOpen));
+      if (isOpen) {
+        modelPickerLayer.hidden = false;
+        requestAnimationFrame(() => modelPickerLayer.classList.add('is-open'));
+        setTimeout(() => modelPickerClose.focus(), 180);
+      } else {
+        modelPickerLayer.classList.remove('is-open');
+        modelPickerCloseTimer = setTimeout(() => { modelPickerLayer.hidden = true; modelPickerButton.focus(); }, 280);
+      }
+    }
+
     function appendMessage(text) {
       const safeText = document.createTextNode(text);
       const article = document.createElement('article');
@@ -361,8 +410,24 @@
     historyLauncher.addEventListener('click', () => setDrawer(true));
     drawerClose.addEventListener('click', () => setDrawer(false));
     drawerScrim.addEventListener('click', () => setDrawer(false));
+    attachButton.addEventListener('click', () => showToast('Attachment and context picker opens in the implementation phase'));
+    modelPickerButton.addEventListener('click', () => setModelPicker(true));
+    modelPickerClose.addEventListener('click', () => setModelPicker(false));
+    modelPickerScrim.addEventListener('click', () => setModelPicker(false));
+    document.querySelectorAll('.picker-model').forEach((option) => option.addEventListener('click', () => {
+      document.querySelectorAll('.picker-model').forEach((item) => { item.setAttribute('aria-pressed', 'false'); item.querySelector('.picker-check').textContent = '+'; });
+      option.setAttribute('aria-pressed', 'true');
+      option.querySelector('.picker-check').textContent = '✓';
+      modelButtonLabel.textContent = option.dataset.model;
+      modelProviderLabel.textContent = option.dataset.provider;
+      modelPickerButton.classList.add('has-model');
+      setModelPicker(false);
+      showToast(`${option.dataset.model} selected`);
+    }));
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && phone.classList.contains('drawer-open')) setDrawer(false);
+      if (event.key !== 'Escape') return;
+      if (!modelPickerLayer.hidden) setModelPicker(false);
+      else if (phone.classList.contains('drawer-open')) setDrawer(false);
     });
     document.querySelectorAll('.history-item').forEach((item) => item.addEventListener('click', () => {
       document.querySelectorAll('.history-item').forEach((entry) => entry.classList.remove('active'));
