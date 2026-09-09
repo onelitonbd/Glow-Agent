@@ -56,7 +56,7 @@
     .providers-topbar { display:grid; grid-template-columns:34px minmax(0,1fr) 34px; align-items:center; gap:9px; padding:calc(42px + env(safe-area-inset-top)) 16px 14px; }.providers-topbar h2 { margin:0; font-size:14px; font-weight:800; letter-spacing:-.035em; text-align:center; }.providers-back, .providers-spacer { display:grid; width:34px; height:34px; place-items:center; border:1px solid var(--line); border-radius:11px; background:var(--surface); color:var(--text); }.providers-back svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.9; }.providers-spacer { visibility:hidden; }
     .providers-content { padding:4px 16px; }.providers-content > p { margin:0 4px 18px; color:var(--muted); font-size:11px; line-height:1.5; }.providers-empty { display:grid; min-height:340px; place-content:center; padding:26px; border:1px dashed rgba(255,255,255,.16); border-radius:20px; background:var(--surface-soft); text-align:center; }.providers-empty-icon { display:grid; width:43px; height:43px; place-items:center; margin:0 auto; border-radius:14px; background:var(--accent-wash); color:var(--accent); }.providers-empty-icon svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }.providers-empty h3 { margin:14px 0 6px; font-size:15px; letter-spacing:-.04em; }.providers-empty p { max-width:240px; margin:0; color:var(--muted); font-size:10px; line-height:1.55; }.add-provider { display:flex; align-items:center; justify-content:center; gap:7px; width:100%; height:39px; margin-top:15px; border:0; border-radius:11px; background:var(--accent); color:var(--accent-ink); font-size:10px; font-weight:850; }.add-provider svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:2.1; }
 
-    .providers-list { display:grid; gap:9px; }.providers-list-head { display:flex; align-items:center; justify-content:space-between; margin:0 4px 10px; }.providers-list-head b { color:var(--text-soft); font-size:10px; }.providers-list-head span { color:var(--accent); font-family:var(--mono); font-size:8px; }.provider-card { padding:12px; border:1px solid var(--line); border-radius:16px; background:var(--surface); }.provider-card-top { display:grid; grid-template-columns:31px minmax(0,1fr) 30px; align-items:center; gap:9px; }.provider-card-icon { display:grid; width:31px; height:31px; place-items:center; border-radius:10px; background:var(--accent-wash); color:var(--accent); }.provider-card-icon svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }.provider-card-copy { min-width:0; }.provider-card-name, .provider-card-url { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.provider-card-name { color:var(--text); font-size:10.5px; font-weight:800; letter-spacing:-.018em; }.provider-card-url { margin-top:3px; color:var(--muted); font-family:var(--mono); font-size:8px; }.provider-menu { display:grid; width:30px; height:30px; place-items:center; border:1px solid var(--line); border-radius:9px; background:var(--surface-soft); color:var(--muted); font-size:15px; line-height:1; }.provider-card-meta { display:flex; align-items:center; justify-content:space-between; gap:9px; margin-top:11px; padding-top:10px; border-top:1px solid var(--line); }.provider-card-meta span { display:flex; align-items:center; gap:6px; min-width:0; color:var(--muted); font-family:var(--mono); font-size:8px; }.provider-card-meta i { width:6px; height:6px; flex:0 0 auto; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--accent-wash); }.provider-card-meta b { color:var(--accent); font-family:var(--mono); font-size:7.5px; font-weight:500; letter-spacing:.04em; }.add-another-provider { display:flex; align-items:center; justify-content:center; gap:7px; width:100%; height:38px; margin-top:6px; border:1px dashed rgba(198,255,107,.38); border-radius:11px; background:transparent; color:var(--accent); font-family:var(--mono); font-size:8.5px; font-weight:500; }.add-another-provider svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:2; }
+    .providers-list { display:grid; gap:9px; }.providers-list-head { display:flex; align-items:center; justify-content:space-between; margin:0 4px 10px; }.providers-list-head b { color:var(--text-soft); font-size:10px; }.providers-list-head span { color:var(--accent); font-family:var(--mono); font-size:8px; }.provider-card { padding:12px; border:1px solid var(--line); border-radius:16px; background:var(--surface); }.provider-card-top { display:grid; grid-template-columns:31px minmax(0,1fr); align-items:center; gap:9px; }.provider-card-icon { display:grid; width:31px; height:31px; place-items:center; border-radius:10px; background:var(--accent-wash); color:var(--accent); }.provider-card-icon svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }.provider-card-copy { min-width:0; }.provider-card-name, .provider-card-url { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.provider-card-name { color:var(--text); font-size:10.5px; font-weight:800; letter-spacing:-.018em; }.provider-card-url { margin-top:3px; color:var(--muted); font-family:var(--mono); font-size:8px; }.provider-card-meta { display:flex; align-items:center; justify-content:space-between; gap:9px; margin-top:11px; padding-top:10px; border-top:1px solid var(--line); }.provider-card-meta span { display:flex; align-items:center; gap:6px; min-width:0; color:var(--muted); font-family:var(--mono); font-size:8px; }.provider-card-meta i { width:6px; height:6px; flex:0 0 auto; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--accent-wash); }.provider-card-meta b { color:var(--accent); font-family:var(--mono); font-size:7.5px; font-weight:500; letter-spacing:.04em; }.provider-card-actions { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:10px; }.provider-card-action { display:flex; align-items:center; justify-content:center; gap:5px; height:31px; border:1px solid var(--line); border-radius:9px; background:var(--surface-soft); color:var(--text-soft); font-size:8.5px; font-weight:800; }.provider-card-action:hover { border-color:rgba(198,255,107,.42); color:var(--accent); }.provider-card-action.models { border-color:transparent; background:var(--accent-wash); color:var(--accent); }.provider-card-action svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.9; }.add-another-provider { display:flex; align-items:center; justify-content:center; gap:7px; width:100%; height:38px; margin-top:6px; border:1px dashed rgba(198,255,107,.38); border-radius:11px; background:transparent; color:var(--accent); font-family:var(--mono); font-size:8.5px; font-weight:500; }.add-another-provider svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:2; }
 
     /* Blurred add-provider modal */
     .provider-modal-layer { position:fixed; inset:0; z-index:20; display:grid; align-items:end; justify-items:center; }.provider-modal-layer[hidden] { display:none; }.provider-modal-scrim { position:absolute; inset:0; padding:0; border:0; background:rgba(4,5,7,.62); backdrop-filter:blur(13px) saturate(.72); opacity:0; transition:opacity .22s ease; }.provider-modal { position:relative; width:min(100%,470px); max-height:min(86dvh,760px); padding:12px 16px calc(20px + env(safe-area-inset-bottom)); transform:translateY(105%); overflow:auto; border:1px solid rgba(255,255,255,.12); border-bottom:0; border-radius:24px 24px 0 0; background:linear-gradient(135deg,rgba(198,255,107,.06),transparent 35%),var(--surface); box-shadow:0 -18px 60px rgba(0,0,0,.5); transition:transform .28s cubic-bezier(.2,.8,.2,1); }.provider-modal-layer.is-open .provider-modal-scrim { opacity:1; }.provider-modal-layer.is-open .provider-modal { transform:translateY(0); }.modal-handle { width:34px; height:4px; margin:0 auto 15px; border-radius:99px; background:#454b55; }.modal-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 1px 16px; }.modal-head h2 { margin:0; font-size:16px; font-weight:800; letter-spacing:-.045em; }.modal-head p { margin:3px 0 0; color:var(--muted); font-family:var(--mono); font-size:8px; }.modal-close { display:grid; width:30px; height:30px; place-items:center; border:1px solid var(--line); border-radius:9px; background:var(--surface-soft); color:var(--muted); }.modal-close svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }.provider-form { display:grid; gap:12px; }.input-field { display:grid; gap:6px; }.input-field label { display:flex; align-items:center; justify-content:space-between; color:var(--text-soft); font-size:9px; font-weight:750; }.input-field label span { color:var(--quiet); font-family:var(--mono); font-size:7px; font-weight:400; }.input-field input { width:100%; height:42px; padding:0 11px; border:1px solid var(--line); border-radius:11px; outline:0; background:var(--surface-soft); color:var(--text); font-family:var(--mono); font-size:10px; transition:border-color .16s ease,box-shadow .16s ease; }.input-field input::placeholder { color:var(--quiet); }.input-field input:focus { border-color:rgba(198,255,107,.62); box-shadow:0 0 0 3px var(--accent-wash); }.backup-area { padding:12px; border:1px solid var(--line); border-radius:13px; background:var(--surface-soft); }.backup-head { display:flex; align-items:start; justify-content:space-between; gap:10px; }.backup-head b { display:block; color:var(--text-soft); font-size:9px; }.backup-head p { margin:3px 0 0; color:var(--quiet); font-family:var(--mono); font-size:7.5px; line-height:1.45; }.backup-button { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; height:34px; margin-top:10px; border:1px dashed rgba(198,255,107,.38); border-radius:9px; background:transparent; color:var(--accent); font-family:var(--mono); font-size:8px; font-weight:500; }.backup-button svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:2; }.backup-list { display:grid; gap:9px; margin-top:10px; }.backup-key { display:grid; grid-template-columns:minmax(0,1fr) 29px; gap:7px; align-items:end; }.backup-key .input-field { gap:5px; }.backup-key input { height:38px; }.remove-backup { display:grid; width:29px; height:38px; place-items:center; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--muted); }.remove-backup svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:1.8; }.modal-actions { display:grid; grid-template-columns:1fr 1.3fr; gap:8px; margin-top:3px; }.modal-actions button { height:40px; border-radius:11px; font-size:9px; font-weight:800; }.cancel-provider { border:1px solid var(--line); background:var(--surface-soft); color:var(--text-soft); }.save-provider { border:0; background:var(--accent); color:var(--accent-ink); }
@@ -135,8 +135,8 @@
         <form class="provider-form" id="providerForm">
           <div class="input-field"><label for="providerName">Provider name <span>REQUIRED</span></label><input id="providerName" name="providerName" autocomplete="off" placeholder="e.g. My primary provider" required></div>
           <div class="input-field"><label for="baseUrl">Base URL <span>REQUIRED</span></label><input id="baseUrl" name="baseUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://api.example.com/v1" required></div>
-          <div class="input-field"><label for="apiKey">API key <span>REQUIRED</span></label><input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Paste API key" required></div>
-          <section class="backup-area" aria-labelledby="backupTitle"><div class="backup-head"><div><b id="backupTitle">Backup API keys</b><p>Add spare keys for this provider. They are tried only if the primary key cannot be used.</p></div></div><div class="backup-list" id="backupList"></div><button class="backup-button" id="addBackupKey" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add backup API key</button></section>
+          <div class="input-field"><label for="apiKey">API key <span id="apiKeyState">REQUIRED</span></label><input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Paste API key" required></div>
+          <section class="backup-area" aria-labelledby="backupTitle"><div class="backup-head"><div><b id="backupTitle">Backup API keys</b><p id="backupDescription">Add spare keys for this provider. They are tried only if the primary key cannot be used.</p></div></div><div class="backup-list" id="backupList"></div><button class="backup-button" id="addBackupKey" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add backup API key</button></section>
           <div class="modal-actions"><button class="cancel-provider" id="cancelProvider" type="button">Cancel</button><button class="save-provider" type="submit">Save provider</button></div>
         </form>
       </section>
@@ -159,6 +159,10 @@
     const providerForm = document.getElementById('providerForm');
     const providerName = document.getElementById('providerName');
     const baseUrl = document.getElementById('baseUrl');
+    const apiKey = document.getElementById('apiKey');
+    const apiKeyState = document.getElementById('apiKeyState');
+    const backupDescription = document.getElementById('backupDescription');
+    const providerModalTitle = document.getElementById('providerModalTitle');
     const addBackupKey = document.getElementById('addBackupKey');
     const backupList = document.getElementById('backupList');
     const providersState = document.getElementById('providersState');
@@ -166,6 +170,7 @@
     let toastTimer;
     let modalCloseTimer;
     let backupCount = 0;
+    let editingProviderIndex = null;
     let modalOpener = openProviderModal;
     function showToast(message) { toast.textContent = message; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2200); }
     function setProviders(open) { phone.classList.toggle('providers-open', open); providersView.setAttribute('aria-hidden', String(!open)); providersButton.setAttribute('aria-expanded', String(open)); if (open) providersBack.focus(); else providersButton.focus(); }
@@ -180,7 +185,30 @@
         modalCloseTimer = setTimeout(() => { providerModalLayer.hidden = true; modalOpener?.focus(); }, 280);
       }
     }
-    function openProviderDialog(opener) { modalOpener = opener; setProviderModal(true); }
+    function openProviderDialog(opener, providerIndex = null) {
+      modalOpener = opener;
+      editingProviderIndex = providerIndex;
+      providerForm.reset();
+      backupList.replaceChildren();
+      backupCount = 0;
+      if (providerIndex === null) {
+        providerModalTitle.textContent = 'Add provider';
+        apiKeyState.textContent = 'REQUIRED';
+        apiKey.placeholder = 'Paste API key';
+        apiKey.required = true;
+        backupDescription.textContent = 'Add spare keys for this provider. They are tried only if the primary key cannot be used.';
+      } else {
+        const provider = providers[providerIndex];
+        providerModalTitle.textContent = 'Configure provider';
+        providerName.value = provider.name;
+        baseUrl.value = provider.baseUrl;
+        apiKeyState.textContent = 'OPTIONAL';
+        apiKey.placeholder = 'Paste a new key to replace the current one';
+        apiKey.required = false;
+        backupDescription.textContent = `${provider.backupCount ? `${provider.backupCount} backup ${provider.backupCount === 1 ? 'key is' : 'keys are'}` : 'No backup keys are'} configured. Add another backup key below if needed.`;
+      }
+      setProviderModal(true);
+    }
     function addBackupField() {
       backupCount += 1;
       const wrapper = document.createElement('div');
@@ -190,14 +218,15 @@
       backupList.append(wrapper);
       wrapper.querySelector('input').focus();
     }
-    function createProviderCard(provider) {
+    function createProviderCard(provider, index) {
       const card = document.createElement('article');
       card.className = 'provider-card';
-      card.innerHTML = '<div class="provider-card-top"><span class="provider-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 0 0-2 2v3m18 0V9a2 2 0 0 0-2-2h-3M8 17H5a2 2 0 0 1-2 2h-3M21 12h-3"/><path d="M8 12h8M12 8v8"/></svg></span><span class="provider-card-copy"><b class="provider-card-name"></b><span class="provider-card-url"></span></span><button class="provider-menu" type="button" aria-label="Provider actions">•••</button></div><div class="provider-card-meta"><span><i></i><span class="provider-key-count"></span></span><b>CONFIGURED</b></div>';
+      card.innerHTML = '<div class="provider-card-top"><span class="provider-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 0 0-2 2v3m18 0V9a2 2 0 0 0-2-2h-3M8 17H5a2 2 0 0 1-2 2h-3M21 12h-3"/><path d="M8 12h8M12 8v8"/></svg></span><span class="provider-card-copy"><b class="provider-card-name"></b><span class="provider-card-url"></span></span></div><div class="provider-card-meta"><span><i></i><span class="provider-key-count"></span></span><b>CONFIGURED</b></div><div class="provider-card-actions"><button class="provider-card-action configure" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>Configure</button><button class="provider-card-action models" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg>Models</button></div>';
       card.querySelector('.provider-card-name').textContent = provider.name;
       card.querySelector('.provider-card-url').textContent = provider.baseUrl;
       card.querySelector('.provider-key-count').textContent = provider.backupCount ? `Primary key + ${provider.backupCount} backup ${provider.backupCount === 1 ? 'key' : 'keys'}` : 'Primary API key';
-      card.querySelector('.provider-menu').addEventListener('click', () => showToast('Provider actions open in the implementation phase'));
+      card.querySelector('.configure').addEventListener('click', (event) => openProviderDialog(event.currentTarget, index));
+      card.querySelector('.models').addEventListener('click', () => { window.location.href = `models-page.html?provider=${encodeURIComponent(provider.name)}`; });
       return card;
     }
     function renderProviders() {
@@ -209,7 +238,7 @@
       heading.innerHTML = '<b>Your providers</b><span></span>';
       heading.querySelector('span').textContent = `${providers.length} ${providers.length === 1 ? 'provider' : 'providers'}`;
       list.append(heading);
-      providers.forEach((provider) => list.append(createProviderCard(provider)));
+      providers.forEach((provider, index) => list.append(createProviderCard(provider, index)));
       const addAnother = document.createElement('button');
       addAnother.className = 'add-another-provider';
       addAnother.type = 'button';
@@ -228,13 +257,18 @@
     providerForm.addEventListener('submit', (event) => {
       event.preventDefault();
       // This design demo deliberately retains only display metadata, never the entered API key values.
-      providers.push({ name: providerName.value.trim(), baseUrl: baseUrl.value.trim(), backupCount: backupList.querySelectorAll('input').length });
+      const newBackupCount = backupList.querySelectorAll('input').length;
+      const provider = { name: providerName.value.trim(), baseUrl: baseUrl.value.trim(), backupCount: editingProviderIndex === null ? newBackupCount : providers[editingProviderIndex].backupCount + newBackupCount };
+      const wasEditing = editingProviderIndex !== null;
+      if (wasEditing) providers[editingProviderIndex] = provider;
+      else providers.push(provider);
       providerForm.reset();
       backupList.replaceChildren();
       backupCount = 0;
+      editingProviderIndex = null;
       renderProviders();
       setProviderModal(false);
-      showToast('Provider added — design prototype only');
+      showToast(wasEditing ? 'Provider updated — design prototype only' : 'Provider added — design prototype only');
     });
     document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; if (!providerModalLayer.hidden) setProviderModal(false); else if (phone.classList.contains('providers-open')) setProviders(false); });
     document.querySelectorAll('.toggle').forEach((toggle) => toggle.addEventListener('click', () => { const enabled = toggle.getAttribute('aria-pressed') === 'true'; toggle.setAttribute('aria-pressed', String(!enabled)); }));

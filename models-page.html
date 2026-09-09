@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Neural Ink model management page design for Glow Agent.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <title>Models — Glow Agent</title>
+  <style>
+    :root { color-scheme:dark; --canvas:#090a0d;--bg:#0d0f13;--surface:#16191f;--surface-raised:#1d2129;--surface-soft:#121419;--text:#f7f8fb;--text-soft:#d5d9e1;--muted:#99a1ad;--quiet:#676e79;--line:rgba(255,255,255,.095);--accent:#c6ff6b;--accent-ink:#10150a;--accent-wash:rgba(198,255,107,.11);--violet:#a99cff;--violet-wash:rgba(169,156,255,.13);--blue:#81d9ff;--font:"Manrope",Inter,ui-sans-serif,system-ui,sans-serif;--mono:"DM Mono","SFMono-Regular",Consolas,monospace;--shadow:0 26px 66px rgba(0,0,0,.42); }
+    * { box-sizing:border-box; } html { min-width:320px;background:var(--canvas); } body { min-width:320px;min-height:100dvh;margin:0;background:radial-gradient(circle at 85% 0%,rgba(169,156,255,.14),transparent 29rem),var(--canvas);color:var(--text);font-family:var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility; } button,a { font:inherit; } button { cursor:pointer; } button:focus-visible,a:focus-visible { outline:3px solid var(--accent);outline-offset:3px; }.mono,.status,.section-label,.provider-meta,.model-id,.model-meta,.fetch-note,.toast { font-family:var(--mono); }
+    .phone { width:min(100%,470px);min-height:100dvh;margin:0 auto;padding-bottom:calc(32px + env(safe-area-inset-bottom));background:radial-gradient(circle at 100% -2%,rgba(198,255,107,.07),transparent 25rem),var(--bg);box-shadow:0 0 0 1px rgba(255,255,255,.035),var(--shadow); }.status { display:flex;align-items:center;justify-content:space-between;height:calc(29px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 21px 0;color:var(--text);font-size:10px;font-weight:500; }.status-signals { display:flex;align-items:center;gap:6px }.signal { display:inline-flex;align-items:end;gap:1px;height:10px }.signal i { display:block;width:2px;border-radius:2px;background:currentColor }.signal i:nth-child(1){height:3px}.signal i:nth-child(2){height:5px}.signal i:nth-child(3){height:7px}.signal i:nth-child(4){height:9px}.wifi{width:12px;height:9px;border:1.5px solid currentColor;border-bottom:0;border-radius:12px 12px 0 0;opacity:.94}.battery{width:19px;height:9px;padding:1px;border:1.2px solid currentColor;border-radius:3px}.battery::before{content:"";display:block;width:70%;height:100%;border-radius:1px;background:currentColor}
+    .topbar { display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:9px;padding:13px 16px 14px }.back,.top-spacer { display:grid;width:34px;height:34px;place-items:center;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--text);text-decoration:none }.back svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.9}.top-spacer{visibility:hidden}.topbar h1{overflow:hidden;margin:0;color:var(--text);font-size:14px;font-weight:800;letter-spacing:-.035em;text-align:center;text-overflow:ellipsis;white-space:nowrap}
+    .intro { padding:4px 20px 20px }.eyebrow { margin:0 0 6px;color:var(--accent);font-family:var(--mono);font-size:8px;font-weight:500;letter-spacing:.105em;text-transform:uppercase }.intro p { margin:0;color:var(--muted);font-size:11px;line-height:1.5 }.intro p strong { color:var(--text-soft);font-weight:750 }
+    .content { display:grid;gap:22px;padding:0 16px }.section-label { display:flex;align-items:center;justify-content:space-between;margin:0 4px 8px;color:var(--quiet);font-size:8px;font-weight:500;letter-spacing:.08em;text-transform:uppercase }.section-label span:last-child { color:var(--accent) }.provider-context { display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:13px;background:var(--surface) }.provider-icon { display:grid;width:29px;height:29px;place-items:center;flex:0 0 auto;border-radius:9px;background:var(--accent-wash);color:var(--accent) }.provider-icon svg { width:15px;height:15px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8 }.provider-copy { min-width:0;flex:1 }.provider-copy b,.provider-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }.provider-copy b { color:var(--text);font-size:10px;font-weight:800 }.provider-copy span { margin-top:3px;color:var(--muted);font-family:var(--mono);font-size:8px }.provider-context button { display:grid;width:29px;height:29px;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);color:var(--muted) }.provider-context button svg { width:14px;height:14px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8 }
+    .selected-box { overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--surface) }.selected-empty { display:grid;min-height:108px;place-content:center;padding:16px;text-align:center }.selected-empty svg { width:20px;height:20px;margin:0 auto 8px;fill:none;stroke:var(--quiet);stroke-linecap:round;stroke-linejoin:round;stroke-width:1.7 }.selected-empty b { color:var(--text-soft);font-size:10px }.selected-empty p { margin:4px 0 0;color:var(--muted);font-size:8.5px }.selected-list { display:grid;gap:0 }.selected-row { display:grid;grid-template-columns:29px minmax(0,1fr) 29px;align-items:center;gap:9px;min-height:55px;padding:9px 11px;border-bottom:1px solid var(--line) }.selected-row:last-child { border-bottom:0 }.model-orb { display:grid;width:29px;height:29px;place-items:center;border-radius:9px;background:var(--accent-wash);color:var(--accent);font-family:var(--mono);font-size:10px;font-weight:500 }.model-copy { min-width:0 }.model-id,.model-meta { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }.model-id { color:var(--text);font-size:9.5px;font-weight:500 }.model-meta { margin-top:3px;color:var(--muted);font-size:7.5px }.remove-model { display:grid;width:29px;height:29px;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);color:var(--muted) }.remove-model svg { width:13px;height:13px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.8 }
+    .fetch-card { padding:12px;border:1px solid rgba(198,255,107,.18);border-radius:16px;background:linear-gradient(135deg,rgba(198,255,107,.075),transparent 64%),var(--surface) }.fetch-head { display:flex;align-items:start;justify-content:space-between;gap:10px }.fetch-head h2 { margin:0;color:var(--text);font-size:11px;font-weight:800;letter-spacing:-.02em }.fetch-head p { margin:4px 0 0;color:var(--muted);font-size:8.5px;line-height:1.45 }.fetch-button { display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:37px;margin-top:12px;border:0;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:9px;font-weight:850 }.fetch-button svg { width:14px;height:14px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:2 }.fetch-button.loading svg { animation:spin .7s linear infinite } @keyframes spin { to { transform:rotate(360deg) } }.fetch-note { margin:8px 2px 0;color:var(--quiet);font-size:7.5px;line-height:1.45;text-align:center }
+    .fetched-list { display:grid;gap:7px;margin-top:12px }.fetched-row { display:grid;grid-template-columns:29px minmax(0,1fr) auto;align-items:center;gap:9px;width:100%;min-height:51px;padding:8px 9px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);color:var(--text);text-align:left }.fetched-row:hover { border-color:rgba(198,255,107,.35);background:var(--surface-raised) }.fetched-row[aria-pressed="true"] { border-color:rgba(198,255,107,.42);background:var(--accent-wash) }.fetched-row .model-orb { width:29px;height:29px;background:var(--violet-wash);color:var(--violet) }.fetched-row[aria-pressed="true"] .model-orb { background:var(--accent);color:var(--accent-ink) }.fetched-row .model-copy b,.fetched-row .model-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }.fetched-row .model-copy b { font-family:var(--mono);font-size:8.5px;font-weight:500 }.fetched-row .model-copy span { margin-top:3px;color:var(--muted);font-size:7.5px }.model-select-state { display:grid;width:22px;height:22px;place-items:center;border:1px solid var(--line);border-radius:7px;color:var(--quiet);font-size:12px }.fetched-row[aria-pressed="true"] .model-select-state { border-color:transparent;background:var(--accent);color:var(--accent-ink) }.fetch-empty { display:grid;place-content:center;min-height:105px;margin-top:12px;padding:14px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;color:var(--quiet);font-family:var(--mono);font-size:8px;text-align:center }
+    .toast { position:fixed;bottom:22px;left:50%;z-index:5;max-width:calc(100% - 36px);padding:9px 11px;transform:translate(-50%,14px);border:1px solid rgba(198,255,107,.22);border-radius:9px;background:#1d2520;color:var(--accent);box-shadow:0 10px 24px rgba(0,0,0,.28);font-size:8px;opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease }.toast.show { transform:translate(-50%,0);opacity:1 } @media (min-width:600px){body{padding:24px 0}.phone{min-height:calc(100dvh - 48px);border-radius:30px}} @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <div class="status" aria-hidden="true"><span>9:41</span><span class="status-signals"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"></span></span></div>
+    <header class="topbar"><a class="back" href="settings-page.html" aria-label="Back to provider settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a><h1>Models</h1><span class="top-spacer" aria-hidden="true"></span></header>
+    <section class="intro"><p class="eyebrow">Provider models</p><p>Select the models this provider can use. Fetching discovers what is available from the current provider connection.</p></section>
+
+    <div class="content">
+      <section aria-label="Current provider"><div class="provider-context"><span class="provider-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 0 0-2 2v3m18 0V9a2 2 0 0 0-2-2h-3M8 17H5a2 2 0 0 1-2 2h-3M21 12h-3"/><path d="M8 12h8M12 8v8"/></svg></span><span class="provider-copy"><b id="providerName">Provider</b><span>Model availability and selection</span></span><button type="button" id="changeProvider" aria-label="Return to provider settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></div></section>
+
+      <section aria-labelledby="selectedTitle"><div class="section-label"><span id="selectedTitle">Selected models</span><span id="selectedCount">0 selected</span></div><div class="selected-box" id="selectedModels"><div class="selected-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg><b>No models selected</b><p>Fetch the provider’s available models, then tap to select.</p></div></div></section>
+
+      <section aria-labelledby="fetchTitle"><div class="section-label"><span id="fetchTitle">Fetch models</span><span id="fetchCount"></span></div><article class="fetch-card"><div class="fetch-head"><div><h2>Discover available models</h2><p>Fetch model IDs from this provider, then choose the models this workspace can use.</p></div></div><button class="fetch-button" id="fetchModels" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16m0 5v-5h5"/><path d="M3 12A9 9 0 0 1 18.5 5.8L21 8m0-5v5h-5"/></svg><span>Fetch models</span></button><p class="fetch-note">In the live app, this request is made by the local backend using the saved provider connection.</p><div id="fetchedModels"><div class="fetch-empty">Tap Fetch models to discover available model IDs.</div></div></article></section>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+  <script>
+    const query = new URLSearchParams(window.location.search);
+    const providerName = query.get('provider') || 'Personal workspace';
+    document.getElementById('providerName').textContent = providerName;
+    document.title = `Models — ${providerName}`;
+
+    const fetched = [
+      { id: 'gpt-4.1-mini', detail: 'Fast general-purpose model' },
+      { id: 'gpt-4.1', detail: 'Advanced reasoning and coding' },
+      { id: 'gpt-4o-mini', detail: 'Compact multimodal model' },
+      { id: 'text-embedding-3-small', detail: 'Embedding model' }
+    ];
+    const selected = new Set();
+    const selectedModels = document.getElementById('selectedModels');
+    const selectedCount = document.getElementById('selectedCount');
+    const fetchedModels = document.getElementById('fetchedModels');
+    const fetchCount = document.getElementById('fetchCount');
+    const fetchButton = document.getElementById('fetchModels');
+    const toast = document.getElementById('toast');
+    let hasFetched = false;
+    let toastTimer;
+    function showToast(message) { toast.textContent = message; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2200); }
+    function modelShortName(id) { return id.startsWith('text-') ? 'EM' : id.split('-').slice(0, 2).join('').toUpperCase().slice(0, 3); }
+    function renderSelected() {
+      selectedModels.replaceChildren();
+      selectedCount.textContent = `${selected.size} ${selected.size === 1 ? 'selected' : 'selected'}`;
+      if (!selected.size) {
+        selectedModels.innerHTML = '<div class="selected-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg><b>No models selected</b><p>Fetch the provider’s available models, then tap to select.</p></div>';
+        return;
+      }
+      const list = document.createElement('div');
+      list.className = 'selected-list';
+      selected.forEach((id) => {
+        const model = fetched.find((entry) => entry.id === id);
+        const row = document.createElement('div');
+        row.className = 'selected-row';
+        row.innerHTML = '<span class="model-orb"></span><span class="model-copy"><b class="model-id"></b><span class="model-meta"></span></span><button class="remove-model" type="button" aria-label="Remove selected model"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button>';
+        row.querySelector('.model-orb').textContent = modelShortName(model.id);
+        row.querySelector('.model-id').textContent = model.id;
+        row.querySelector('.model-meta').textContent = model.detail;
+        row.querySelector('.remove-model').addEventListener('click', () => { selected.delete(id); renderSelected(); renderFetched(); });
+        list.append(row);
+      });
+      selectedModels.append(list);
+    }
+    function renderFetched() {
+      fetchedModels.replaceChildren();
+      if (!hasFetched) { fetchedModels.innerHTML = '<div class="fetch-empty">Tap Fetch models to discover available model IDs.</div>'; return; }
+      fetchCount.textContent = `${fetched.length} found`;
+      const list = document.createElement('div');
+      list.className = 'fetched-list';
+      fetched.forEach((model) => {
+        const button = document.createElement('button');
+        const selectedState = selected.has(model.id);
+        button.className = 'fetched-row';
+        button.type = 'button';
+        button.setAttribute('aria-pressed', String(selectedState));
+        button.innerHTML = '<span class="model-orb"></span><span class="model-copy"><b></b><span></span></span><span class="model-select-state" aria-hidden="true"></span>';
+        button.querySelector('.model-orb').textContent = modelShortName(model.id);
+        button.querySelector('.model-copy b').textContent = model.id;
+        button.querySelector('.model-copy span').textContent = model.detail;
+        button.querySelector('.model-select-state').textContent = selectedState ? '✓' : '+';
+        button.addEventListener('click', () => { if (selected.has(model.id)) selected.delete(model.id); else selected.add(model.id); renderSelected(); renderFetched(); });
+        list.append(button);
+      });
+      fetchedModels.append(list);
+    }
+    fetchButton.addEventListener('click', () => {
+      fetchButton.disabled = true;
+      fetchButton.classList.add('loading');
+      fetchButton.querySelector('span').textContent = 'Fetching models…';
+      setTimeout(() => { hasFetched = true; fetchButton.disabled = false; fetchButton.classList.remove('loading'); fetchButton.querySelector('span').textContent = 'Refresh models'; renderFetched(); showToast(`${fetched.length} models found`); }, 650);
+    });
+    document.getElementById('changeProvider').addEventListener('click', () => { window.location.href = 'settings-page.html'; });
+  </script>
+</body>
+</html>
