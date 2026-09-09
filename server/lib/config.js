@@ -54,6 +54,10 @@ export function loadConfig({ env = process.env, loadEnv = true } = {}) {
     host,
     port: integerSetting(env.PORT, 3000, 'PORT'),
     databasePath: isAbsolute(databaseSetting) ? databaseSetting : resolve(rootDirectory, databaseSetting),
+    // Where cloned plugin repos live. Defaults to ./data/workspace inside the project.
+    workspaceDirectory: isAbsolute(env.WORKSPACE_DIRECTORY || './data/workspace')
+      ? env.WORKSPACE_DIRECTORY
+      : resolve(rootDirectory, env.WORKSPACE_DIRECTORY || './data/workspace'),
     providerFetchTimeoutMs: 15_000,
     chatTimeoutMs: 60_000,
     // Safety ceiling on tool-use rounds per turn (kept high so it is effectively unlimited,

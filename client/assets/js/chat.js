@@ -9,8 +9,11 @@ const state = {
   availableModels: [],
   skills: [],
   tools: [],
+  plugins: [],
   selectedProviderId: null,
-  selectedModelId: null
+  selectedModelId: null,
+  selectedPluginId: null,
+  pluginRepos: []
 };
 const chatLog = document.getElementById('chatLog');
 const title = document.getElementById('conversationTitle');
@@ -20,6 +23,7 @@ const sendButton = document.getElementById('sendMessage');
 const modelTrigger = document.getElementById('openModelPicker');
 const skillTrigger = document.getElementById('openSkills');
 const toolTrigger = document.getElementById('openTools');
+const pluginTrigger = document.getElementById('openPlugins');
 const modelDialog = document.getElementById('modelDialog');
 const modelOptions = document.getElementById('modelOptions');
 const modelPickerHint = document.getElementById('modelPickerHint');
@@ -27,6 +31,7 @@ const skillsDialog = document.getElementById('skillsDialog');
 const toolsDialog = document.getElementById('toolsDialog');
 const chatToolOptions = document.getElementById('chatToolOptions');
 const chatSkillOptions = document.getElementById('chatSkillOptions');
+const chatPluginOptions = document.getElementById('chatPluginOptions');
 const historyDrawer = document.getElementById('historyDrawer');
 const conversationList = document.getElementById('conversationList');
 const themeToggle = document.getElementById('toggleTheme');
@@ -54,12 +59,22 @@ const TOOL_NAMES = {
   write_file: 'Write file',
   sql_query: 'SQL query',
   web_search: 'Web search',
-  fetch_url: 'Fetch URL'
+  fetch_url: 'Fetch URL',
+  github_list_repos: 'GitHub list repos',
+  github_clone: 'GitHub clone repo',
+  github_list_files: 'GitHub list files',
+  github_read_file: 'GitHub read file',
+  github_write_file: 'GitHub write file',
+  github_rename_file: 'GitHub rename file',
+  github_delete_file: 'GitHub delete file',
+  github_commit: 'GitHub commit',
+  github_push: 'GitHub push'
 };
 
 function toolIconName(toolId) {
   if (toolId === 'calculator') return 'calculator';
   if (toolId === 'current_time') return 'clock';
+  if (toolId.startsWith('github_')) return 'plug';
   return 'spark';
 }
 
@@ -256,6 +271,112 @@ function toolIcon(toolId) {
   return toolId === 'calculator' ? 'calculator' : 'clock';
 }
 
+function activeGithubPlugin() {
+  return state.plugins.find((plugin) => plugin.type === 'github' && plugin.enabled && plugin.config?.hasToken && plugin.config?.selectedRepo) || null;
+}
+
+function setPluginTrigger(active) {
+  if (!pluginTrigger) return;
+  pluginTrigger.classList.toggle('selected', active);
+  pluginTrigger.setAttribute('aria-label', active ? 'A plugin is enabled for this workspace.' : 'Plugins — connect extensions like GitHub');
+  pluginTrigger.title = active ? 'Plugin enabled' : 'Plugins';
+}
+
+function renderPluginPicker() {
+  const active = activeGithubPlugin();
+  state.selectedPluginId = active?.id || null;
+  setPluginTrigger(Boolean(active));
+  chatPluginOptions.replaceChildren();
+  if (state.plugins.length === 0) {
+    chatPluginOptions.append(element('p', 'hint', 'No plugins are installed yet. Add the GitHub plugin from the Plugins page.'));
+    return;
+  }
+  chatPluginOptions.append(element('p', 'hint', 'Enable the GitHub plugin and pick a repository so the assistant can work on it.'));
+  state.plugins.forEach((plugin) => {
+    const card = element('div', 'plugin-flow');
+    const connected = Boolean(plugin.config?.hasToken);
+    const enabled = Boolean(plugin.enabled);
+
+    // Enable button
+    const toggle = element('button', `switch${enabled ? '' : ''}`);
+    toggle.type = 'button';
+    toggle.setAttribute('role', 'switch');
+    toggle.setAttribute('aria-checked', String(enabled));
+    toggle.setAttribute('aria-label', enabled ? 'Disable plugin' : 'Enable plugin');
+    const titleRow = element('div', 'plugin-step-title');
+    titleRow.append(element('span', 'step-num', '1'), document.createTextNode(plugin.name));
+    titleRow.append(toggle);
+    card.append(titleRow);
+
+    if (!connected) {
+      card.append(element('p', 'hint', 'Connect your GitHub account in the Plugins page before chat can use it.'));
+    } else {
+      const repoRow = element('div', 'plugin-step-title');
+      repoRow.append(element('span', 'step-num', '2'), document.createTextNode('Repository'));
+      card.append(repoRow);
+      const select = element('select');
+      select.setAttribute('aria-label', 'Repository');
+      const repos = state.pluginRepos || [];
+      if (repos.length === 0) select.append(element('option', '', 'Loading repositories…'));
+      repos.forEach((repo) => {
+        const option = element('option', '', repo.fullName);
+        option.value = repo.fullName;
+        if (plugin.config?.selectedRepo === repo.fullName) option.selected = true;
+        select.append(option);
+      });
+      select.addEventListener('change', async () => {
+        const repo = repos.find((entry) => entry.fullName === select.value);
+        if (!repo) return;
+        try {
+          await api.plugins.selectRepo(plugin.id, { owner: repo.owner, repo: repo.name, defaultBranch: repo.defaultBranch });
+          state.selectedPluginId = enabled ? plugin.id : null;
+          showToast(`Repository ${repo.fullName} selected. It will be cloned on your next message.`);
+        } catch (error) {
+          showToast(error.message, 'danger');
+        }
+      });
+      const field = element('div', 'field');
+      field.append(select);
+      card.append(field);
+      if (plugin.config?.selectedRepo) {
+        const status = element('div', 'plugin-status ok');
+        status.append(document.createElement('i'), document.createTextNode(`Selected ${plugin.config.selectedRepo}`));
+        card.append(status);
+        const approve = element('button', 'button secondary full', 'Approve push to GitHub');
+        approve.type = 'button';
+        approve.addEventListener('click', async () => {
+          approve.disabled = true;
+          try {
+            await api.plugins.approvePush(plugin.id);
+            showToast('The next push is approved.');
+          } catch (error) {
+            showToast(error.message, 'danger');
+          } finally {
+            approve.disabled = false;
+          }
+        });
+        card.append(approve);
+      }
+    }
+
+    toggle.addEventListener('click', async () => {
+      toggle.disabled = true;
+      try {
+        const updated = await api.plugins.update(plugin.id, { enabled: !enabled });
+        const index = state.plugins.findIndex((entry) => entry.id === plugin.id);
+        if (index !== -1) state.plugins[index] = updated;
+        state.pluginRepos = state.pluginRepos || [];
+        renderPluginPicker();
+        showToast(updated.enabled ? 'Plugin enabled.' : 'Plugin disabled.');
+      } catch (error) {
+        toggle.disabled = false;
+        showToast(error.message, 'danger');
+      }
+    });
+    chatPluginOptions.append(card);
+  });
+}
+
 function renderToolPicker() {
   toolTrigger.classList.add('selected');
   toolTrigger.setAttribute('aria-label', 'Tools are always enabled for this workspace.');
@@ -293,15 +414,28 @@ async function loadModels() {
   renderModelPicker();
 }
 
+async function loadPluginRepos() {
+  const plugin = state.plugins.find((entry) => entry.type === 'github' && entry.config?.hasToken);
+  if (!plugin) { state.pluginRepos = []; return; }
+  try {
+    state.pluginRepos = await api.plugins.githubRepos(plugin.id);
+  } catch {
+    state.pluginRepos = [];
+  }
+}
+
 async function loadWorkspace() {
   try {
-    const [conversations, skills, tools] = await Promise.all([api.conversations.list(), api.skills.list(), api.tools.list()]);
+    const [conversations, skills, tools, plugins] = await Promise.all([api.conversations.list(), api.skills.list(), api.tools.list(), api.plugins.list()]);
     state.conversations = conversations;
     state.skills = skills;
     state.tools = tools;
+    state.plugins = plugins;
     renderConversationList();
     renderSkillPicker();
     renderToolPicker();
+    await loadPluginRepos();
+    renderPluginPicker();
     await loadModels();
   } catch (error) {
     showToast(error.message, 'danger');
@@ -372,12 +506,15 @@ composer.addEventListener('submit', async (event) => {
     messageInput.value = '';
     messageInput.style.height = 'auto';
     renderLog();
-    const result = await api.conversations.streamRespond(conversation.id, {
+    const requestBody = {
       message,
       providerId: state.selectedProviderId,
       modelId: state.selectedModelId,
       toolIds: state.tools.map((tool) => tool.id)
-    }, async (eventName, payload) => {
+    };
+    const activePlugin = activeGithubPlugin();
+    if (activePlugin) requestBody.pluginId = activePlugin.id;
+    const result = await api.conversations.streamRespond(conversation.id, requestBody, async (eventName, payload) => {
       if (eventName === 'thinking' || eventName === 'token' || eventName === 'tool_call' || eventName === 'tool_result') appendStreamDelta(eventName, payload);
     });
     state.conversation = result.conversation;
@@ -396,6 +533,7 @@ composer.addEventListener('submit', async (event) => {
 document.getElementById('openModelPicker').addEventListener('click', () => { renderModelPicker(); modelDialog.showModal(); });
 document.getElementById('openSkills').addEventListener('click', () => { renderSkillPicker(); skillsDialog.showModal(); });
 document.getElementById('openTools').addEventListener('click', () => { renderToolPicker(); toolsDialog.showModal(); });
+document.getElementById('openPlugins')?.addEventListener('click', () => { renderPluginPicker(); document.getElementById('pluginsDialog').showModal(); });
 document.getElementById('attachButton').addEventListener('click', () => showToast('Attachments are the next capability phase.'));
 themeToggle?.addEventListener('click', () => { window.GlowTheme?.toggle?.(); });
 document.addEventListener('glow-theme-change', syncThemeToggle);

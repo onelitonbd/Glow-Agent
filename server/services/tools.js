@@ -1,5 +1,6 @@
 import { validation } from '../lib/errors.js';
 import { fetchUrl, listFiles, readFile, sqlQuery, webSearch, writeFile } from './workspace-tools.js';
+import { executeGithubTool } from './github-tools.js';
 
 const toolCatalog = Object.freeze({
   calculator: Object.freeze({
@@ -224,8 +225,11 @@ function summary(tool, result) {
   return tool.name;
 }
 
-export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory } = {}) {
+export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, plugin } = {}) {
   const id = typeof call?.function?.name === 'string' ? call.function.name : '';
+  if (plugin && id.startsWith('github_') && allowedToolIds.has(id)) {
+    return executeGithubTool(call, { db, pluginId: plugin.pluginId, workspaceDirectory: plugin.workspaceDirectory });
+  }
   const tool = Object.hasOwn(toolCatalog, id) ? toolCatalog[id] : null;
   if (!tool || !allowedToolIds.has(id)) {
     return { toolId: id || 'unknown', result: { error: 'This tool is not available.' }, summary: 'An unavailable tool call was blocked.' };

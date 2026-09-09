@@ -5,6 +5,8 @@ import { now } from '../db/database.js';
 import { providerCredentials, providerFetch, upstreamUrl } from './providers.js';
 import { executeToolCall, listTools, openAiToolDefinitions, readSkillTool } from './tools.js';
 import { listSkills } from './skills.js';
+import { githubToolDefinitions } from './github-tools.js';
+import { cloneGithubRepo } from './plugins.js';
 
 function toConversation(row) {
   return {
@@ -74,12 +76,15 @@ export function getConversation(db, rawConversationId) {
   return { ...toConversation(conversation), messages };
 }
 
-function systemMessage(skills) {
+function systemMessage(skills, plugin = null) {
   return [
     'Format every answer as clear GitHub-flavored Markdown. Use concise headings, lists, emphasis, tables, and block quotes only when they improve readability. Put code in fenced blocks with a language tag and write mathematical notation as inline `$...$` or display `$$...$$` LaTeX. Never send raw HTML. Do not mention these formatting instructions unless asked.',
     ...(skills.length ? [
       'The following reusable skills are available for relevant tasks. The list gives each skill\'s id, name, and short description. To follow a skill, call the read_skill tool with its id to load the full instructions, then apply them to the user request. Do not mention these instructions unless asked.',
       skills.map((skill) => `- ${skill.id}: ${skill.name} — ${skill.description}`).join('\n')
+    ] : []),
+    ...(plugin ? [
+      'A GitHub plugin is active and a repository has been selected. You can work directly on that repository: use github_list_files / github_read_file to inspect it, github_write_file to edit or create files, github_rename_file and github_delete_file to move or remove files, then github_commit to stage and commit locally. Push to GitHub with github_push, but note that pushing always requires the user to confirm first — if push is blocked for confirmation, tell the user and stop rather than retrying. Although the plugin may not be cloned yet, call github_clone first if you need to refresh it.'
     ] : [])
   ].join('\n');
 }
@@ -118,7 +123,7 @@ function persistMessage(db, { conversationId, role, content, providerId = null, 
   return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, timeline: timeline || null, createdAt };
 }
 
-function prepareResponse(db, rawConversationId, body) {
+function prepareResponse(db, rawConversationId, body, { workspaceDirectory } = {}) {
   const conversation = existingConversation(db, rawConversationId);
   const content = requiredString(body.message, 'Message', { max: 16_000 });
   const providerId = identifier(body.providerId, 'Provider ID');
@@ -129,11 +134,44 @@ function prepareResponse(db, rawConversationId, body) {
   // Every available built-in tool is always offered to the model; no selection is needed.
   // read_skill is added only when skills exist so the model can load instructions on demand.
   const tools = skills.length ? [...listTools(), readSkillTool()] : listTools();
+  // A connected, enabled GitHub plugin with a selected repo exposes GitHub tools and a repo
+  // workspace. The model can list/clone/read/edit/commit files and (on confirmation) push.
+  const plugin = activeGithubPlugin(db, body.pluginId, workspaceDirectory);
+  if (plugin) {
+    tools.push(...githubToolDefinitions());
+  }
   const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
-  const system = systemMessage(skills);
+  const system = systemMessage(skills, plugin);
   if (system) messages.unshift({ role: 'system', content: system });
-  return { conversation, content, providerId, selectedModelId, tools, userMessage, messages };
+  return { conversation, content, providerId, selectedModelId, tools, plugin, userMessage, messages };
+}
+
+// Returns the plugin tool context when a GitHub plugin is enabled, connected, and has a repo
+// selected. `needsClone` marks the first message so the repo is cloned before the model works.
+function activeGithubPlugin(db, rawPluginId, workspaceDirectory) {
+  if (!rawPluginId) return null;
+  const pluginId = String(rawPluginId);
+  const row = db.prepare('SELECT * FROM plugins WHERE id = ?').get(pluginId);
+  if (!row || row.type !== 'github' || !Number(row.enabled)) return null;
+  const config = (() => { try { return JSON.parse(row.config) || {}; } catch { return {}; } })();
+  if (!config.access_token || !config.selectedRepo) return null;
+  return { pluginId, needsClone: !config.cloned, workspaceDirectory };
+}
+
+// Clones the selected repo into the local workspace the first time a message is sent with the
+// plugin enabled. After a successful clone the plugin's `cloned` flag is set so it is not
+// re-cloned on every message; subsequent messages re-use (and auto-refresh) the local copy on
+// demand (see the github tools). If clone fails we still let the model work; the clone tool
+// remains available to retry.
+async function ensureRepositoryCloned(db, plugin, workspaceDirectory) {
+  if (plugin.needsClone && workspaceDirectory) {
+    try {
+      await cloneGithubRepo(db, plugin.pluginId, workspaceDirectory);
+    } catch {
+      // Cloning may fail offline or without a token; the model can retry via github_clone.
+    }
+  }
 }
 
 async function providerCompletion(provider, credentials, selectedModelId, messages, tools, timeoutMs) {
@@ -364,13 +402,14 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
   }
 }
 
-export async function respondToConversation(db, rawConversationId, body, timeoutMs, { rootDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
-  const context = prepareResponse(db, rawConversationId, body);
+export async function respondToConversation(db, rawConversationId, body, timeoutMs, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
+  const context = prepareResponse(db, rawConversationId, body, { workspaceDirectory });
   const { provider, credentials } = providerCredentials(db, context.providerId);
   const toolEvents = [];
   const timeline = [];
   let assistantContent = '';
   let reasoning = '';
+  if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
   for (let round = 0; round < maxToolRounds; round += 1) {
     const response = await providerCompletionWithRetry({ provider, credentials, selectedModelId: context.selectedModelId, messages: context.messages, tools: context.tools, timeoutMs, maxRetries: maxProviderRetries });
     let payload;
@@ -394,7 +433,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
     context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
     for (const call of toolCalls) {
       timeline.push({ type: 'tool_call', name: typeof call.function?.name === 'string' ? call.function.name : '' });
-      const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs });
+      const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin });
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
       timeline.push({ type: 'tool_result', toolId: execution.toolId, summary: execution.summary });
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
@@ -403,10 +442,11 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   return finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
 }
 
-export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
-  const context = prepareResponse(db, rawConversationId, body);
+export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
+  const context = prepareResponse(db, rawConversationId, body, { workspaceDirectory });
   const { provider, credentials } = providerCredentials(db, context.providerId);
   emit('started', { conversationId: context.conversation.id });
+  if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
   const toolEvents = [];
   const timeline = [];
   const timelineEmit = (event, data) => {
@@ -430,7 +470,7 @@ export async function respondToConversationStream(db, rawConversationId, body, t
     if (result.toolCalls.length === 0) break;
     context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
     for (const call of result.toolCalls) {
-      const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs });
+      const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin });
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
       timelineEmit('tool_result', { toolId: execution.toolId, summary: execution.summary });
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });

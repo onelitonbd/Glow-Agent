@@ -68,6 +68,22 @@ const migrations = [
   {
     version: 5,
     sql: `ALTER TABLE messages ADD COLUMN timeline TEXT;`
+  },
+  {
+    version: 6,
+    sql: `
+      CREATE TABLE IF NOT EXISTS plugins (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        config TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS plugins_type_idx ON plugins(type);
+      CREATE INDEX IF NOT EXISTS plugins_enabled_idx ON plugins(enabled);
+    `
   }
 ];
 

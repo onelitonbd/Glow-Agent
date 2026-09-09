@@ -110,5 +110,19 @@ export const api = {
     get: (id) => request(`/conversations/${encodeURIComponent(id)}`),
     respond: (id, values) => request(`/conversations/${encodeURIComponent(id)}/respond`, { method: 'POST', body: values }),
     streamRespond: (id, values, onEvent) => stream(`/conversations/${encodeURIComponent(id)}/respond/stream`, values, onEvent)
+  },
+  plugins: {
+    list: () => request('/plugins'),
+    get: (id) => request(`/plugins/${encodeURIComponent(id)}`),
+    create: (values) => request('/plugins', { method: 'POST', body: values }),
+    update: (id, values) => request(`/plugins/${encodeURIComponent(id)}`, { method: 'PUT', body: values }),
+    remove: (id) => request(`/plugins/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    connectGithub: (id, values) => request(`/plugins/${encodeURIComponent(id)}/github/connect`, { method: 'POST', body: values }),
+    githubMe: (id) => request(`/plugins/${encodeURIComponent(id)}/github/me`, { method: 'POST' }),
+    githubRepos: (id) => request(`/plugins/${encodeURIComponent(id)}/github/repos`, { method: 'POST' }),
+    selectRepo: (id, values) => request(`/plugins/${encodeURIComponent(id)}/github/select`, { method: 'POST', body: values }),
+    clone: (id) => request(`/plugins/${encodeURIComponent(id)}/github/clone`, { method: 'POST' }),
+    repoList: (id, path = '') => request(`/plugins/${encodeURIComponent(id)}/repo/list`, { method: 'POST', body: { path } }),
+    approvePush: (id) => request(`/plugins/${encodeURIComponent(id)}/github/push/approve`, { method: 'POST' })
   }
 };

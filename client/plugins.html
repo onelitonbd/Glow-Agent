@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Connect plugins like GitHub so Glow Agent can work on your repositories.">
+  <script src="/assets/js/theme.js"></script>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <title>Plugins — Glow Agent</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <a class="icon-button" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
+      <h1 class="app-title">Plugins</h1>
+      <span class="header-spacer" aria-hidden="true"></span>
+    </header>
+    <section class="intro"><p class="eyebrow">Extend the workspace</p><p>Connect a plugin so the assistant can work on real external inputs. The <strong>GitHub</strong> plugin lets the AI read, edit, commit, and (with your confirmation) push changes to a cloned repository.</p></section>
+    <section aria-labelledby="pluginsLabel">
+      <div class="section-head"><h2 class="section-label" id="pluginsLabel">Your plugins</h2><span class="section-label section-count" id="pluginsCount"></span></div>
+      <div id="pluginsState" aria-live="polite"><div class="loading">Loading plugins</div></div>
+    </section>
+    <p class="app-footer">GLOW AGENT · PLUGINS</p>
+  </main>
+
+  <dialog class="dialog" id="githubDialog" aria-labelledby="githubDialogTitle">
+    <div class="dialog-handle" aria-hidden="true"></div>
+    <header class="dialog-head"><div><h2 id="githubDialogTitle">Connect GitHub</h2><p class="dialog-kicker">OAUTH · ACCOUNT ACCESS</p></div><button class="icon-button" id="closeGithubDialog" type="button" aria-label="Close GitHub connect form"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></header>
+    <form id="githubForm">
+      <div class="field"><label for="clientId">Client ID</label><input id="clientId" name="clientId" maxlength="80" autocomplete="off" placeholder="GitHub OAuth App client ID" required></div>
+      <div class="field"><label for="clientSecret">Client secret</label><input id="clientSecret" name="clientSecret" type="password" maxlength="120" autocomplete="off" placeholder="GitHub OAuth App client secret" required></div>
+      <div class="field"><label for="code">Authorization code</label><textarea id="code" name="code" rows="4" maxlength="600" placeholder="Paste the one-time code from GitHub" required></textarea><p class="hint">Set the OAuth app's callback URL to <span class="inline-code" id="callbackUrlLabel"></span> — or any URL you can receive the code at — then use a <strong>&quot;code is never expired/used&quot;</strong> authorization (device flow or the OAuth app)&nbsp;to get a one-time code and paste it here.</p></div>
+      <div class="dialog-actions"><button class="button secondary" id="cancelGithub" type="button">Cancel</button><button class="button" id="saveGithub" type="submit">Connect account</button></div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/assets/js/plugins.js"></script>
+</body>
+</html>

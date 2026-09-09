@@ -294,6 +294,38 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .fetch-result code { overflow: hidden; flex: 1; color: var(--text-soft); font: 11px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .fetch-result .button { min-height: 29px; }
 
+/* Plugins page */
+.plugin-flow { display: grid; gap: 11px; margin-top: 13px; }
+.plugin-step { display: grid; gap: 8px; }
+.plugin-step-title { display: flex; align-items: center; gap: 7px; color: var(--text-soft); font-size: 11px; font-weight: 750; }
+.plugin-step-title .step-num { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 6px; background: var(--accent-wash); color: var(--accent); font: 500 9px var(--mono); }
+.plugin-account { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); }
+.plugin-avatar { display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; overflow: hidden; border-radius: 9px; background: var(--accent-wash); color: var(--accent); font: 700 11px var(--font); }
+.plugin-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.plugin-avatar svg { width: 15px; height: 15px; }
+.plugin-account .data-subtitle { white-space: normal; }
+.field select { display: block; width: 100%; height: 46px; padding: 0 10px; border: 1px solid var(--line); border-radius: 11px; outline: 0; background: var(--surface-soft); color: var(--text); font-size: 14px; transition: border-color .16s ease, box-shadow .16s ease; }
+.field select:focus { border-color: rgba(198,255,107,.62); box-shadow: 0 0 0 3px var(--accent-wash); }
+.plugin-status { display: flex; align-items: center; gap: 6px; color: var(--muted); font: 10px var(--mono); }
+.plugin-status i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--quiet); box-shadow: 0 0 0 3px var(--surface); }
+.plugin-status.ok { color: var(--accent); }
+.plugin-status.ok i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.plugin-status.busy { color: var(--violet); }
+.plugin-status.busy i { background: var(--violet); box-shadow: 0 0 0 3px rgba(169,156,255,.14); }
+.plugin-status.error { color: var(--danger); }
+.plugin-status.error i { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-wash); }
+.switch { position: relative; display: inline-block; width: 40px; height: 24px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 99px; background: var(--surface-soft); transition: background .16s ease, border-color .16s ease; }
+.switch::after { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--quiet); content: ""; transition: transform .16s ease, background .16s ease; }
+.switch[aria-checked="true"] { border-color: rgba(198,255,107,.42); background: var(--accent); }
+.switch[aria-checked="true"]::after { transform: translateX(16px); background: var(--accent-ink); }
+.switch[aria-disabled="true"] { opacity: .5; }
+.repo-browser { display: grid; gap: 3px; max-height: 168px; padding: 7px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.repo-file { display: flex; min-width: 0; align-items: center; gap: 7px; padding: 5px 7px; border-radius: 7px; color: var(--muted); font: 11.5px var(--mono); text-align: left; }
+.repo-file:hover { background: var(--surface-raised); color: var(--text-soft); }
+.repo-file.dir { color: var(--violet); cursor: pointer; }
+.repo-file-toggle { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 2px; background: var(--quiet); }
+.repo-file.dir .repo-file-toggle { border-radius: 0; background: var(--violet); }
+
 .section-spaced { margin-top: 22px; }
 .action-hint { margin-top: 10px; }
 .button-spaced { margin-top: 12px; }
