@@ -201,8 +201,15 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .tool-call-icon svg { width: 13px; height: 13px; }
 .tool-call-label { min-width: 0; overflow: hidden; font: 11.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 @keyframes tool-pulse { 50% { opacity: .45; transform: scale(.94); } }
-/* Standalone timeline items get vertical spacing; the combined fallback card controls its own gap. */
-.message.assistant > .tool-call, .message.assistant > .tool-event { margin-top: 6px; }
+/* Live timeline items (thinking, tool call, tool result) are spaced apart so they never collapse.
+   These only target direct children of the assistant bubble (the timeline), not the combined
+   fallback card (whose .tool-event lives inside .tool-events-list). */
+.message.assistant > .thinking,
+.message.assistant > .tool-call,
+.message.assistant > .tool-event { margin: 0 0 14px; }
+.message.assistant > .thinking:last-child,
+.message.assistant > .tool-call:last-child,
+.message.assistant > .tool-event:last-child { margin-bottom: 0; }
 .markdown-code-block { margin: 0 0 20px; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #0c0e11; }
 .code-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 6px 8px 6px 14px; background: rgba(255,255,255,.045); border-bottom: 1px solid var(--line); color: var(--muted); }
 .code-language { font: 10.5px var(--mono); letter-spacing: .06em; text-transform: lowercase; }
