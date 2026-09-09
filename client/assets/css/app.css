@@ -121,10 +121,10 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .toast.is-visible { transform: translate(-50%,0); opacity: 1; }
 
 
-.chat-layout { display: flex; min-height: 100dvh; flex-direction: column; }
+.chat-layout { display: flex; height: 100vh; height: 100dvh; min-height: 0; flex-direction: column; }
 .chat-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .chat-status { color: var(--accent); font: 8px var(--mono); }
-.chat-log { display: grid; flex: 1 1 auto; align-content: start; gap: 12px; min-height: 250px; padding: 12px 0 18px; overflow: auto; }
+.chat-log { display: grid; flex: 1 1 auto; align-content: start; gap: 12px; min-height: 0; padding: 12px 0 18px; overflow: auto; }
 .chat-empty { align-self: center; margin: auto 0; text-align: center; }
 .chat-empty .empty-icon { margin-bottom: 13px; }
 .chat-empty h2 { margin: 0 0 5px; font-size: 17px; letter-spacing: -.045em; }
@@ -198,5 +198,5 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .error-screen { margin-top: 40px; }
 
 .app-footer { margin: 26px 0 0; color: var(--quiet); font: 7.5px var(--mono); text-align: center; }
-@media (min-width: 600px) { body { padding: 24px 0; } .app-shell { min-height: calc(100dvh - 48px); border-radius: 30px; } }
+@media (min-width: 600px) { body { padding: 24px 0; } .app-shell { min-height: calc(100dvh - 48px); border-radius: 30px; } .chat-layout { height: calc(100vh - 48px); height: calc(100dvh - 48px); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
