@@ -1,0 +1,19 @@
+{
+  "name": "glow-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first AI workspace for Termux with OpenAI-compatible BYOK providers.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node --no-warnings server/server.js",
+    "dev": "node --watch --no-warnings server/server.js",
+    "test": "node --no-warnings --test",
+    "check": "node --check server/server.js && node --check client/assets/js/chat.js && node --check client/assets/js/providers.js && node --check client/assets/js/models.js && node --check client/assets/js/skills.js"
+  },
+  "dependencies": {
+    "express": "5.2.1"
+  }
+}

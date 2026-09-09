@@ -1,8 +1,8 @@
 # Termux Web Application Plan
 
-**Planning status:** ready for product discovery
+**Planning status:** implementation active — see `docs/IMPLEMENTATION_PLAN.md` for the concrete MVP boundary and delivery order.
 
-**Repository review (9 September 2026):** this repository currently has only `README.md`. There are no source files, image assets, or existing architecture to preserve.
+**Repository review (9 September 2026):** the repository now contains the Neural Ink design prototypes and the working `client/` and `server/` implementation. The prototype pages remain as design references while the production app is split into focused client pages and a Termux Node server.
 
 ## 1. Agreed direction
 
@@ -16,7 +16,7 @@ We will create a **real, responsive website** rather than a one-screen mockup:
 
 “Only HTML, CSS and JavaScript” is fully compatible with this plan: the web pages use those three technologies and the server is JavaScript too. Node/Express and SQLite are infrastructure, not a separate frontend technology.
 
-The product’s actual purpose is still unknown, so the first implementation should be a reusable secure foundation. Exact pages, records, roles, and database fields will be based on the product brief.
+Glow Agent’s first concrete product boundary is now defined: a single-owner local-first AI workspace with OpenAI-compatible BYOK providers, server-side model discovery, reusable skills, and persisted conversations. The exact data and security decisions for the MVP are recorded in `docs/IMPLEMENTATION_PLAN.md`.
 
 ## 2. Recommended architecture
 
@@ -129,7 +129,7 @@ The exact installation command will be verified against the current Termux packa
 
 ```sh
 pkg update && pkg upgrade
-pkg install nodejs-lts git sqlite
+pkg install nodejs-lts git
 cd ~/Glow-Agent
 npm install
 cp .env.example .env
@@ -144,8 +144,8 @@ Termux describes itself as an Android terminal and Linux environment extended th
 
 ## 8. Delivery phases
 
-### Phase 0 — product brief (next)
-Define the product name, users, core job, pages, data objects, roles, and whether access is phone-only, LAN, or public. This is the only blocking phase.
+### Phase 0 — product boundary (complete)
+Glow Agent is defined as a single-owner, phone-local AI workspace. It begins with OpenAI-compatible BYOK providers, selected models, reusable skills, and persisted conversations. LAN/public access and account workflows are intentionally deferred; see `docs/IMPLEMENTATION_PLAN.md`.
 
 ### Phase 1 — foundation
 - Initialize the Node project, lint/test scripts, `.gitignore`, environment example, static client shell, and responsive design tokens.

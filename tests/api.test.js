@@ -1,0 +1,143 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import { createApp } from '../server/app.js';
+
+function listen(server) {
+  return new Promise((resolve) => {
+    const listeningServer = server.listen(0, '127.0.0.1', () => resolve(listeningServer));
+  });
+}
+
+function close(server) {
+  return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+}
+
+async function json(url, { method = 'GET', body } = {}) {
+  const response = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined
+  });
+  return { response, payload: response.status === 204 ? null : await response.json() };
+}
+
+test('local API persists safe providers, skills, models, and a provider-backed response', async (t) => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-test-'));
+  let sawCredential = false;
+  let sawSkillInstruction = false;
+  const upstream = createServer(async (request, response) => {
+    if (request.headers.authorization === 'Bearer local-test-key') sawCredential = true;
+    if (request.url === '/v1/models') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ data: [{ id: 'gpt-test-mini' }, { id: 'gpt-test' }] }));
+      return;
+    }
+    if (request.url === '/v1/chat/completions') {
+      let raw = '';
+      for await (const chunk of request) raw += chunk;
+      const body = JSON.parse(raw);
+      sawSkillInstruction = body.messages.some((message) => message.role === 'system' && message.content.includes('Answer in a compact checklist.'));
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ choices: [{ message: { content: 'A real local provider response.' } }] }));
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  const upstreamServer = await listen(upstream);
+  const upstreamPort = upstreamServer.address().port;
+  const config = {
+    rootDirectory: process.cwd(),
+    databasePath: join(tempDirectory, 'glow-agent.sqlite'),
+    encryptionKey: Buffer.alloc(32, 7),
+    providerFetchTimeoutMs: 2_000,
+    chatTimeoutMs: 2_000
+  };
+  const instance = createApp(config);
+  const appServer = await listen(instance.app);
+  const appPort = appServer.address().port;
+  const base = `http://127.0.0.1:${appPort}/api/v1`;
+  t.after(async () => {
+    await close(appServer);
+    instance.close();
+    await close(upstreamServer);
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+
+  const health = await json(`${base}/health`);
+  assert.equal(health.response.status, 200);
+  assert.equal(health.payload.data.status, 'ok');
+
+  const created = await json(`${base}/providers`, {
+    method: 'POST',
+    body: { name: 'Test provider', baseUrl: `http://127.0.0.1:${upstreamPort}/v1`, apiKey: 'local-test-key', backupKeys: ['fallback-test-key'] }
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.payload.data.name, 'Test provider');
+  assert.deepEqual(created.payload.data.keyStatus, { primaryAvailable: true, backupKeyCount: 1 });
+  assert.equal(JSON.stringify(created.payload).includes('local-test-key'), false);
+  const provider = created.payload.data;
+
+  const safeList = await json(`${base}/providers`);
+  assert.equal(safeList.response.status, 200);
+  assert.equal(JSON.stringify(safeList.payload).includes('fallback-test-key'), false);
+
+  const discovered = await json(`${base}/providers/${provider.id}/fetch-models`, { method: 'POST' });
+  assert.deepEqual(discovered.payload.data.models, ['gpt-test', 'gpt-test-mini']);
+  assert.equal(sawCredential, true);
+
+  const model = await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'gpt-test-mini' } });
+  assert.equal(model.response.status, 201);
+  const duplicateModel = await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'gpt-test-mini' } });
+  assert.equal(duplicateModel.response.status, 409);
+
+  const skill = await json(`${base}/skills`, {
+    method: 'POST',
+    body: { name: 'Checklist', description: 'Keep responses actionable.', instructions: 'Answer in a compact checklist.' }
+  });
+  assert.equal(skill.response.status, 201);
+  const updatedSkill = await json(`${base}/skills/${skill.payload.data.id}`, {
+    method: 'PUT',
+    body: { name: 'Checklist', description: 'Keep responses compact and actionable.', instructions: 'Answer in a compact checklist.' }
+  });
+  assert.equal(updatedSkill.payload.data.description, 'Keep responses compact and actionable.');
+
+  const conversation = await json(`${base}/conversations`, { method: 'POST' });
+  const response = await json(`${base}/conversations/${conversation.payload.data.id}/respond`, {
+    method: 'POST',
+    body: { message: 'Help me plan today.', providerId: provider.id, modelId: 'gpt-test-mini', skillIds: [skill.payload.data.id] }
+  });
+  assert.equal(response.response.status, 200);
+  assert.equal(response.payload.data.assistantMessage.content, 'A real local provider response.');
+  assert.equal(response.payload.data.conversation.messages.length, 2);
+  assert.equal(sawSkillInstruction, true);
+});
+
+test('invalid provider input is rejected without creating a record', async (t) => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-validation-'));
+  const instance = createApp({
+    rootDirectory: process.cwd(),
+    databasePath: join(tempDirectory, 'glow-agent.sqlite'),
+    encryptionKey: Buffer.alloc(32, 3),
+    providerFetchTimeoutMs: 2_000,
+    chatTimeoutMs: 2_000
+  });
+  const appServer = await listen(instance.app);
+  const port = appServer.address().port;
+  t.after(async () => {
+    await close(appServer);
+    instance.close();
+    await rm(tempDirectory, { recursive: true, force: true });
+  });
+  const result = await json(`http://127.0.0.1:${port}/api/v1/providers`, {
+    method: 'POST',
+    body: { name: 'Bad provider', baseUrl: 'file:///not-allowed', apiKey: 'key' }
+  });
+  assert.equal(result.response.status, 400);
+  assert.equal(result.payload.error.code, 'VALIDATION_ERROR');
+  const providers = await json(`http://127.0.0.1:${port}/api/v1/providers`);
+  assert.deepEqual(providers.payload.data, []);
+});

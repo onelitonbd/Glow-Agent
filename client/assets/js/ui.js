@@ -1,0 +1,72 @@
+export function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+export function icon(name) {
+  const paths = {
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    arrowLeft: '<path d="m15 18-6-6 6-6"/>',
+    more: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
+    pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
+    trash: '<path d="M3 6h18M8 6V4h8v2m-7 4v7m4-7v7m4-7v7M6 6l1 15h10l1-15"/>',
+    spark: '<path d="m12 3-1.91 5.81a2 2 0 0 1-1.28 1.28L3 12l5.81 1.91a2 2 0 0 1 1.28 1.28L12 21l1.91-5.81a2 2 0 0 1 1.28-1.28L21 12l-5.81-1.91a2 2 0 0 1-1.28-1.28L12 3Z"/>',
+    server: '<rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01M11 7h6M11 17h6"/>',
+    database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 12v7c0 1.66 3.58 3 8 3s8-1.34 8-3v-7"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    paperclip: '<path d="m21.4 11.6-8.7 8.7a6 6 0 0 1-8.5-8.5l9.1-9.1a4 4 0 0 1 5.7 5.7l-9.1 9.1a2 2 0 0 1-2.8-2.8l8.4-8.4"/>',
+    settings: '<path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-2.2 2.2-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V20.4h-3.1v-.11a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06-2.2-2.2.06-.06A1.7 1.7 0 0 0 6.78 15a1.7 1.7 0 0 0-1.56-1.03h-.11v-3.1h.11A1.7 1.7 0 0 0 6.78 9.84a1.7 1.7 0 0 0-.34-1.87l-.06-.06 2.2-2.2.06.06a1.7 1.7 0 0 0 1.87.34 1.7 1.7 0 0 0 1.03-1.56v-.11h3.1v.11a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06 2.2 2.2-.06.06a1.7 1.7 0 0 0-.34 1.87 1.7 1.7 0 0 0 1.56 1.03h.11v3.1h-.11A1.7 1.7 0 0 0 19.4 15Z"/>',
+    menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    close: '<path d="m18 6-12 12M6 6l12 12"/>',
+    check: '<path d="m5 12 4 4L19 6"/>'
+  };
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = paths[name] || '';
+  return svg;
+}
+
+export function iconButton(iconName, label, className = '') {
+  const button = element('button', `icon-button ${className}`.trim());
+  button.type = 'button';
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.append(icon(iconName));
+  return button;
+}
+
+let toastTimer;
+export function showToast(message, tone = 'default') {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = element('div', 'toast');
+    toast.id = 'toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    document.body.append(toast);
+  }
+  toast.textContent = message;
+  toast.dataset.tone = tone;
+  toast.classList.add('is-visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 3000);
+}
+
+export function setButtonBusy(button, busy, busyText = 'Working…') {
+  if (busy) {
+    button.dataset.label = button.textContent;
+    button.disabled = true;
+    button.textContent = busyText;
+  } else {
+    button.disabled = false;
+    button.textContent = button.dataset.label || button.textContent;
+  }
+}
+
+export function formatDate(isoDate) {
+  const date = new Date(isoDate);
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
+}

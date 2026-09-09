@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Choose models for an encrypted local Glow Agent provider.">
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <title>Models — Glow Agent</title>
+</head>
+<body>
+  <main class="app-shell">
+    <div class="status-line" aria-hidden="true"><span>GLOW</span><span class="status-signals">LOCAL · BYOK</span></div>
+    <header class="app-header">
+      <a class="icon-button" href="/providers.html" aria-label="Back to providers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
+      <h1 class="app-title">Models</h1>
+      <a class="header-link" href="/providers.html">Done</a>
+    </header>
+    <section class="intro"><p class="eyebrow" id="providerName">Provider</p><p id="providerDescription">Selected model IDs stay on this device. Discovery uses the encrypted provider credential only on the server.</p></section>
+    <section aria-labelledby="selectedModelsLabel">
+      <div class="section-head"><h2 class="section-label" id="selectedModelsLabel">Selected models</h2><span class="section-label section-count" id="selectedModelCount"></span></div>
+      <div id="selectedModelsState"><div class="loading">Loading selected models</div></div>
+    </section>
+    <section class="section-spaced" aria-labelledby="fetchModelsLabel">
+      <div class="section-head"><h2 class="section-label" id="fetchModelsLabel">Fetch models</h2></div>
+      <article class="card data-card"><div class="data-card-top"><span class="data-icon violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg></span><span><b class="data-name">Live provider discovery</b><span class="data-subtitle">GET /models from the server</span></span></div><p class="hint action-hint">Keys never enter the URL, client markup, API response, or browser storage.</p><button class="button full button-spaced" id="fetchModels" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg>Fetch models</button></article>
+      <div class="fetch-results" id="fetchResults" aria-live="polite"></div>
+    </section>
+    <p class="app-footer">GLOW AGENT · MODEL SELECTION</p>
+  </main>
+  <script type="module" src="/assets/js/models.js"></script>
+</body>
+</html>
