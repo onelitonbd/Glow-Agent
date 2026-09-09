@@ -56,6 +56,9 @@
     .providers-topbar { display:grid; grid-template-columns:34px minmax(0,1fr) 34px; align-items:center; gap:9px; padding:calc(42px + env(safe-area-inset-top)) 16px 14px; }.providers-topbar h2 { margin:0; font-size:14px; font-weight:800; letter-spacing:-.035em; text-align:center; }.providers-back, .providers-spacer { display:grid; width:34px; height:34px; place-items:center; border:1px solid var(--line); border-radius:11px; background:var(--surface); color:var(--text); }.providers-back svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.9; }.providers-spacer { visibility:hidden; }
     .providers-content { padding:4px 16px; }.providers-content > p { margin:0 4px 18px; color:var(--muted); font-size:11px; line-height:1.5; }.providers-empty { display:grid; min-height:340px; place-content:center; padding:26px; border:1px dashed rgba(255,255,255,.16); border-radius:20px; background:var(--surface-soft); text-align:center; }.providers-empty-icon { display:grid; width:43px; height:43px; place-items:center; margin:0 auto; border-radius:14px; background:var(--accent-wash); color:var(--accent); }.providers-empty-icon svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }.providers-empty h3 { margin:14px 0 6px; font-size:15px; letter-spacing:-.04em; }.providers-empty p { max-width:240px; margin:0; color:var(--muted); font-size:10px; line-height:1.55; }.add-provider { display:flex; align-items:center; justify-content:center; gap:7px; width:100%; height:39px; margin-top:15px; border:0; border-radius:11px; background:var(--accent); color:var(--accent-ink); font-size:10px; font-weight:850; }.add-provider svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:2.1; }
 
+    /* Blurred add-provider modal */
+    .provider-modal-layer { position:fixed; inset:0; z-index:20; display:grid; align-items:end; justify-items:center; }.provider-modal-layer[hidden] { display:none; }.provider-modal-scrim { position:absolute; inset:0; padding:0; border:0; background:rgba(4,5,7,.62); backdrop-filter:blur(13px) saturate(.72); opacity:0; transition:opacity .22s ease; }.provider-modal { position:relative; width:min(100%,470px); max-height:min(86dvh,760px); padding:12px 16px calc(20px + env(safe-area-inset-bottom)); transform:translateY(105%); overflow:auto; border:1px solid rgba(255,255,255,.12); border-bottom:0; border-radius:24px 24px 0 0; background:linear-gradient(135deg,rgba(198,255,107,.06),transparent 35%),var(--surface); box-shadow:0 -18px 60px rgba(0,0,0,.5); transition:transform .28s cubic-bezier(.2,.8,.2,1); }.provider-modal-layer.is-open .provider-modal-scrim { opacity:1; }.provider-modal-layer.is-open .provider-modal { transform:translateY(0); }.modal-handle { width:34px; height:4px; margin:0 auto 15px; border-radius:99px; background:#454b55; }.modal-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 1px 16px; }.modal-head h2 { margin:0; font-size:16px; font-weight:800; letter-spacing:-.045em; }.modal-head p { margin:3px 0 0; color:var(--muted); font-family:var(--mono); font-size:8px; }.modal-close { display:grid; width:30px; height:30px; place-items:center; border:1px solid var(--line); border-radius:9px; background:var(--surface-soft); color:var(--muted); }.modal-close svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }.provider-form { display:grid; gap:12px; }.input-field { display:grid; gap:6px; }.input-field label { display:flex; align-items:center; justify-content:space-between; color:var(--text-soft); font-size:9px; font-weight:750; }.input-field label span { color:var(--quiet); font-family:var(--mono); font-size:7px; font-weight:400; }.input-field input { width:100%; height:42px; padding:0 11px; border:1px solid var(--line); border-radius:11px; outline:0; background:var(--surface-soft); color:var(--text); font-family:var(--mono); font-size:10px; transition:border-color .16s ease,box-shadow .16s ease; }.input-field input::placeholder { color:var(--quiet); }.input-field input:focus { border-color:rgba(198,255,107,.62); box-shadow:0 0 0 3px var(--accent-wash); }.backup-area { padding:12px; border:1px solid var(--line); border-radius:13px; background:var(--surface-soft); }.backup-head { display:flex; align-items:start; justify-content:space-between; gap:10px; }.backup-head b { display:block; color:var(--text-soft); font-size:9px; }.backup-head p { margin:3px 0 0; color:var(--quiet); font-family:var(--mono); font-size:7.5px; line-height:1.45; }.backup-button { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; height:34px; margin-top:10px; border:1px dashed rgba(198,255,107,.38); border-radius:9px; background:transparent; color:var(--accent); font-family:var(--mono); font-size:8px; font-weight:500; }.backup-button svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:2; }.backup-list { display:grid; gap:9px; margin-top:10px; }.backup-key { display:grid; grid-template-columns:minmax(0,1fr) 29px; gap:7px; align-items:end; }.backup-key .input-field { gap:5px; }.backup-key input { height:38px; }.remove-backup { display:grid; width:29px; height:38px; place-items:center; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--muted); }.remove-backup svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:1.8; }.modal-actions { display:grid; grid-template-columns:1fr 1.3fr; gap:8px; margin-top:3px; }.modal-actions button { height:40px; border-radius:11px; font-size:9px; font-weight:800; }.cancel-provider { border:1px solid var(--line); background:var(--surface-soft); color:var(--text-soft); }.save-provider { border:0; background:var(--accent); color:var(--accent-ink); }
+
     .toggle { position:relative; width:32px; height:19px; padding:0; border:0; border-radius:99px; background:#363b45; transition:background .18s ease; }.toggle i { position:absolute; top:3px; left:3px; width:13px; height:13px; border-radius:50%; background:#c2c6cf; box-shadow:0 1px 3px rgba(0,0,0,.32); transition:transform .18s ease,background .18s ease; }.toggle[aria-pressed="true"] { background:var(--accent); }.toggle[aria-pressed="true"] i { transform:translateX(13px); background:var(--accent-ink); }
     .danger .row-icon { background:rgba(255,135,151,.12); color:var(--danger); }.danger .row-title { color:#ffd9df; }.danger .item-value { color:var(--danger); }
     .build { margin:0; padding:2px 20px; color:var(--quiet); font-size:7.5px; text-align:center; }.toast { position:fixed; bottom:22px; left:50%; z-index:5; max-width:calc(100% - 36px); padding:9px 11px; transform:translate(-50%,14px); border:1px solid rgba(198,255,107,.22); border-radius:9px; background:#1d2520; color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,.28); font-size:8px; opacity:0; pointer-events:none; transition:opacity .2s ease,transform .2s ease; }.toast.show { transform:translate(-50%,0); opacity:1; }
@@ -115,10 +118,25 @@
           <span class="providers-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 0 0-2 2v3m18 0V9a2 2 0 0 0-2-2h-3M8 17H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3"/><path d="M8 12h8M12 8v8"/></svg></span>
           <h3>No providers yet</h3>
           <p>Add your first provider when you are ready to connect a model.</p>
-          <button class="add-provider" type="button" data-action="Add provider"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add provider</button>
+          <button class="add-provider" id="openProviderModal" type="button" aria-haspopup="dialog" aria-controls="providerModal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add provider</button>
         </section>
       </div>
     </section>
+
+    <div class="provider-modal-layer" id="providerModalLayer" hidden>
+      <button class="provider-modal-scrim" id="providerModalScrim" type="button" tabindex="-1" aria-label="Close add provider"></button>
+      <section class="provider-modal" id="providerModal" role="dialog" aria-modal="true" aria-labelledby="providerModalTitle">
+        <div class="modal-handle" aria-hidden="true"></div>
+        <header class="modal-head"><div><h2 id="providerModalTitle">Add provider</h2><p>Connection details</p></div><button class="modal-close" id="providerModalClose" type="button" aria-label="Close add provider"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></header>
+        <form class="provider-form" id="providerForm">
+          <div class="input-field"><label for="providerName">Provider name <span>REQUIRED</span></label><input id="providerName" name="providerName" autocomplete="off" placeholder="e.g. My primary provider" required></div>
+          <div class="input-field"><label for="baseUrl">Base URL <span>REQUIRED</span></label><input id="baseUrl" name="baseUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://api.example.com/v1" required></div>
+          <div class="input-field"><label for="apiKey">API key <span>REQUIRED</span></label><input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="Paste API key" required></div>
+          <section class="backup-area" aria-labelledby="backupTitle"><div class="backup-head"><div><b id="backupTitle">Backup API keys</b><p>Add spare keys for this provider. They are tried only if the primary key cannot be used.</p></div></div><div class="backup-list" id="backupList"></div><button class="backup-button" id="addBackupKey" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add backup API key</button></section>
+          <div class="modal-actions"><button class="cancel-provider" id="cancelProvider" type="button">Cancel</button><button class="save-provider" type="submit">Save provider</button></div>
+        </form>
+      </section>
+    </div>
 
     <p class="build">GLOW AGENT · NEURAL INK · SETTINGS DESIGN v0.1</p>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -129,12 +147,49 @@
     const providersButton = document.getElementById('providersButton');
     const providersView = document.getElementById('providersView');
     const providersBack = document.getElementById('providersBack');
+    const providerModalLayer = document.getElementById('providerModalLayer');
+    const openProviderModal = document.getElementById('openProviderModal');
+    const providerModalClose = document.getElementById('providerModalClose');
+    const providerModalScrim = document.getElementById('providerModalScrim');
+    const cancelProvider = document.getElementById('cancelProvider');
+    const providerForm = document.getElementById('providerForm');
+    const providerName = document.getElementById('providerName');
+    const addBackupKey = document.getElementById('addBackupKey');
+    const backupList = document.getElementById('backupList');
     let toastTimer;
+    let modalCloseTimer;
+    let backupCount = 0;
     function showToast(message) { toast.textContent = message; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2200); }
     function setProviders(open) { phone.classList.toggle('providers-open', open); providersView.setAttribute('aria-hidden', String(!open)); providersButton.setAttribute('aria-expanded', String(open)); if (open) providersBack.focus(); else providersButton.focus(); }
+    function setProviderModal(open) {
+      clearTimeout(modalCloseTimer);
+      if (open) {
+        providerModalLayer.hidden = false;
+        requestAnimationFrame(() => providerModalLayer.classList.add('is-open'));
+        setTimeout(() => providerName.focus(), 180);
+      } else {
+        providerModalLayer.classList.remove('is-open');
+        modalCloseTimer = setTimeout(() => { providerModalLayer.hidden = true; openProviderModal.focus(); }, 280);
+      }
+    }
+    function addBackupField() {
+      backupCount += 1;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'backup-key';
+      wrapper.innerHTML = `<div class="input-field"><label for="backupKey${backupCount}">Backup API key ${backupCount} <span>OPTIONAL</span></label><input id="backupKey${backupCount}" name="backupKey${backupCount}" type="password" autocomplete="off" placeholder="Paste backup API key"></div><button class="remove-backup" type="button" aria-label="Remove backup API key ${backupCount}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button>`;
+      wrapper.querySelector('.remove-backup').addEventListener('click', () => wrapper.remove());
+      backupList.append(wrapper);
+      wrapper.querySelector('input').focus();
+    }
     providersButton.addEventListener('click', () => setProviders(true));
     providersBack.addEventListener('click', () => setProviders(false));
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && phone.classList.contains('providers-open')) setProviders(false); });
+    openProviderModal.addEventListener('click', () => setProviderModal(true));
+    providerModalClose.addEventListener('click', () => setProviderModal(false));
+    providerModalScrim.addEventListener('click', () => setProviderModal(false));
+    cancelProvider.addEventListener('click', () => setProviderModal(false));
+    addBackupKey.addEventListener('click', addBackupField);
+    providerForm.addEventListener('submit', (event) => { event.preventDefault(); setProviderModal(false); showToast('Provider saved — design prototype only'); });
+    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; if (!providerModalLayer.hidden) setProviderModal(false); else if (phone.classList.contains('providers-open')) setProviders(false); });
     document.querySelectorAll('.toggle').forEach((toggle) => toggle.addEventListener('click', () => { const enabled = toggle.getAttribute('aria-pressed') === 'true'; toggle.setAttribute('aria-pressed', String(!enabled)); }));
     document.querySelectorAll('[data-action]').forEach((control) => control.addEventListener('click', () => showToast(`${control.dataset.action} opens in the implementation phase`)));
   </script>
