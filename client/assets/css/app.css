@@ -186,6 +186,15 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .markdown-quote .markdown-paragraph { margin: 0; }
 .markdown-rule { height: 1px; margin: 20px 0; border: 0; background: var(--line); }
 .inline-code { padding: .13em .36em; border: 1px solid rgba(169,156,255,.25); border-radius: 5px; background: rgba(169,156,255,.12); color: #d7d1ff; font: .84em var(--mono); }
+.tool-events { margin: 0 0 15px; padding: 12px 13px; border: 1px solid rgba(198,255,107,.22); border-radius: 12px; background: var(--accent-wash); color: var(--text-soft); }
+.tool-events-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; color: var(--accent); }
+.tool-events-head svg { width: 14px; height: 14px; }
+.tool-events-title { font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.tool-events-list { display: grid; gap: 6px; }
+.tool-event { display: flex; min-width: 0; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.tool-event-icon { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 7px; background: var(--surface-raised); color: var(--accent); }
+.tool-event-icon svg { width: 13px; height: 13px; }
+.tool-event-text { min-width: 0; overflow: hidden; color: var(--text-soft); font: 11.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .markdown-code-block { margin: 0 0 20px; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #0c0e11; }
 .code-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 6px 8px 6px 14px; background: rgba(255,255,255,.045); border-bottom: 1px solid var(--line); color: var(--muted); }
 .code-language { font: 10.5px var(--mono); letter-spacing: .06em; text-transform: lowercase; }
@@ -255,9 +264,10 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .conversation-list .hint { margin: 7px 0; }
 
 .model-options { display: grid; gap: 7px; }
-.model-option { display: flex; align-items: center; gap: 9px; min-height: 45px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--text-soft); text-align: left; }
+.model-option { display: flex; width: 100%; min-width: 0; max-width: 100%; align-items: center; gap: 9px; min-height: 45px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--text-soft); text-align: left; }
 .model-option:hover, .model-option.selected { border-color: rgba(198,255,107,.4); background: var(--accent-wash); color: var(--accent); }
 .model-option .data-icon { flex: 0 0 auto; }
+.model-option .copy { flex: 1 1 auto; min-width: 0; overflow: hidden; }
 .model-option .data-subtitle { color: var(--quiet); }
 .model-option.selected .data-subtitle { color: var(--text-soft); }
 .model-list { display: grid; gap: 8px; }

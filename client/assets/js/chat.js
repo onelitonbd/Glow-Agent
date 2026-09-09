@@ -46,6 +46,30 @@ function syncThemeToggle() {
   themeToggle.setAttribute('aria-pressed', String(theme === 'light'));
 }
 
+function toolDisplay(toolId) {
+  return toolId === 'calculator' ? { label: 'Calculator', icon: 'calculator' } : { label: 'Current time', icon: 'clock' };
+}
+
+function renderToolEvents(toolEvents) {
+  const wrap = element('div', 'tool-events');
+  const head = element('div', 'tool-events-head');
+  head.append(icon('spark'));
+  const title = element('span', 'tool-events-title', `${toolEvents.length} tool${toolEvents.length === 1 ? '' : 's'} used`);
+  head.append(title);
+  wrap.append(head);
+  const list = element('div', 'tool-events-list');
+  toolEvents.forEach((toolEvent) => {
+    const info = toolDisplay(toolEvent.toolId);
+    const row = element('div', 'tool-event');
+    const badge = element('span', 'tool-event-icon'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon(info.icon));
+    const text = element('span', 'tool-event-text', toolEvent.summary || info.label);
+    row.append(badge, text);
+    list.append(row);
+  });
+  wrap.append(list);
+  return wrap;
+}
+
 function renderLog() {
   const followLatest = chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 56;
   const tableOffsets = [...chatLog.querySelectorAll('.markdown-table-scroll')].map((table) => table.scrollLeft);
@@ -71,6 +95,9 @@ function renderLog() {
     if (message.content) {
       if (message.role === 'assistant') bubble.append(renderMarkdown(message.content, { streaming: Boolean(message.isStreaming) }));
       else bubble.append(document.createTextNode(message.content));
+    }
+    if (message.role === 'assistant' && Array.isArray(message.toolEvents) && message.toolEvents.length) {
+      bubble.append(renderToolEvents(message.toolEvents));
     }
     chatLog.append(bubble);
   });
