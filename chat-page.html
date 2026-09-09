@@ -101,12 +101,10 @@
     .history-launcher svg { width: 19px; height: 19px; fill: currentColor; }
     .icon-button svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
     .session-title { min-width: 0; padding: 0 2px; }
-    .session-title small, .session-title b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .session-title small { margin-bottom: 2px; color: var(--muted); font-family: var(--mono); font-size: 7.5px; letter-spacing: .055em; text-transform: uppercase; }
-    .session-title b { color: var(--text); font-size: 12px; font-weight: 800; letter-spacing: -.027em; }
+    .session-title b { display: block; overflow: hidden; color: var(--text); font-size: 12px; font-weight: 800; letter-spacing: -.027em; text-overflow: ellipsis; white-space: nowrap; }
 
     /* Left-side chat history drawer */
-    .drawer-scrim { position: absolute; inset: 0; z-index: 10; background: rgba(0,0,0,.54); opacity: 0; visibility: hidden; transition: opacity .22s ease, visibility .22s ease; }
+    .drawer-scrim { position: absolute; inset: 0; z-index: 10; padding: 0; border: 0; background: rgba(0,0,0,.54); opacity: 0; visibility: hidden; transition: opacity .22s ease, visibility .22s ease; }
     .history-drawer { position: absolute; top: 0; bottom: 0; left: 0; z-index: 11; display: flex; width: min(86%, 365px); flex-direction: column; padding: calc(19px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom)); transform: translateX(-104%); border-right: 1px solid var(--line); background: #121419; box-shadow: 20px 0 50px rgba(0,0,0,.36); transition: transform .26s cubic-bezier(.2,.8,.2,1); }
     .phone.drawer-open .drawer-scrim { visibility: visible; opacity: 1; }
     .phone.drawer-open .history-drawer { transform: translateX(0); }
@@ -128,34 +126,11 @@
     .history-item b { font-size: 10px; font-weight: 700; letter-spacing: -.018em; }.history-item span { margin-top: 4px; color: var(--quiet); font-family: var(--mono); font-size: 7.5px; }.history-item.active b { color: var(--accent); }
     .drawer-footer { display: flex; align-items: center; gap: 7px; margin: 14px 4px 0; padding: 11px 9px; border-top: 1px solid var(--line); color: var(--muted); font-family: var(--mono); font-size: 8px; }.drawer-footer i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
 
-    .endpoint {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      margin: 0 16px;
-      padding: 9px 10px;
-      border: 1px solid var(--line);
-      border-radius: 13px;
-      background: rgba(22, 25, 31, .84);
-    }
-    .endpoint-icon { display: grid; width: 23px; height: 23px; place-items: center; border-radius: 8px; background: var(--accent-wash); color: var(--accent); }
-    .endpoint-icon svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 2; fill: none; }
-    .endpoint-copy { min-width: 0; flex: 1; }
-    .endpoint-copy b, .endpoint-copy span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-    .endpoint-copy b { color: var(--text-soft); font-size: 9.5px; font-weight: 750; }
-    .endpoint-copy span { margin-top: 2px; color: var(--muted); font-size: 8px; }
-    .endpoint-state { flex: 0 0 auto; padding: 5px 6px; border-radius: 6px; background: var(--accent-wash); color: var(--accent); font-size: 7px; font-weight: 500; letter-spacing: .045em; }
-
     /* Conversation */
     .thread {
-      padding: 20px 16px 168px;
+      padding: 16px 16px 168px;
       scroll-behavior: smooth;
     }
-    .thread-top { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
-    .eyebrow { margin: 0 0 5px; color: var(--accent); font-size: 8px; font-weight: 500; letter-spacing: .115em; text-transform: uppercase; }
-    .thread-status { margin: 0; color: var(--text-soft); font-size: 11px; font-weight: 650; letter-spacing: -.02em; }
-    .thread-meta { display: flex; align-items: center; gap: 5px; padding-bottom: 2px; color: var(--quiet); font-size: 8px; white-space: nowrap; }
-    .thread-meta i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
 
     .day-stamp { display: flex; align-items: center; gap: 9px; margin: 0 0 16px; color: var(--quiet); font-family: var(--mono); font-size: 8px; }
     .day-stamp::before, .day-stamp::after { content: ""; height: 1px; flex: 1; background: var(--line); }
@@ -222,11 +197,11 @@
     .send { background: var(--accent); color: var(--accent-ink); }.send:disabled { background: var(--surface); color: var(--quiet); cursor: default; }.send svg { stroke-width: 2.2; }
     .composer-hint { margin: 7px 3px 0; color: var(--quiet); font-size: 7.5px; text-align: center; }.composer-hint strong { color: var(--muted); font-weight: 500; }
 
-    .toast { position: absolute; top: 154px; left: 50%; z-index: 3; width: max-content; max-width: calc(100% - 36px); padding: 8px 10px; transform: translate(-50%, -12px); border: 1px solid rgba(198,255,107,.22); border-radius: 9px; background: #1d2520; color: var(--accent); box-shadow: 0 10px 24px rgba(0,0,0,.28); font-family: var(--mono); font-size: 8px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }.toast.show { transform: translate(-50%, 0); opacity: 1; }
+    .toast { position: absolute; top: 92px; left: 50%; z-index: 3; width: max-content; max-width: calc(100% - 36px); padding: 8px 10px; transform: translate(-50%, -12px); border: 1px solid rgba(198,255,107,.22); border-radius: 9px; background: #1d2520; color: var(--accent); box-shadow: 0 10px 24px rgba(0,0,0,.28); font-family: var(--mono); font-size: 8px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }.toast.show { transform: translate(-50%, 0); opacity: 1; }
     .empty-state { display: grid; min-height: 400px; place-content: center; padding: 20px; text-align: center; }.empty-state .brand-mark { display: grid; width: 44px; height: 44px; margin: 0 auto; place-items: center; border-radius: 15px; background: var(--accent); color: var(--accent-ink); box-shadow: 0 8px 18px var(--accent-wash); font-size: 20px; }.empty-state h2 { margin: 14px 0 6px; font-size: 20px; letter-spacing: -.05em; }.empty-state p { max-width: 270px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }.empty-state .quick-actions { justify-content: center; margin-top: 18px; }
 
     @media (min-width: 600px) { body { padding: 24px 0; }.phone { min-height: calc(100dvh - 48px); border-radius: 30px; } }
-    @media (max-height: 720px) { .thread { padding-top: 14px; }.thread-top { margin-bottom: 13px; }.message { margin-bottom: 11px; }.run-card { margin-bottom: 11px; }.composer-area { padding-top: 12px; } }
+    @media (max-height: 720px) { .thread { padding-top: 14px; }.message { margin-bottom: 11px; }.run-card { margin-bottom: 11px; }.composer-area { padding-top: 12px; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
   </style>
 </head>
@@ -255,23 +230,14 @@
 
     <header class="topbar">
       <button class="history-launcher" id="historyLauncher" type="button" aria-label="Open chat history" aria-controls="historyDrawer" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.9c.4 6.2 3.3 9.5 9.4 10.1-6.1.5-9 3.8-9.4 10.1C11.5 15.8 8.6 12.5 2.5 12 8.6 11.4 11.5 8.1 12 1.9Z"/></svg></button>
-      <div class="session-title"><small>Private chat</small><b id="sessionName" title="Product launch brief for the new private AI workspace">Product launch brief for the new private AI workspace</b></div>
+      <div class="session-title"><b id="sessionName" title="Product launch brief for the new private AI workspace">Product launch brief for the new private AI workspace</b></div>
       <button class="icon-button" type="button" aria-label="Chat settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.3a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56v.1h-3v-.1a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.1 15a1.7 1.7 0 0 0-1.56-1.03h-.1v-3h.1A1.7 1.7 0 0 0 7.1 9.94a1.7 1.7 0 0 0-.34-1.88L6.7 8l2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56v-.1h3v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.1v3h-.1A1.7 1.7 0 0 0 19.4 15Z"/></svg></button>
     </header>
 
-    <section class="endpoint" aria-label="Connected model endpoint">
-      <span class="endpoint-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 0 0-2 2v3m18 0V9a2 2 0 0 0-2-2h-3M8 17H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3"/><path d="M8 12h8M12 8v8"/></svg></span>
-      <span class="endpoint-copy"><b>OpenAI-compatible endpoint</b><span>api.your-provider.com/v1 · gpt-4.1-mini</span></span>
-      <span class="endpoint-state">KEY LOCAL</span>
-    </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <section class="thread" id="thread" aria-label="Conversation">
-      <div class="thread-top">
-        <div><p class="eyebrow">Private conversation</p><p class="thread-status">Your connected skills are ready when needed.</p></div>
-        <div class="thread-meta"><i></i>3 skills ready</div>
-      </div>
       <div id="conversation">
         <p class="day-stamp">Today, 09:38</p>
 
