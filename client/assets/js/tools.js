@@ -19,7 +19,7 @@ async function load() {
       const copy = element('span'); copy.append(element('b', 'data-name', tool.name), element('span', 'data-subtitle', tool.description));
       top.append(badge, copy);
       const meta = element('div', 'data-meta'); const dot = document.createElement('i');
-      meta.append(dot, document.createTextNode('Select in chat to permit this tool for one response'));
+      meta.append(dot, document.createTextNode('Always offered to the model in chat'));
       card.append(top, meta);
       list.append(card);
     });

@@ -123,7 +123,7 @@ export function executeToolCall(call, allowedToolIds) {
   const id = typeof call?.function?.name === 'string' ? call.function.name : '';
   const tool = Object.hasOwn(toolCatalog, id) ? toolCatalog[id] : null;
   if (!tool || !allowedToolIds.has(id)) {
-    return { toolId: id || 'unknown', result: { error: 'This tool was not selected for this request.' }, summary: 'An unselected tool call was blocked.' };
+    return { toolId: id || 'unknown', result: { error: 'This tool is not available.' }, summary: 'An unavailable tool call was blocked.' };
   }
   let argumentsObject;
   try {

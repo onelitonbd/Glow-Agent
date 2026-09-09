@@ -3,7 +3,7 @@ import { notFound, validation, AppError } from '../lib/errors.js';
 import { identifier, modelId, requiredString } from '../lib/validate.js';
 import { now } from '../db/database.js';
 import { providerCredentials, providerFetch, upstreamUrl } from './providers.js';
-import { executeToolCall, openAiToolDefinitions, selectedTools } from './tools.js';
+import { executeToolCall, listTools, openAiToolDefinitions } from './tools.js';
 
 function toConversation(row) {
   return {
@@ -124,7 +124,8 @@ function prepareResponse(db, rawConversationId, body) {
   const selected = db.prepare('SELECT 1 FROM provider_models WHERE provider_id = ? AND model_id = ?').get(providerId, selectedModelId);
   if (!selected) throw validation('Select this model for the provider before starting a chat.');
   const skills = selectedSkills(db, body.skillIds);
-  const tools = selectedTools(body.toolIds);
+  // Every available built-in tool is always offered to the model; no selection is needed.
+  const tools = listTools();
   const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
   const system = systemMessage(skills);

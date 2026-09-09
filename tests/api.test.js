@@ -166,9 +166,9 @@ test('allowlisted tools use a bounded arithmetic parser and safe time-zone handl
   const clock = executeToolCall({ function: { name: 'current_time', arguments: '{"timeZone":"Asia/Dhaka"}' } }, new Set(['current_time']));
   assert.equal(clock.result.timeZone, 'Asia/Dhaka');
   const blocked = executeToolCall({ function: { name: 'shell', arguments: '{}' } }, new Set(['calculator']));
-  assert.equal(blocked.result.error, 'This tool was not selected for this request.');
+  assert.equal(blocked.result.error, 'This tool is not available.');
   const prototypeName = executeToolCall({ function: { name: '__proto__', arguments: '{}' } }, new Set(['calculator']));
-  assert.equal(prototypeName.result.error, 'This tool was not selected for this request.');
+  assert.equal(prototypeName.result.error, 'This tool is not available.');
 });
 
 test('invalid provider input is rejected without creating a record', async (t) => {

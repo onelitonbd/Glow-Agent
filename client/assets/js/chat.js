@@ -11,8 +11,7 @@ const state = {
   tools: [],
   selectedProviderId: null,
   selectedModelId: null,
-  selectedSkillIds: new Set(),
-  selectedToolIds: new Set()
+  selectedSkillIds: new Set()
 };
 const chatLog = document.getElementById('chatLog');
 const title = document.getElementById('conversationTitle');
@@ -166,26 +165,22 @@ function toolIcon(toolId) {
 }
 
 function renderToolPicker() {
-  toolTrigger.classList.toggle('selected', state.selectedToolIds.size > 0);
-  toolTrigger.setAttribute('aria-label', state.selectedToolIds.size ? `${state.selectedToolIds.size} tool${state.selectedToolIds.size === 1 ? '' : 's'} permitted for the next response. Select tools.` : 'Select tools');
+  toolTrigger.classList.add('selected');
+  toolTrigger.setAttribute('aria-label', 'Tools are always enabled for this workspace.');
+  toolTrigger.title = 'Tools are always enabled';
   chatToolOptions.replaceChildren();
   if (state.tools.length === 0) {
     chatToolOptions.append(element('p', 'hint', 'No tools are available from the local server.'));
     return;
   }
+  chatToolOptions.append(element('p', 'hint', 'These tools are always offered to the model — no selection needed.'));
   state.tools.forEach((tool) => {
-    const isSelected = state.selectedToolIds.has(tool.id);
-    const option = element('button', `model-option${isSelected ? ' selected' : ''}`);
+    const option = element('button', 'model-option selected');
     option.type = 'button';
     const badge = element('span', 'data-icon violet'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon(toolIcon(tool.id)));
     const copy = element('span'); copy.append(element('b', 'data-name', tool.name), element('span', 'data-subtitle', tool.description));
-    option.append(badge, copy);
-    if (isSelected) option.append(icon('check'));
-    option.addEventListener('click', () => {
-      if (isSelected) state.selectedToolIds.delete(tool.id);
-      else state.selectedToolIds.add(tool.id);
-      renderToolPicker();
-    });
+    option.append(badge, copy, icon('check'));
+    option.addEventListener('click', () => showToast(`${tool.name} is always enabled.`));
     chatToolOptions.append(option);
   });
 }
@@ -280,14 +275,13 @@ composer.addEventListener('submit', async (event) => {
       providerId: state.selectedProviderId,
       modelId: state.selectedModelId,
       skillIds: [...state.selectedSkillIds],
-      toolIds: [...state.selectedToolIds]
+      toolIds: state.tools.map((tool) => tool.id)
     }, async (eventName, payload) => {
       if (eventName === 'thinking') appendStreamDelta('thinking', payload.text);
       if (eventName === 'token') appendStreamDelta('token', payload.text);
     });
     state.conversation = result.conversation;
     state.selectedSkillIds.clear();
-    state.selectedToolIds.clear();
     await loadWorkspace();
     renderLog();
   } catch (error) {
