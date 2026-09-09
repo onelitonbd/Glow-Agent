@@ -34,8 +34,6 @@ a { color: inherit; }
 svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 
 .app-shell { position: relative; width: min(100%, 470px); min-height: 100dvh; margin: 0 auto; padding: env(safe-area-inset-top) 16px calc(28px + env(safe-area-inset-bottom)); background: radial-gradient(circle at 100% -3%, rgba(198,255,107,.065), transparent 24rem), var(--bg); box-shadow: 0 0 0 1px rgba(255,255,255,.035), var(--shadow); }
-.status-line { display: flex; align-items: center; justify-content: space-between; height: 29px; padding: 0 5px; font: 500 10px var(--mono); }
-.status-signals { display: flex; align-items: center; gap: 6px; font-size: 9px; }
 .app-header { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 12px 0 16px; }
 .app-title { overflow: hidden; margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -.04em; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .header-actions { display: flex; gap: 7px; }
