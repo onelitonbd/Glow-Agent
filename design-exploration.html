@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0c10">
+  <title>Glow Agent — Mobile UI directions</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #090a0d;
+      --page-glow: rgba(147, 116, 255, .18);
+      --bg: #0d0f13;
+      --panel: #16191f;
+      --panel-strong: #1e222a;
+      --panel-soft: #121419;
+      --text: #f7f8fb;
+      --muted: #9fa6b2;
+      --quiet: #696f7a;
+      --line: rgba(255,255,255,.09);
+      --accent: #c6ff6b;
+      --accent-ink: #10150a;
+      --accent-2: #8d7dff;
+      --accent-wash: rgba(198,255,107,.12);
+      --danger: #ff8a9a;
+      --shadow: 0 22px 50px rgba(0,0,0,.35);
+      --radius-lg: 24px;
+      --radius-md: 17px;
+      --radius-sm: 12px;
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--page); }
+    body {
+      min-width: 320px;
+      margin: 0;
+      background:
+        radial-gradient(circle at 100% 0%, var(--page-glow), transparent 29rem),
+        var(--page);
+      color: var(--text);
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    button { font: inherit; }
+    button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .page {
+      width: min(100%, 470px);
+      min-height: 100dvh;
+      margin: 0 auto;
+      overflow: hidden;
+      background: var(--bg);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 0 80px rgba(0,0,0,.25);
+    }
+
+    /* Design direction shelf */
+    .study-head { padding: calc(20px + env(safe-area-inset-top)) 20px 14px; }
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 17px; height: 1px; background: currentColor; opacity: .85; }
+    h1 { max-width: 360px; margin: 0; font-size: clamp(27px, 8vw, 36px); letter-spacing: -.055em; line-height: .98; }
+    .intro { max-width: 390px; margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .intro strong { color: var(--text); font-weight: 650; }
+
+    .choice-bar {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 3px 20px 16px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .choice-bar::-webkit-scrollbar { display: none; }
+    .choice {
+      position: relative;
+      flex: 0 0 auto;
+      min-width: 126px;
+      padding: 11px 11px 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-soft);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+    .choice:active { transform: scale(.98); }
+    .choice[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash); }
+    .choice[aria-pressed="true"]::after {
+      content: "";
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-wash);
+    }
+    .choice-name { display: block; font-size: 12px; font-weight: 750; letter-spacing: -.01em; }
+    .choice-note { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .mini-swatches { display: flex; gap: 3px; margin-top: 10px; }
+    .mini-swatches i { display: block; width: 15px; height: 5px; border-radius: 99px; }
+    .mini-swatches .a { background: var(--choice-a); }
+    .mini-swatches .b { background: var(--choice-b); }
+    .mini-swatches .c { background: var(--choice-c); }
+    .choice.ink { --choice-a:#101216; --choice-b:#c6ff6b; --choice-c:#8d7dff; }
+    .choice.iris { --choice-a:#171026; --choice-b:#f4b4ff; --choice-c:#74ddff; }
+    .choice.paper { --choice-a:#efede6; --choice-b:#2623a6; --choice-c:#ff8b67; }
+
+    .section-label { display: flex; align-items: center; justify-content: space-between; padding: 0 20px 10px; }
+    .section-label h2 { margin: 0; font-size: 13px; letter-spacing: -.01em; }
+    .section-label span { color: var(--quiet); font-size: 11px; }
+    .palette {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      padding: 0 20px 20px;
+    }
+    .swatch { min-width: 0; }
+    .swatch-color { height: 26px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: var(--swatch); box-shadow: inset 0 1px rgba(255,255,255,.12); }
+    .swatch span { display: block; margin-top: 5px; color: var(--quiet); font-size: 8px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+
+    .divider { height: 1px; margin: 0 20px; background: var(--line); }
+    .layout-tabs { display: flex; gap: 6px; padding: 14px 20px 16px; overflow-x: auto; scrollbar-width: none; }
+    .layout-tabs::-webkit-scrollbar { display: none; }
+    .layout-tab {
+      flex: 1 0 auto;
+      min-width: 92px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+    .layout-tab[aria-pressed="true"] { border-color: transparent; background: var(--text); color: var(--bg); }
+
+    /* The chosen mobile product direction */
+    .app-cut { position: relative; padding: 0 12px 16px; }
+    .app-frame {
+      position: relative;
+      min-height: 670px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 82% -3%, var(--accent-wash), transparent 26%),
+        var(--bg);
+      box-shadow: var(--shadow);
+    }
+    .status { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px 7px; color: var(--text); font-size: 10px; font-weight: 800; letter-spacing: .02em; }
+    .status-icons { display: flex; align-items: center; gap: 5px; }
+    .wifi { width: 14px; height: 9px; border: 2px solid currentColor; border-bottom: 0; border-radius: 14px 14px 0 0; opacity: .85; }
+    .battery { width: 18px; height: 9px; border: 1.4px solid currentColor; border-radius: 3px; opacity: .9; }
+    .battery::after { content: ""; display: block; width: 65%; height: 100%; border-radius: 1px; background: currentColor; }
+    .app-header { display: flex; align-items: center; justify-content: space-between; padding: 7px 16px 13px; }
+    .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    .spark {
+      display: grid;
+      width: 31px;
+      height: 31px;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 10px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      box-shadow: 0 6px 16px var(--accent-wash);
+      font-size: 17px;
+      font-weight: 900;
+    }
+    .brand-copy { min-width: 0; }
+    .brand-name { display: block; font-size: 13px; font-weight: 850; letter-spacing: -.035em; }
+    .brand-state { display: flex; align-items: center; gap: 4px; margin-top: 1px; color: var(--muted); font-size: 9px; }
+    .online-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+    .icon-button {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--text);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .endpoint { display: flex; align-items: center; gap: 8px; margin: 0 15px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--panel) 86%, transparent); }
+    .endpoint-mark { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 7px; background: var(--accent-wash); color: var(--accent); font-size: 12px; }
+    .endpoint-copy { min-width: 0; flex: 1; }
+    .endpoint-copy b, .endpoint-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .endpoint-copy b { font-size: 10px; }
+    .endpoint-copy span { margin-top: 2px; color: var(--muted); font-size: 9px; }
+    .endpoint > small { padding: 4px 6px; border-radius: 6px; background: var(--accent-wash); color: var(--accent); font-size: 8px; font-weight: 850; letter-spacing: .04em; }
+
+    .screen { padding: 18px 15px 83px; }
+    .screen-top { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 15px; }
+    .screen-title { margin: 0; font-size: 21px; font-weight: 810; letter-spacing: -.05em; }
+    .screen-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+    .new-action { padding: 7px 9px; border: 0; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 10px; font-weight: 850; cursor: pointer; }
+
+    /* Focus chat option */
+    .prompt-card { padding: 13px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); }
+    .prompt-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .tiny-tag { padding: 4px 6px; border-radius: 6px; background: var(--accent-wash); color: var(--accent); font-size: 8px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+    .time { color: var(--quiet); font-size: 9px; }
+    .prompt-card p { margin: 0; color: var(--text); font-size: 12px; line-height: 1.45; }
+    .agent-message { margin: 13px 1px 0; }
+    .agent-topline { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; font-size: 10px; font-weight: 800; }
+    .agent-mini { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font-size: 11px; }
+    .agent-message p { margin: 0; color: #dfe3ea; font-size: 12px; line-height: 1.52; }
+    .run-card { display: flex; align-items: center; gap: 9px; margin-top: 11px; padding: 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel-soft); }
+    .run-icon { display: grid; width: 25px; height: 25px; place-items: center; border: 1px solid var(--line); border-radius: 8px; color: var(--accent-2); font-size: 14px; }
+    .run-copy { flex: 1; min-width: 0; }
+    .run-copy b, .run-copy span { display: block; }
+    .run-copy b { font-size: 10px; }
+    .run-copy span { overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .check { color: var(--accent); font-size: 12px; font-weight: 900; }
+    .skill-row { display: flex; gap: 6px; margin-top: 12px; overflow: hidden; }
+    .skill-chip { flex: 0 0 auto; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: 9px; }
+    .skill-chip b { color: var(--text); font-weight: 750; }
+
+    /* Workbench option */
+    .objective { padding: 14px; border: 1px solid transparent; border-radius: var(--radius-md); background: linear-gradient(var(--panel),var(--panel)) padding-box, linear-gradient(135deg,var(--accent),transparent 55%,var(--accent-2)) border-box; }
+    .objective .tiny-tag { display: inline-block; }
+    .objective h3 { margin: 9px 0 5px; font-size: 16px; letter-spacing: -.035em; }
+    .objective p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .progress { height: 4px; margin-top: 13px; overflow: hidden; border-radius: 9px; background: var(--line); }
+    .progress i { display: block; width: 62%; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--accent),var(--accent-2)); }
+    .steps { display: grid; gap: 8px; margin-top: 13px; }
+    .step { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); }
+    .step-num { display: grid; width: 21px; height: 21px; place-items: center; flex: 0 0 auto; border-radius: 50%; background: var(--accent-wash); color: var(--accent); font-size: 9px; font-weight: 850; }
+    .step.active .step-num { background: var(--accent); color: var(--accent-ink); }
+    .step-copy { flex: 1; min-width: 0; }
+    .step-copy b, .step-copy span { display: block; }
+    .step-copy b { font-size: 10px; }
+    .step-copy span { overflow: hidden; margin-top: 2px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .step-state { font-size: 9px; font-weight: 800; color: var(--quiet); }
+    .step.active .step-state { color: var(--accent); }
+
+    /* Library option */
+    .search-box { display: flex; align-items: center; gap: 7px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--quiet); font-size: 10px; }
+    .filter-row { display: flex; gap: 6px; margin: 11px 0 13px; overflow: hidden; }
+    .filter { flex: 0 0 auto; padding: 6px 9px; border-radius: 99px; background: var(--panel); color: var(--muted); font-size: 9px; font-weight: 750; }
+    .filter.active { background: var(--accent); color: var(--accent-ink); }
+    .library-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .library-card { min-height: 109px; padding: 11px; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); }
+    .library-icon { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 9px; background: var(--icon-wash); color: var(--icon); font-size: 14px; }
+    .library-card h3 { margin: 14px 0 3px; font-size: 11px; letter-spacing: -.015em; }
+    .library-card p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.35; }
+    .library-card:nth-child(1) { --icon:var(--accent); --icon-wash:var(--accent-wash); }
+    .library-card:nth-child(2) { --icon:#71d6ff; --icon-wash:rgba(113,214,255,.13); }
+    .library-card:nth-child(3) { --icon:#d3a3ff; --icon-wash:rgba(211,163,255,.13); }
+    .library-card:nth-child(4) { --icon:#ffae72; --icon-wash:rgba(255,174,114,.13); }
+
+    .composer { position: absolute; right: 12px; bottom: 61px; left: 12px; display: flex; align-items: center; gap: 7px; padding: 7px; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--panel-strong) 94%, transparent); box-shadow: 0 10px 28px rgba(0,0,0,.25); backdrop-filter: blur(12px); }
+    .composer-add { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 9px; background: var(--panel); color: var(--muted); font-size: 17px; cursor: pointer; }
+    .composer-text { flex: 1; color: var(--muted); font-size: 10px; }
+    .send { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 900; cursor: pointer; }
+    .bottom-nav { position: absolute; right: 0; bottom: 0; left: 0; display: flex; justify-content: space-around; padding: 9px 8px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(12px); }
+    .nav-item { display: grid; min-width: 44px; place-items: center; gap: 3px; color: var(--quiet); font-size: 8px; font-weight: 700; }
+    .nav-icon { height: 15px; font-size: 15px; line-height: 15px; }
+    .nav-item.active { color: var(--accent); }
+    .nav-item.active .nav-icon { text-shadow: 0 0 13px var(--accent); }
+
+    .design-notes { padding: 5px 20px calc(30px + env(safe-area-inset-bottom)); }
+    .note-card { padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel-soft); }
+    .note-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .note-top h2 { margin: 0; font-size: 12px; letter-spacing: -.02em; }
+    .note-top span { color: var(--accent); font-size: 9px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+    .note-card p { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .principles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .principles span { padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 9px; }
+
+    /* Theme variations */
+    .theme-ink { --page:#090a0d; --page-glow:rgba(141,125,255,.18); --bg:#0d0f13; --panel:#16191f; --panel-strong:#1e222a; --panel-soft:#121419; --text:#f7f8fb; --muted:#9fa6b2; --quiet:#696f7a; --line:rgba(255,255,255,.09); --accent:#c6ff6b; --accent-ink:#10150a; --accent-2:#8d7dff; --accent-wash:rgba(198,255,107,.12); }
+    .theme-iris { --page:#100b19; --page-glow:rgba(244,180,255,.19); --bg:#151020; --panel:#211a30; --panel-strong:#2a213b; --panel-soft:#1a1426; --text:#fcf7ff; --muted:#b9afc5; --quiet:#81788e; --line:rgba(255,255,255,.1); --accent:#f4b4ff; --accent-ink:#28102b; --accent-2:#74ddff; --accent-wash:rgba(244,180,255,.13); }
+    .theme-paper { color-scheme:light; --page:#e7e5df; --page-glow:rgba(38,35,166,.13); --bg:#f8f7f2; --panel:#ffffff; --panel-strong:#eeece6; --panel-soft:#f1efe8; --text:#1d1e2a; --muted:#6e6d77; --quiet:#93919a; --line:rgba(29,30,42,.11); --accent:#2623a6; --accent-ink:#ffffff; --accent-2:#ec6e50; --accent-wash:rgba(38,35,166,.1); --shadow:0 22px 50px rgba(30,29,38,.16); }
+    .theme-paper .agent-message p { color:#34333d; }
+    .theme-paper .layout-tab[aria-pressed="true"] { background:var(--text); color:var(--bg); }
+    .theme-paper .status { color:var(--text); }
+
+    @media (min-width: 600px) {
+      body { padding: 24px 0; }
+      .page { min-height: calc(100dvh - 48px); border-radius: 32px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <main class="page theme-ink" id="page">
+    <header class="study-head">
+      <p class="eyebrow">Glow Agent · mobile study</p>
+      <h1>An agent command center that feels personal.</h1>
+      <p class="intro">A <strong>BYOK-first</strong> chat experience for OpenAI-compatible models, tools, and skills—built for one-handed use on a phone.</p>
+    </header>
+
+    <section aria-labelledby="mood-title">
+      <div class="section-label"><h2 id="mood-title">01 / Pick a visual mood</h2><span id="mood-caption">Dark, precise, technical</span></div>
+      <div class="choice-bar" role="group" aria-label="Visual mood choices">
+        <button class="choice ink" type="button" data-theme="ink" aria-pressed="true">
+          <span class="choice-name">Neural Ink</span><span class="choice-note">Dark / precise</span>
+          <span class="mini-swatches" aria-hidden="true"><i class="a"></i><i class="b"></i><i class="c"></i></span>
+        </button>
+        <button class="choice iris" type="button" data-theme="iris" aria-pressed="false">
+          <span class="choice-name">Iris Signal</span><span class="choice-note">Expressive / premium</span>
+          <span class="mini-swatches" aria-hidden="true"><i class="a"></i><i class="b"></i><i class="c"></i></span>
+        </button>
+        <button class="choice paper" type="button" data-theme="paper" aria-pressed="false">
+          <span class="choice-name">Paper Circuit</span><span class="choice-note">Light / editorial</span>
+          <span class="mini-swatches" aria-hidden="true"><i class="a"></i><i class="b"></i><i class="c"></i></span>
+        </button>
+      </div>
+      <div class="palette" aria-label="Selected palette">
+        <div class="swatch"><div class="swatch-color" style="--swatch:var(--bg)"></div><span>Base</span></div>
+        <div class="swatch"><div class="swatch-color" style="--swatch:var(--panel)"></div><span>Surface</span></div>
+        <div class="swatch"><div class="swatch-color" style="--swatch:var(--text)"></div><span>Type</span></div>
+        <div class="swatch"><div class="swatch-color" style="--swatch:var(--accent)"></div><span>Signal</span></div>
+        <div class="swatch"><div class="swatch-color" style="--swatch:var(--accent-2)"></div><span>Assist</span></div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+    <section aria-labelledby="layout-title">
+      <div class="section-label" style="padding-top:14px"><h2 id="layout-title">02 / Explore screen directions</h2><span id="layout-caption">Conversation first</span></div>
+      <div class="layout-tabs" role="group" aria-label="Mobile screen directions">
+        <button class="layout-tab" type="button" data-layout="focus" aria-pressed="true">Focus chat</button>
+        <button class="layout-tab" type="button" data-layout="workbench" aria-pressed="false">Agent run</button>
+        <button class="layout-tab" type="button" data-layout="library" aria-pressed="false">Skills &amp; tools</button>
+      </div>
+    </section>
+
+    <section class="app-cut" aria-label="Selected mobile interface preview">
+      <div class="app-frame">
+        <div class="status"><span>9:41</span><span class="status-icons"><i class="wifi" aria-hidden="true"></i><i class="battery" aria-hidden="true"></i></span></div>
+        <header class="app-header">
+          <div class="brand"><span class="spark" aria-hidden="true">✦</span><span class="brand-copy"><span class="brand-name">Glow Agent</span><span class="brand-state"><i class="online-dot" aria-hidden="true"></i> Ready to collaborate</span></span></div>
+          <button class="icon-button" aria-label="Open app menu">•••</button>
+        </header>
+        <div class="endpoint"><span class="endpoint-mark" aria-hidden="true">⌘</span><span class="endpoint-copy"><b>Custom OpenAI-compatible endpoint</b><span>api.your-provider.com/v1 · gpt-4.1-mini</span></span><small>LOCAL KEY</small></div>
+        <div class="screen" id="screen"></div>
+        <div class="composer"><button class="composer-add" aria-label="Add a file or tool">+</button><span class="composer-text" id="composerText">Ask your agent anything</span><button class="send" aria-label="Send message">↑</button></div>
+        <nav class="bottom-nav" aria-label="Primary navigation">
+          <span class="nav-item active" data-nav="focus"><span class="nav-icon">◌</span>Chat</span>
+          <span class="nav-item" data-nav="workbench"><span class="nav-icon">◇</span>Runs</span>
+          <span class="nav-item" data-nav="library"><span class="nav-icon">✦</span>Library</span>
+          <span class="nav-item"><span class="nav-icon">⌘</span>Connect</span>
+        </nav>
+      </div>
+    </section>
+
+    <section class="design-notes" aria-labelledby="why-title">
+      <div class="note-card">
+        <div class="note-top"><h2 id="why-title">Direction rationale</h2><span id="rationale-tag">Focus chat</span></div>
+        <p id="rationale">A calm chat-first home for fast prompting. Tool activity stays visible but never interrupts the conversation.</p>
+        <div class="principles"><span>44px touch targets</span><span>One-handed actions</span><span>Key status visible</span><span>Progress, not magic</span></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const page = document.getElementById('page');
+    const screen = document.getElementById('screen');
+    const moodCaption = document.getElementById('mood-caption');
+    const layoutCaption = document.getElementById('layout-caption');
+    const composerText = document.getElementById('composerText');
+    const rationaleTag = document.getElementById('rationale-tag');
+    const rationale = document.getElementById('rationale');
+
+    const themeData = {
+      ink: { caption: 'Dark, precise, technical' },
+      iris: { caption: 'Expressive, premium, creative' },
+      paper: { caption: 'Clear, calm, editorial' }
+    };
+
+    const layouts = {
+      focus: {
+        caption: 'Conversation first',
+        composer: 'Ask your agent anything',
+        tag: 'Focus chat',
+        rationale: 'A calm chat-first home for fast prompting. Tool activity stays visible but never interrupts the conversation.',
+        markup: `
+          <div class="screen-top"><div><h2 class="screen-title">What are we making?</h2><p class="screen-subtitle">Today · private workspace</p></div><button class="new-action">+ New</button></div>
+          <article class="prompt-card"><div class="prompt-meta"><span class="tiny-tag">You</span><span class="time">just now</span></div><p>Turn my rough launch notes into a confident product brief, then flag the missing decisions.</p></article>
+          <article class="agent-message"><div class="agent-topline"><span class="agent-mini">✦</span> Glow <span class="time">working with context</span></div><p>I’ll shape this into a brief and call out the choices that still need your input.</p><div class="run-card"><span class="run-icon">◈</span><span class="run-copy"><b>Read workspace context</b><span>notes.md · brand-guidelines.pdf</span></span><span class="check">✓</span></div><div class="skill-row"><span class="skill-chip"><b>Skill</b> · Product brief</span><span class="skill-chip"><b>Tool</b> · File reader</span><span class="skill-chip"><b>2 sources</b></span></div></article>`
+      },
+      workbench: {
+        caption: 'Clear agent progress',
+        composer: 'Steer this agent run',
+        tag: 'Agent run',
+        rationale: 'A transparent execution view for longer tasks. The agent shows its plan, current action, and useful output so people stay in control.',
+        markup: `
+          <div class="screen-top"><div><h2 class="screen-title">Build product brief</h2><p class="screen-subtitle">Agent run · 01m 24s elapsed</p></div><button class="new-action">Pause</button></div>
+          <section class="objective"><span class="tiny-tag">Objective</span><h3>Launch brief for Glow Agent</h3><p>Research, structure, and draft the first version from the connected workspace.</p><div class="progress"><i></i></div></section>
+          <div class="steps"><article class="step"><span class="step-num">✓</span><span class="step-copy"><b>Gather source context</b><span>4 notes and 2 links summarized</span></span><span class="step-state">Done</span></article><article class="step active"><span class="step-num">2</span><span class="step-copy"><b>Write positioning narrative</b><span>Using Brand voice skill</span></span><span class="step-state">Live</span></article><article class="step"><span class="step-num">3</span><span class="step-copy"><b>Surface open decisions</b><span>Will ask only essential questions</span></span><span class="step-state">Next</span></article></div>`
+      },
+      library: {
+        caption: 'Capabilities at a glance',
+        composer: 'Search or add a capability',
+        tag: 'Skills & tools',
+        rationale: 'A compact discovery surface for reusable skills and connected tools. Clear labels distinguish what the model knows from what it can do.',
+        markup: `
+          <div class="screen-top"><div><h2 class="screen-title">Your library</h2><p class="screen-subtitle">8 ready · 3 need setup</p></div><button class="new-action">+ Add</button></div>
+          <div class="search-box"><span aria-hidden="true">⌕</span><span>Search skills and tools</span></div><div class="filter-row"><span class="filter active">All 11</span><span class="filter">Skills</span><span class="filter">Tools</span><span class="filter">Connected</span></div>
+          <div class="library-grid"><article class="library-card"><span class="library-icon">✦</span><h3>Web research</h3><p>Skill · cite and compare sources</p></article><article class="library-card"><span class="library-icon">⌁</span><h3>HTTP requests</h3><p>Tool · approved endpoints</p></article><article class="library-card"><span class="library-icon">▱</span><h3>File reader</h3><p>Tool · 4 files connected</p></article><article class="library-card"><span class="library-icon">◒</span><h3>Content planner</h3><p>Skill · structured output</p></article></div>`
+      }
+    };
+
+    function chooseTheme(theme) {
+      page.classList.remove('theme-ink', 'theme-iris', 'theme-paper');
+      page.classList.add(`theme-${theme}`);
+      moodCaption.textContent = themeData[theme].caption;
+      document.querySelectorAll('[data-theme]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.theme === theme));
+      });
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', getComputedStyle(page).getPropertyValue('--bg').trim());
+    }
+
+    function chooseLayout(layout) {
+      const view = layouts[layout];
+      screen.innerHTML = view.markup;
+      layoutCaption.textContent = view.caption;
+      composerText.textContent = view.composer;
+      rationaleTag.textContent = view.tag;
+      rationale.textContent = view.rationale;
+      document.querySelectorAll('[data-layout]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.layout === layout));
+      });
+      document.querySelectorAll('.nav-item[data-nav]').forEach((item) => item.classList.toggle('active', item.dataset.nav === layout));
+    }
+
+    document.querySelectorAll('[data-theme]').forEach((button) => button.addEventListener('click', () => chooseTheme(button.dataset.theme)));
+    document.querySelectorAll('[data-layout]').forEach((button) => button.addEventListener('click', () => chooseLayout(button.dataset.layout)));
+    chooseLayout('focus');
+  </script>
+</body>
+</html>
