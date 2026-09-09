@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { createApp } from '../server/app.js';
 import { executeToolCall, selectedTools } from '../server/services/tools.js';
+import { listFiles, readFile, sqlQuery, writeFile } from '../server/services/workspace-tools.js';
+import { createDatabase } from '../server/db/database.js';
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -94,7 +96,7 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   assert.equal(health.response.status, 200);
   assert.equal(health.payload.data.status, 'ok');
   const tools = await json(`${base}/tools`);
-  assert.deepEqual(tools.payload.data.map((tool) => tool.id), ['calculator', 'current_time']);
+  assert.deepEqual(tools.payload.data.map((tool) => tool.id), ['calculator', 'current_time', 'list_files', 'read_file', 'write_file', 'sql_query', 'web_search', 'fetch_url']);
 
   const created = await json(`${base}/providers`, {
     method: 'POST',
@@ -162,30 +164,56 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   assert.equal(streamedConversation.payload.data.messages[1].reasoning, 'Checking the details. ');
 });
 
-test('allowlisted tools use a bounded arithmetic parser and safe time-zone handling', () => {
+test('allowlisted tools use a bounded arithmetic parser and safe time-zone handling', async () => {
   const selected = selectedTools(['calculator', 'current_time']);
-  const arithmetic = executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"(2 + 3) * 4"}' } }, new Set(selected.map((tool) => tool.id)));
+  const arithmetic = await executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"(2 + 3) * 4"}' } }, new Set(selected.map((tool) => tool.id)));
   assert.equal(arithmetic.result.result, 20);
-  const rejected = executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"process.exit()"}' } }, new Set(['calculator']));
+  const rejected = await executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"process.exit()"}' } }, new Set(['calculator']));
   assert.match(rejected.result.error, /Expression must use/u);
-  const clock = executeToolCall({ function: { name: 'current_time', arguments: '{"timeZone":"Asia/Dhaka"}' } }, new Set(['current_time']));
+  const clock = await executeToolCall({ function: { name: 'current_time', arguments: '{"timeZone":"Asia/Dhaka"}' } }, new Set(['current_time']));
   assert.equal(clock.result.timeZone, 'Asia/Dhaka');
-  const blocked = executeToolCall({ function: { name: 'shell', arguments: '{}' } }, new Set(['calculator']));
+  const blocked = await executeToolCall({ function: { name: 'shell', arguments: '{}' } }, new Set(['calculator']));
   assert.equal(blocked.result.error, 'This tool is not available.');
-  const prototypeName = executeToolCall({ function: { name: '__proto__', arguments: '{}' } }, new Set(['calculator']));
+  const prototypeName = await executeToolCall({ function: { name: '__proto__', arguments: '{}' } }, new Set(['calculator']));
   assert.equal(prototypeName.result.error, 'This tool is not available.');
 });
 
-test('read_skill returns a skill\'s instructions on demand and blocks missing skills', () => {
+test('read_skill returns a skill\'s instructions on demand and blocks missing skills', async () => {
   const fakeSkill = { id: 'skill_id', name: 'Checklist', description: 'Keep responses actionable.', instructions: 'Answer in a compact checklist.' };
   const getSkill = (skillId) => skillId === fakeSkill.id ? fakeSkill : null;
-  const loaded = executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"skill_id"}' } }, new Set(['read_skill']), { getSkill });
+  const loaded = await executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"skill_id"}' } }, new Set(['read_skill']), { getSkill });
   assert.equal(loaded.result.instructions, 'Answer in a compact checklist.');
   assert.equal(loaded.summary, 'Read skill: Checklist');
-  const missing = executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"nope"}' } }, new Set(['read_skill']), { getSkill });
+  const missing = await executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"nope"}' } }, new Set(['read_skill']), { getSkill });
   assert.match(missing.result.error, /Skill not found/u);
-  const gated = executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"skill_id"}' } }, new Set([]), { getSkill });
+  const gated = await executeToolCall({ function: { name: 'read_skill', arguments: '{"skillId":"skill_id"}' } }, new Set([]), { getSkill });
   assert.equal(gated.summary, 'An unavailable tool call was blocked.');
+});
+
+test('workspace tools list, read, and write files safely within the workspace', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'glow-workspace-tool-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const write = writeFile(root, 'notes/demo.md', '# Hello\n\nWorld.\n');
+  assert.equal(write.wrote, true);
+  const read = readFile(root, 'notes/demo.md');
+  assert.equal(read.content.includes('World'), true);
+  const list = listFiles(root, '');
+  assert.equal(list.entryCount >= 1, true);
+  const escape = readFile(root, '../outside.txt');
+  assert.match(escape.error, /outside the workspace/u);
+});
+
+test('sql_query runs only read-only SELECT statements', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'glow-sql-test-'));
+  const dbPath = join(dir, 'tool-sql-test.sqlite');
+  const db = createDatabase(dbPath);
+  t.after(() => { db.close(); });
+  db.exec('CREATE TABLE IF NOT EXISTS t (id INTEGER, name TEXT);');
+  db.exec('DELETE FROM t; INSERT INTO t VALUES (1, \'a\'), (2, \'b\');');
+  const query = sqlQuery(db, 'SELECT * FROM t');
+  assert.equal(query.rowCount, 2);
+  const blocked = sqlQuery(db, 'DROP TABLE t');
+  assert.match(blocked.error, /Only read-only/u);
 });
 
 test('invalid provider input is rejected without creating a record', async (t) => {

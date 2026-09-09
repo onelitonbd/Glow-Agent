@@ -300,7 +300,7 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
   }
 }
 
-export async function respondToConversation(db, rawConversationId, body, timeoutMs) {
+export async function respondToConversation(db, rawConversationId, body, timeoutMs, { rootDirectory, fetchTimeoutMs } = {}) {
   const context = prepareResponse(db, rawConversationId, body);
   const { provider, credentials } = providerCredentials(db, context.providerId);
   const toolEvents = [];
@@ -322,7 +322,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
     }
     context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
     for (const call of toolCalls) {
-      const execution = executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db) });
+      const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs });
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
     }
@@ -330,7 +330,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   return finishResponse(db, context, assistantContent, reasoning, toolEvents);
 }
 
-export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit) {
+export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, fetchTimeoutMs } = {}) {
   const context = prepareResponse(db, rawConversationId, body);
   const { provider, credentials } = providerCredentials(db, context.providerId);
   emit('started', { conversationId: context.conversation.id });
@@ -354,7 +354,7 @@ export async function respondToConversationStream(db, rawConversationId, body, t
     }
     context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
     for (const call of result.toolCalls) {
-      const execution = executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db) });
+      const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs });
       toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
     }
