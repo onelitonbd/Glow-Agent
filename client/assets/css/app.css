@@ -45,8 +45,10 @@
 }
 
 * { box-sizing: border-box; }
-html { min-width: 320px; background: var(--canvas); }
-body { min-width: 320px; min-height: 100dvh; margin: 0; background: radial-gradient(circle at 88% 0%, rgba(169,156,255,.13), transparent 28rem), var(--canvas); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+/* On phones the shell is full-bleed, so the page canvas uses the shell colour and the
+   app runs flush to the edges of the screen instead of stopping short of them. */
+html { min-width: 320px; background: var(--bg); }
+body { min-width: 320px; min-height: 100dvh; margin: 0; background: radial-gradient(circle at 88% 0%, rgba(169,156,255,.13), transparent 28rem), var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 button, input, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: wait; opacity: .62; }
@@ -155,7 +157,10 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .toast.is-visible { transform: translate(-50%,0); opacity: 1; }
 
 
-.chat-layout { display: flex; height: 100vh; height: 100dvh; min-height: 0; flex-direction: column; }
+/* The chat screen is a fixed-height column, not a scrolling page: the shell's 28px
+   page padding would just sit as dead space between the composer and the bottom of
+   the screen, so it drops to the same 12px the composer design uses. */
+.chat-layout { display: flex; height: 100vh; height: 100dvh; min-height: 0; flex-direction: column; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
 .chat-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .chat-status { color: var(--accent); font: 8px var(--mono); }
 .chat-log { display: grid; flex: 1 1 auto; align-content: start; gap: 12px; min-height: 0; padding: 12px 0 18px; overflow: auto; }
@@ -274,5 +279,5 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .error-screen { margin-top: 40px; }
 
 .app-footer { margin: 26px 0 0; color: var(--quiet); font: 7.5px var(--mono); text-align: center; }
-@media (min-width: 600px) { body { padding: 24px 0; } .app-shell { min-height: calc(100dvh - 48px); border-radius: 30px; } .chat-layout { height: calc(100vh - 48px); height: calc(100dvh - 48px); } }
+@media (min-width: 600px) { html { background: var(--canvas); } body { padding: 24px 0; background: radial-gradient(circle at 88% 0%, rgba(169,156,255,.13), transparent 28rem), var(--canvas); } .app-shell { min-height: calc(100dvh - 48px); border-radius: 30px; } .chat-layout { height: calc(100vh - 48px); height: calc(100dvh - 48px); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
