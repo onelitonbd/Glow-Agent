@@ -159,6 +159,20 @@ async function providerCompletion(provider, credentials, selectedModelId, messag
   return response;
 }
 
+async function providerCompletionWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, maxRetries }) {
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    try {
+      return await providerCompletion(provider, credentials, selectedModelId, messages, tools, timeoutMs);
+    } catch (error) {
+      if (attempt >= maxRetries) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(400 * (attempt + 1), 2_500)));
+      attempt += 1;
+    }
+  }
+  throw failureError('PROVIDER_RETRY_EXHAUSTED', 'The provider could not be reached after repeated attempts.');
+}
+
 function finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline = null) {
   if (!assistantContent) {
     throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider did not return a final chat response after tool use.', { expose: true });
@@ -230,10 +244,48 @@ async function* upstreamSsePayloads(response) {
   }
 }
 
+function failureError(code, message) {
+  return new AppError(502, code, message, { expose: true });
+}
+
+// Throws an AppError while carrying any content produced so far so a mid-stream interruption
+// can be resumed instead of being thrown away and treated as a brand-new request.
+function streamFailure(shift, code, message) {
+  const error = failureError(code, message);
+  error.partial = shift();
+  throw error;
+}
+
+// A provider round is allowed to be retried. On a retry after a partial stream, the partial
+// assistant text is pushed back into the conversation so the model continues from where it
+// stopped instead of restarting. Incomplete tool calls are not resumed (they are regenerated).
+async function streamProviderRoundWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, maxRetries }) {
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    try {
+      return await streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit });
+    } catch (error) {
+      if (attempt >= maxRetries) throw error;
+      const partial = error.partial;
+      if (partial?.content) {
+        messages.push({ role: 'assistant', content: partial.content });
+        messages.push({ role: 'user', content: 'Continue your previous response exactly from where it stopped. Do not repeat any text you already wrote; continue with the next part of your answer.' });
+      }
+      await new Promise((resolve) => setTimeout(resolve, Math.min(400 * (attempt + 1), 2_500)));
+      attempt += 1;
+    }
+  }
+  throw failureError('PROVIDER_RETRY_EXHAUSTED', 'The provider could not be reached after repeated attempts.');
+}
+
 async function streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const timedOut = () => new AppError(502, 'PROVIDER_TIMEOUT', 'The provider streaming request timed out.', { expose: true });
+  let content = '';
+  let reasoning = '';
+  const toolCalls = [];
+  const shift = () => ({ content, reasoning, toolCalls: toolCalls.filter((call) => call.function.name) });
+  const timedOut = () => streamFailure(shift, 'PROVIDER_TIMEOUT', 'The provider streaming request timed out.');
   try {
     let response;
     try {
@@ -251,11 +303,11 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
       });
     } catch (error) {
       if (controller.signal.aborted) throw timedOut();
-      throw new AppError(502, 'PROVIDER_UNAVAILABLE', error.message, { expose: true });
+      throw streamFailure(shift, 'PROVIDER_UNAVAILABLE', error.message);
     }
     if (!response?.ok) {
       const status = response?.status ? ` (HTTP ${response.status})` : '';
-      throw new AppError(502, 'PROVIDER_RESPONSE_ERROR', `The provider could not complete this request${status}.`, { expose: true });
+      throw streamFailure(shift, 'PROVIDER_RESPONSE_ERROR', `The provider could not complete this request${status}.`);
     }
     if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
       let payload;
@@ -263,16 +315,16 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
         payload = await response.json();
       } catch {
         if (controller.signal.aborted) throw timedOut();
-        throw new AppError(502, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.', { expose: true });
+        throw streamFailure(shift, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.');
       }
       const message = payload?.choices?.[0]?.message;
-      const content = normalizeAssistantContent(message?.content);
-      if (content) emit('token', { text: content });
-      return { content, reasoning: '', toolCalls: Array.isArray(message?.tool_calls) ? message.tool_calls.slice(0, 5) : [] };
+      const finalContent = normalizeAssistantContent(message?.content);
+      if (finalContent) {
+        content += finalContent;
+        emit('token', { text: finalContent });
+      }
+      return { content, reasoning: '', toolCalls: Array.isArray(message?.tool_calls) ? message.tool_calls : [] };
     }
-    let content = '';
-    let reasoning = '';
-    const toolCalls = [];
     const emittedToolCalls = new Set();
     try {
       for await (const data of upstreamSsePayloads(response)) {
@@ -304,7 +356,7 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
       }
     } catch (error) {
       if (controller.signal.aborted) throw timedOut();
-      throw error;
+      throw streamFailure(shift, 'PROVIDER_STREAM_INTERRUPTED', 'The provider streaming response was interrupted.');
     }
     return { content, reasoning, toolCalls: toolCalls.filter((call) => call.function.name) };
   } finally {
@@ -312,15 +364,15 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
   }
 }
 
-export async function respondToConversation(db, rawConversationId, body, timeoutMs, { rootDirectory, fetchTimeoutMs } = {}) {
+export async function respondToConversation(db, rawConversationId, body, timeoutMs, { rootDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
   const context = prepareResponse(db, rawConversationId, body);
   const { provider, credentials } = providerCredentials(db, context.providerId);
   const toolEvents = [];
   const timeline = [];
   let assistantContent = '';
   let reasoning = '';
-  for (let round = 0; round < 4; round += 1) {
-    const response = await providerCompletion(provider, credentials, context.selectedModelId, context.messages, context.tools, timeoutMs);
+  for (let round = 0; round < maxToolRounds; round += 1) {
+    const response = await providerCompletionWithRetry({ provider, credentials, selectedModelId: context.selectedModelId, messages: context.messages, tools: context.tools, timeoutMs, maxRetries: maxProviderRetries });
     let payload;
     try {
       payload = await response.json();
@@ -328,7 +380,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
       throw new AppError(502, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.', { expose: true });
     }
     const providerMessage = payload?.choices?.[0]?.message;
-    const toolCalls = Array.isArray(providerMessage?.tool_calls) ? providerMessage.tool_calls.slice(0, 5) : [];
+    const toolCalls = Array.isArray(providerMessage?.tool_calls) ? providerMessage.tool_calls : [];
     if (toolCalls.length === 0) {
       assistantContent = normalizeAssistantContent(providerMessage?.content);
       const reasoningText = typeof providerMessage?.reasoning_content === 'string' ? providerMessage.reasoning_content : (typeof providerMessage?.reasoning === 'string' ? providerMessage.reasoning : '');
@@ -351,7 +403,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   return finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
 }
 
-export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, fetchTimeoutMs } = {}) {
+export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
   const context = prepareResponse(db, rawConversationId, body);
   const { provider, credentials } = providerCredentials(db, context.providerId);
   emit('started', { conversationId: context.conversation.id });
@@ -364,23 +416,18 @@ export async function respondToConversationStream(db, rawConversationId, body, t
     else if (event === 'tool_call') timeline.push({ type: 'tool_call', name: data.name });
     else if (event === 'tool_result') timeline.push({ type: 'tool_result', toolId: data.toolId, summary: data.summary });
   };
-  let assistantContent = '';
-  let reasoning = '';
-  for (let round = 0; round < 4; round += 1) {
-    const result = await streamProviderRound({
+  for (let round = 0; round < maxToolRounds; round += 1) {
+    const result = await streamProviderRoundWithRetry({
       provider,
       credentials,
       selectedModelId: context.selectedModelId,
       messages: context.messages,
       tools: context.tools,
       timeoutMs,
-      emit: timelineEmit
+      emit: timelineEmit,
+      maxRetries: maxProviderRetries
     });
-    reasoning += result.reasoning;
-    if (result.toolCalls.length === 0) {
-      assistantContent = result.content;
-      break;
-    }
+    if (result.toolCalls.length === 0) break;
     context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
     for (const call of result.toolCalls) {
       const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs });
@@ -389,6 +436,10 @@ export async function respondToConversationStream(db, rawConversationId, body, t
       context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
     }
   }
+  // Derive the persisted content/reasoning from the emitted timeline so a resumed stream keeps
+  // the partial text that was already shown live, rather than only the last retry's segment.
+  const assistantContent = timeline.filter((entry) => entry.type === 'content').map((entry) => entry.text).join('');
+  const reasoning = timeline.filter((entry) => entry.type === 'thinking').map((entry) => entry.text).join('');
   const result = finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
   emit('completed', result);
   return result;

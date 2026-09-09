@@ -103,7 +103,7 @@ export function createApiRouter({ db, config }) {
     try { success(response, getConversation(db, request.params.conversationId)); } catch (error) { next(error); }
   });
   router.post('/conversations/:conversationId/respond', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), asyncRoute(async (request, response) => {
-    success(response, await respondToConversation(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, { rootDirectory: config.rootDirectory, fetchTimeoutMs: config.providerFetchTimeoutMs }));
+    success(response, await respondToConversation(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, { rootDirectory: config.rootDirectory, fetchTimeoutMs: config.providerFetchTimeoutMs, maxToolRounds: config.maxToolRounds, maxProviderRetries: config.maxProviderRetries }));
   }));
   router.post('/conversations/:conversationId/respond/stream', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), async (request, response) => {
     response.status(200).set({
@@ -115,7 +115,7 @@ export function createApiRouter({ db, config }) {
     response.flushHeaders?.();
     const emit = (event, data) => response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     try {
-      await respondToConversationStream(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, emit, { rootDirectory: config.rootDirectory, fetchTimeoutMs: config.providerFetchTimeoutMs });
+      await respondToConversationStream(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, emit, { rootDirectory: config.rootDirectory, fetchTimeoutMs: config.providerFetchTimeoutMs, maxToolRounds: config.maxToolRounds, maxProviderRetries: config.maxProviderRetries });
     } catch (error) {
       const appError = error instanceof AppError ? error : new AppError(500, 'INTERNAL_ERROR', 'An unexpected server error occurred.', { expose: true });
       emit('error', { code: appError.code, message: appError.expose ? appError.message : 'An unexpected server error occurred.' });

@@ -303,3 +303,129 @@ test('streaming emits live tool_call and tool_result events and persists an orde
   assert.ok(timeline.some((entry) => entry.type === 'tool_result' && entry.summary.includes('= 72')));
   assert.ok(timeline.some((entry) => entry.type === 'content'));
 });
+
+test('provider failures are retried up to the configured limit, then succeed', async (t) => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-retry-'));
+  let attempts = 0;
+  const upstream = createServer(async (request, response) => {
+    if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return; }
+    attempts += 1;
+    if (attempts <= 2) { response.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({})); return; }
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ choices: [{ message: { content: 'Recovered after retries.' } }] }));
+  });
+  const upstreamServer = await listen(upstream);
+  const config = {
+    rootDirectory: process.cwd(),
+    databasePath: join(tempDirectory, 'glow-agent.sqlite'),
+    providerFetchTimeoutMs: 2_000,
+    chatTimeoutMs: 2_000,
+    maxToolRounds: 10,
+    maxProviderRetries: 5
+  };
+  const instance = createApp(config);
+  const appServer = await listen(instance.app);
+  const base = `http://127.0.0.1:${appServer.address().port}/api/v1`;
+  t.after(async () => {
+    await close(appServer); instance.close(); await close(upstreamServer); await rm(tempDirectory, { recursive: true, force: true });
+  });
+  const provider = (await json(`${base}/providers`, { method: 'POST', body: { name: 'P', baseUrl: `http://127.0.0.1:${upstreamServer.address().port}/v1`, apiKey: 'k' } })).payload.data;
+  await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'm' } });
+  const conversation = (await json(`${base}/conversations`, { method: 'POST' })).payload.data;
+  const response = await json(`${base}/conversations/${conversation.id}/respond`, { method: 'POST', body: { message: 'hi', providerId: provider.id, modelId: 'm' } });
+  assert.equal(response.response.status, 200);
+  assert.equal(response.payload.data.assistantMessage.content, 'Recovered after retries.');
+  assert.equal(attempts, 3);
+});
+
+test('more than four tool rounds are allowed (no round cap on tool use)', async (t) => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-rounds-'));
+  let toolRounds = 0;
+  const upstream = createServer(async (request, response) => {
+    if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return; }
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    const body = JSON.parse(raw);
+    const hasToolResult = body.messages.some((message) => message.role === 'tool');
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    if (hasToolResult && toolRounds >= 6) {
+      response.end(JSON.stringify({ choices: [{ message: { content: 'Done after 6 tool rounds.' } }] }));
+      return;
+    }
+    if (hasToolResult) toolRounds += 1;
+    response.end(JSON.stringify({ choices: [{ message: { content: null, tool_calls: [{ id: `call_${toolRounds}`, type: 'function', function: { name: 'calculator', arguments: '{"expression":"1+1"}' } }] } }] }));
+  });
+  const upstreamServer = await listen(upstream);
+  const config = {
+    rootDirectory: process.cwd(),
+    databasePath: join(tempDirectory, 'glow-agent.sqlite'),
+    providerFetchTimeoutMs: 2_000,
+    chatTimeoutMs: 2_000,
+    maxToolRounds: 50,
+    maxProviderRetries: 0
+  };
+  const instance = createApp(config);
+  const appServer = await listen(instance.app);
+  const base = `http://127.0.0.1:${appServer.address().port}/api/v1`;
+  t.after(async () => {
+    await close(appServer); instance.close(); await close(upstreamServer); await rm(tempDirectory, { recursive: true, force: true });
+  });
+  const provider = (await json(`${base}/providers`, { method: 'POST', body: { name: 'P', baseUrl: `http://127.0.0.1:${upstreamServer.address().port}/v1`, apiKey: 'k' } })).payload.data;
+  await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'm' } });
+  const conversation = (await json(`${base}/conversations`, { method: 'POST' })).payload.data;
+  const response = await json(`${base}/conversations/${conversation.id}/respond`, { method: 'POST', body: { message: 'hi', providerId: provider.id, modelId: 'm' } });
+  assert.equal(response.response.status, 200);
+  assert.equal(response.payload.data.assistantMessage.content, 'Done after 6 tool rounds.');
+  assert.ok(toolRounds >= 6);
+});
+
+test('stream resumes from partial content when the provider is interrupted mid-response', async (t) => {
+  const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-resume-'));
+  let sawResume = false;
+  const upstream = createServer(async (request, response) => {
+    if (request.url !== '/v1/chat/completions') { response.writeHead(404).end(); return; }
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    const body = JSON.parse(raw);
+    const hasPartial = body.messages.some((message) => message.role === 'assistant' && message.content && message.content.includes('Partial '));
+    response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' });
+    if (hasPartial) {
+      sawResume = true;
+      response.write('data: {"choices":[{"delta":{"content":" continued."}}]}\n\n');
+      response.end('data: [DONE]\n\n');
+      return;
+    }
+    // First attempt: stream partial text, then hang so the round aborts mid-response.
+    response.write('data: {"choices":[{"delta":{"reasoning_content":"Reasoning. "}}]}\n\n');
+    response.write('data: {"choices":[{"delta":{"content":"Partial "}}]}\n\n');
+    response.write('data: {"choices":[{"delta":{"content":"answer"}}]}\n\n');
+    // Intentionally do not end the response; the client-side round timeout aborts the read.
+  });
+  const upstreamServer = await listen(upstream);
+  const config = {
+    rootDirectory: process.cwd(),
+    databasePath: join(tempDirectory, 'glow-agent.sqlite'),
+    providerFetchTimeoutMs: 2_000,
+    chatTimeoutMs: 700,
+    maxToolRounds: 10,
+    maxProviderRetries: 5
+  };
+  const instance = createApp(config);
+  const appServer = await listen(instance.app);
+  const base = `http://127.0.0.1:${appServer.address().port}/api/v1`;
+  t.after(async () => {
+    await close(appServer); instance.close(); await close(upstreamServer); await rm(tempDirectory, { recursive: true, force: true });
+  });
+  const provider = (await json(`${base}/providers`, { method: 'POST', body: { name: 'P', baseUrl: `http://127.0.0.1:${upstreamServer.address().port}/v1`, apiKey: 'k' } })).payload.data;
+  await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'm' } });
+  const conversation = (await json(`${base}/conversations`, { method: 'POST' })).payload.data;
+  const streamingResponse = await fetch(`${base}/conversations/${conversation.id}/respond/stream`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({ message: 'hi', providerId: provider.id, modelId: 'm' })
+  });
+  await streamingResponse.text();
+  assert.equal(sawResume, true);
+  const saved = (await json(`${base}/conversations/${conversation.id}`)).payload.data;
+  // Partial text that was shown live is kept, and the resumed continuation is appended, not restarted.
+  assert.equal(saved.messages[1].content, 'Partial answer continued.');
+});
