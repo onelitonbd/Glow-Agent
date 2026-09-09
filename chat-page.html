@@ -86,38 +86,47 @@
     .battery { width: 19px; height: 9px; padding: 1px; border: 1.2px solid currentColor; border-radius: 3px; }
     .battery::before { content: ""; display: block; width: 70%; height: 100%; border-radius: 1px; background: currentColor; }
 
-    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px 12px; }
-    .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
-    .brand-mark {
+    .topbar { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center; gap: 9px; padding: 13px 16px 12px; }
+    .history-launcher, .icon-button {
       display: grid;
-      width: 33px;
-      height: 33px;
-      place-items: center;
-      flex: 0 0 auto;
-      border-radius: 11px;
-      background: var(--accent);
-      color: var(--accent-ink);
-      box-shadow: 0 8px 18px var(--accent-wash);
-    }
-    .brand-mark svg { width: 19px; height: 19px; fill: currentColor; }
-    .brand-copy { min-width: 0; }
-    .brand-copy b { display: block; font-size: 13px; font-weight: 800; letter-spacing: -.04em; }
-    .brand-copy span { display: flex; align-items: center; gap: 5px; margin-top: 1px; color: var(--muted); font-family: var(--mono); font-size: 8.5px; }
-    .presence { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
-    .topbar-actions { display: flex; align-items: center; gap: 7px; }
-    .icon-button, .new-chat {
-      display: grid;
-      height: 33px;
+      width: 34px;
+      height: 34px;
       place-items: center;
       border: 1px solid var(--line);
-      border-radius: 10px;
+      border-radius: 11px;
       background: var(--surface);
       color: var(--text);
     }
-    .icon-button { width: 33px; }
+    .history-launcher { border-color: transparent; background: var(--accent); color: var(--accent-ink); box-shadow: 0 8px 18px var(--accent-wash); }
+    .history-launcher svg { width: 19px; height: 19px; fill: currentColor; }
     .icon-button svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-    .new-chat { grid-auto-flow: column; gap: 5px; padding: 0 10px; color: var(--accent); font-size: 10px; font-weight: 800; }
-    .new-chat svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 2; fill: none; }
+    .session-title { min-width: 0; padding: 0 2px; }
+    .session-title small, .session-title b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-title small { margin-bottom: 2px; color: var(--muted); font-family: var(--mono); font-size: 7.5px; letter-spacing: .055em; text-transform: uppercase; }
+    .session-title b { color: var(--text); font-size: 12px; font-weight: 800; letter-spacing: -.027em; }
+
+    /* Left-side chat history drawer */
+    .drawer-scrim { position: absolute; inset: 0; z-index: 10; background: rgba(0,0,0,.54); opacity: 0; visibility: hidden; transition: opacity .22s ease, visibility .22s ease; }
+    .history-drawer { position: absolute; top: 0; bottom: 0; left: 0; z-index: 11; display: flex; width: min(86%, 365px); flex-direction: column; padding: calc(19px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom)); transform: translateX(-104%); border-right: 1px solid var(--line); background: #121419; box-shadow: 20px 0 50px rgba(0,0,0,.36); transition: transform .26s cubic-bezier(.2,.8,.2,1); }
+    .phone.drawer-open .drawer-scrim { visibility: visible; opacity: 1; }
+    .phone.drawer-open .history-drawer { transform: translateX(0); }
+    .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 15px; }
+    .drawer-head h2 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -.045em; }
+    .drawer-close { display: grid; width: 31px; height: 31px; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 19px; }
+    .drawer-new { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 39px; margin: 0 0 18px; border: 0; border-radius: 11px; background: var(--accent); color: var(--accent-ink); font-size: 10px; font-weight: 850; }
+    .drawer-new span { font-size: 15px; font-weight: 500; }
+    .history-search { display: flex; align-items: center; gap: 8px; height: 35px; margin: 0 4px 15px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--quiet); font-family: var(--mono); font-size: 8.5px; }
+    .history-search svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+    .history-list { min-height: 0; padding: 0 4px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    .history-group + .history-group { margin-top: 19px; }
+    .history-group h3 { margin: 0 0 7px; color: var(--quiet); font-family: var(--mono); font-size: 8px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; }
+    .history-item { display: block; width: 100%; min-width: 0; padding: 10px 10px 9px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: var(--text); text-align: left; }
+    .history-item + .history-item { margin-top: 3px; }
+    .history-item.active { border-color: rgba(198,255,107,.18); background: var(--accent-wash); }
+    .history-item:hover { background: var(--surface); }
+    .history-item b, .history-item span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .history-item b { font-size: 10px; font-weight: 700; letter-spacing: -.018em; }.history-item span { margin-top: 4px; color: var(--quiet); font-family: var(--mono); font-size: 7.5px; }.history-item.active b { color: var(--accent); }
+    .drawer-footer { display: flex; align-items: center; gap: 7px; margin: 14px 4px 0; padding: 11px 9px; border-top: 1px solid var(--line); color: var(--muted); font-family: var(--mono); font-size: 8px; }.drawer-footer i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
 
     .endpoint {
       display: flex;
@@ -144,7 +153,7 @@
     }
     .thread-top { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
     .eyebrow { margin: 0 0 5px; color: var(--accent); font-size: 8px; font-weight: 500; letter-spacing: .115em; text-transform: uppercase; }
-    h1 { margin: 0; color: var(--text); font-size: 20px; font-weight: 800; letter-spacing: -.055em; line-height: 1.1; }
+    .thread-status { margin: 0; color: var(--text-soft); font-size: 11px; font-weight: 650; letter-spacing: -.02em; }
     .thread-meta { display: flex; align-items: center; gap: 5px; padding-bottom: 2px; color: var(--quiet); font-size: 8px; white-space: nowrap; }
     .thread-meta i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
 
@@ -214,7 +223,7 @@
     .composer-hint { margin: 7px 3px 0; color: var(--quiet); font-size: 7.5px; text-align: center; }.composer-hint strong { color: var(--muted); font-weight: 500; }
 
     .toast { position: absolute; top: 154px; left: 50%; z-index: 3; width: max-content; max-width: calc(100% - 36px); padding: 8px 10px; transform: translate(-50%, -12px); border: 1px solid rgba(198,255,107,.22); border-radius: 9px; background: #1d2520; color: var(--accent); box-shadow: 0 10px 24px rgba(0,0,0,.28); font-family: var(--mono); font-size: 8px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }.toast.show { transform: translate(-50%, 0); opacity: 1; }
-    .empty-state { display: grid; min-height: 400px; place-content: center; padding: 20px; text-align: center; }.empty-state .brand-mark { width: 44px; height: 44px; margin: 0 auto; border-radius: 15px; }.empty-state h2 { margin: 14px 0 6px; font-size: 20px; letter-spacing: -.05em; }.empty-state p { max-width: 270px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }.empty-state .quick-actions { justify-content: center; margin-top: 18px; }
+    .empty-state { display: grid; min-height: 400px; place-content: center; padding: 20px; text-align: center; }.empty-state .brand-mark { display: grid; width: 44px; height: 44px; margin: 0 auto; place-items: center; border-radius: 15px; background: var(--accent); color: var(--accent-ink); box-shadow: 0 8px 18px var(--accent-wash); font-size: 20px; }.empty-state h2 { margin: 14px 0 6px; font-size: 20px; letter-spacing: -.05em; }.empty-state p { max-width: 270px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }.empty-state .quick-actions { justify-content: center; margin-top: 18px; }
 
     @media (min-width: 600px) { body { padding: 24px 0; }.phone { min-height: calc(100dvh - 48px); border-radius: 30px; } }
     @media (max-height: 720px) { .thread { padding-top: 14px; }.thread-top { margin-bottom: 13px; }.message { margin-bottom: 11px; }.run-card { margin-bottom: 11px; }.composer-area { padding-top: 12px; } }
@@ -222,18 +231,32 @@
   </style>
 </head>
 <body>
-  <main class="phone" aria-label="Glow Agent mobile chat page design">
+  <main class="phone" id="phone" aria-label="Glow Agent mobile chat page design">
+    <button class="drawer-scrim" id="drawerScrim" type="button" tabindex="-1" aria-label="Close chat history"></button>
+    <aside class="history-drawer" id="historyDrawer" aria-label="Chat history" aria-hidden="true">
+      <header class="drawer-head"><h2>Chats</h2><button class="drawer-close" id="drawerClose" type="button" aria-label="Close chat history">×</button></header>
+      <button class="drawer-new" id="newChat" type="button"><span aria-hidden="true">+</span> Start new chat</button>
+      <div class="history-search" aria-label="Search chat history"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.7" cy="10.7" r="5.7"/><path d="m15 15 4 4"/></svg>Search chats</div>
+      <nav class="history-list" aria-label="Previous conversations">
+        <section class="history-group"><h3>Today</h3>
+          <button class="history-item active" type="button"><b title="Product launch brief for the new private AI workspace">Product launch brief for the new private AI workspace</b><span>09:38 · 3 skills</span></button>
+          <button class="history-item" type="button"><b>Compare OpenAI-compatible providers</b><span>08:12 · 1 tool</span></button>
+        </section>
+        <section class="history-group"><h3>Previous 7 days</h3>
+          <button class="history-item" type="button"><b>Design a mobile settings experience</b><span>Yesterday · 2 skills</span></button>
+          <button class="history-item" type="button"><b>Plan documentation structure</b><span>Mon · 4 sources</span></button>
+          <button class="history-item" type="button"><b>Review product ideas</b><span>Sun · Chat only</span></button>
+        </section>
+      </nav>
+      <footer class="drawer-footer"><i></i> Key remains local to this device</footer>
+    </aside>
+
     <div class="status" aria-hidden="true"><span>9:41</span><span class="status-signals"><span class="signal"><i></i><i></i><i></i><i></i></span><span class="wifi"></span><span class="battery"></span></span></div>
 
     <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 1.9c.4 6.2 3.3 9.5 9.4 10.1-6.1.5-9 3.8-9.4 10.1C11.5 15.8 8.6 12.5 2.5 12 8.6 11.4 11.5 8.1 12 1.9Z"/></svg></span>
-        <span class="brand-copy"><b>Glow Agent</b><span><i class="presence"></i> Your private workspace</span></span>
-      </div>
-      <div class="topbar-actions">
-        <button class="new-chat" id="newChat" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New</button>
-        <button class="icon-button" type="button" aria-label="Chat settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.3a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56v.1h-3v-.1a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.1 15a1.7 1.7 0 0 0-1.56-1.03h-.1v-3h.1A1.7 1.7 0 0 0 7.1 9.94a1.7 1.7 0 0 0-.34-1.88L6.7 8l2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56v-.1h3v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.1v3h-.1A1.7 1.7 0 0 0 19.4 15Z"/></svg></button>
-      </div>
+      <button class="history-launcher" id="historyLauncher" type="button" aria-label="Open chat history" aria-controls="historyDrawer" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.9c.4 6.2 3.3 9.5 9.4 10.1-6.1.5-9 3.8-9.4 10.1C11.5 15.8 8.6 12.5 2.5 12 8.6 11.4 11.5 8.1 12 1.9Z"/></svg></button>
+      <div class="session-title"><small>Private chat</small><b id="sessionName" title="Product launch brief for the new private AI workspace">Product launch brief for the new private AI workspace</b></div>
+      <button class="icon-button" type="button" aria-label="Chat settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.3a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56v.1h-3v-.1a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.1 15a1.7 1.7 0 0 0-1.56-1.03h-.1v-3h.1A1.7 1.7 0 0 0 7.1 9.94a1.7 1.7 0 0 0-.34-1.88L6.7 8l2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56v-.1h3v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.1v3h-.1A1.7 1.7 0 0 0 19.4 15Z"/></svg></button>
     </header>
 
     <section class="endpoint" aria-label="Connected model endpoint">
@@ -246,14 +269,14 @@
 
     <section class="thread" id="thread" aria-label="Conversation">
       <div class="thread-top">
-        <div><p class="eyebrow">Active conversation</p><h1>Launch brief</h1></div>
+        <div><p class="eyebrow">Private conversation</p><p class="thread-status">Your connected skills are ready when needed.</p></div>
         <div class="thread-meta"><i></i>3 skills ready</div>
       </div>
       <div id="conversation">
         <p class="day-stamp">Today, 09:38</p>
 
         <article class="message agent-message">
-          <div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Glow</span><span class="message-role">product agent</span><time class="time">09:38</time></div>
+          <div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Assistant</span><span class="message-role">product agent</span><time class="time">09:38</time></div>
           <div class="bubble"><p>Ready when you are. I can work with your connected skills and tools, while your provider key stays on this device.</p></div>
         </article>
 
@@ -263,10 +286,10 @@
         </article>
 
         <article class="message agent-message">
-          <div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Glow</span><span class="message-role">product agent</span><time class="time">09:41</time></div>
+          <div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Assistant</span><span class="message-role">product agent</span><time class="time">09:41</time></div>
           <div class="bubble">
             <p>I’ve organized the notes into a clear first draft. I found two decisions that are worth settling before we publish anything.</p>
-            <div class="answer-card"><span>Draft ready</span><p>Glow Agent is a private, bring-your-own-key workspace for directing capable AI agents with tools and reusable skills.</p></div>
+            <div class="answer-card"><span>Draft ready</span><p>A private, bring-your-own-key workspace for directing capable AI agents with tools and reusable skills.</p></div>
           </div>
         </article>
 
@@ -295,7 +318,7 @@
       <div class="context-row" aria-label="Active chat context"><span class="context-chip"><b>✦</b> Product brief <span class="close">×</span></span><span class="context-chip"><b>⌁</b> 2 workspace docs <span class="close">×</span></span></div>
       <div class="composer">
         <button class="composer-button" type="button" aria-label="Attach context or tools"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-        <textarea id="prompt" rows="1" aria-label="Message Glow Agent" placeholder="Message Glow…"></textarea>
+        <textarea id="prompt" rows="1" aria-label="Message assistant" placeholder="Message assistant…"></textarea>
         <button class="composer-button send" id="sendButton" type="submit" aria-label="Send message" disabled><svg viewBox="0 0 24 24"><path d="m5 12 14-7-4 14-3-5-5-2Z"/><path d="m12 12 3-3"/></svg></button>
       </div>
       <p class="composer-hint"><strong>Enter</strong> to send · <strong>Shift + Enter</strong> for a new line</p>
@@ -303,6 +326,7 @@
   </main>
 
   <script>
+    const phone = document.getElementById('phone');
     const prompt = document.getElementById('prompt');
     const sendButton = document.getElementById('sendButton');
     const composerForm = document.getElementById('composerForm');
@@ -311,6 +335,11 @@
     const runCard = document.getElementById('runCard');
     const runToggle = document.getElementById('runToggle');
     const toast = document.getElementById('toast');
+    const historyLauncher = document.getElementById('historyLauncher');
+    const historyDrawer = document.getElementById('historyDrawer');
+    const drawerScrim = document.getElementById('drawerScrim');
+    const drawerClose = document.getElementById('drawerClose');
+    const sessionName = document.getElementById('sessionName');
     let toastTimer;
 
     function resizePrompt() {
@@ -326,6 +355,14 @@
       toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
     }
 
+    function setDrawer(isOpen) {
+      phone.classList.toggle('drawer-open', isOpen);
+      historyDrawer.setAttribute('aria-hidden', String(!isOpen));
+      historyLauncher.setAttribute('aria-expanded', String(isOpen));
+      if (isOpen) drawerClose.focus();
+      else historyLauncher.focus();
+    }
+
     function appendMessage(text) {
       const safeText = document.createTextNode(text);
       const article = document.createElement('article');
@@ -336,10 +373,26 @@
 
       const reply = document.createElement('article');
       reply.className = 'message agent-message';
-      reply.innerHTML = '<div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Glow</span><span class="message-role">product agent</span><time class="time">now</time></div><div class="bubble"><p>Captured. This interaction is a UI prototype, so a live model response will arrive when we connect the Termux backend in the implementation phase.</p></div>';
+      reply.innerHTML = '<div class="message-top"><span class="avatar agent" aria-hidden="true">✦</span><span class="message-name">Assistant</span><span class="message-role">product agent</span><time class="time">now</time></div><div class="bubble"><p>Captured. This interaction is a UI prototype, so a live model response will arrive when we connect the Termux backend in the implementation phase.</p></div>';
       conversation.append(reply);
       thread.scrollTo({ top: thread.scrollHeight, behavior: 'smooth' });
     }
+
+    historyLauncher.addEventListener('click', () => setDrawer(true));
+    drawerClose.addEventListener('click', () => setDrawer(false));
+    drawerScrim.addEventListener('click', () => setDrawer(false));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && phone.classList.contains('drawer-open')) setDrawer(false);
+    });
+    document.querySelectorAll('.history-item').forEach((item) => item.addEventListener('click', () => {
+      document.querySelectorAll('.history-item').forEach((entry) => entry.classList.remove('active'));
+      item.classList.add('active');
+      const title = item.querySelector('b').textContent;
+      sessionName.textContent = title;
+      sessionName.title = title;
+      setDrawer(false);
+      showToast('Conversation selected — content loads in implementation');
+    }));
 
     prompt.addEventListener('input', resizePrompt);
     prompt.addEventListener('keydown', (event) => {
@@ -364,8 +417,11 @@
       runToggle.setAttribute('aria-expanded', String(!expanded));
     });
     document.getElementById('newChat').addEventListener('click', () => {
-      conversation.innerHTML = '<div class="empty-state"><span class="brand-mark" aria-hidden="true">✦</span><h2>A fresh thread.</h2><p>Start with an outcome. Glow will choose only the skills and tools that help move it forward.</p><div class="quick-actions"><button class="chip" type="button" data-empty-prompt="Plan a product launch.">Plan a launch</button><button class="chip" type="button" data-empty-prompt="Research a topic.">Research a topic</button></div></div>';
+      conversation.innerHTML = '<div class="empty-state"><span class="brand-mark" aria-hidden="true">✦</span><h2>A fresh thread.</h2><p>Start with an outcome. The agent will choose only the skills and tools that help move it forward.</p><div class="quick-actions"><button class="chip" type="button" data-empty-prompt="Plan a product launch.">Plan a launch</button><button class="chip" type="button" data-empty-prompt="Research a topic.">Research a topic</button></div></div>';
+      sessionName.textContent = 'New conversation';
+      sessionName.title = 'New conversation';
       document.querySelectorAll('[data-empty-prompt]').forEach((button) => button.addEventListener('click', () => { prompt.value = button.dataset.emptyPrompt; resizePrompt(); prompt.focus(); }));
+      setDrawer(false);
       showToast('Fresh conversation started');
       prompt.focus();
     });
