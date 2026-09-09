@@ -1,0 +1,18 @@
+# Runtime configuration and local secrets
+.env
+.env.*
+!.env.example
+
+# Local SQLite data and backups
+data/*
+!data/.gitkeep
+
+# Node and diagnostics
+node_modules/
+npm-debug.log*
+*.log
+coverage/
+
+# Operating system/editor files
+.DS_Store
+.vscode/

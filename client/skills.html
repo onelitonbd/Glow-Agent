@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Create reusable assistant skills in Glow Agent.">
+  <script src="/assets/js/theme.js"></script>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <title>Skills — Glow Agent</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <a class="icon-button" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
+      <h1 class="app-title">Skills</h1>
+      <button class="header-link" id="openSkillDialog" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add</button>
+    </header>
+    <section class="intro"><p class="eyebrow">Your reusable expertise</p><p>Turn repeatable methods into <strong>skills</strong> the assistant can apply when the task needs them.</p></section>
+    <section aria-labelledby="skillsLabel">
+      <div class="section-head"><h2 class="section-label" id="skillsLabel">Your skills</h2><span class="section-label section-count" id="skillsCount"></span></div>
+      <div id="skillsState" aria-live="polite"><div class="loading">Loading skills</div></div>
+    </section>
+    <p class="app-footer">GLOW AGENT · SKILLS</p>
+  </main>
+  <dialog class="dialog" id="skillDialog" aria-labelledby="skillDialogTitle">
+    <div class="dialog-handle" aria-hidden="true"></div>
+    <header class="dialog-head"><div><h2 id="skillDialogTitle">Add skill</h2><p class="dialog-kicker">REUSABLE EXPERTISE</p></div><button class="icon-button" id="closeSkillDialog" type="button" aria-label="Close skill form"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></header>
+    <form id="skillForm">
+      <div class="field"><label for="skillName">Name <span>REQUIRED</span></label><input id="skillName" name="name" maxlength="80" autocomplete="off" placeholder="e.g. Product positioning" required></div>
+      <div class="field"><label for="skillDescription">Description <span>REQUIRED</span></label><textarea id="skillDescription" name="description" rows="4" maxlength="280" placeholder="Briefly explain when this skill is useful." required></textarea><p class="hint">2× the name field height</p></div>
+      <div class="field"><label for="skillInstructions">Instructions <span>REQUIRED</span></label><textarea class="instructions" id="skillInstructions" name="instructions" rows="8" maxlength="12000" placeholder="Write the step-by-step guidance the assistant should follow." required></textarea><p class="hint">2× the description field height</p></div>
+      <div class="dialog-actions"><button class="button secondary" id="cancelSkill" type="button">Cancel</button><button class="button" id="saveSkill" type="submit">Save skill</button></div>
+    </form>
+  </dialog>
+  <script type="module" src="/assets/js/skills.js"></script>
+</body>
+</html>

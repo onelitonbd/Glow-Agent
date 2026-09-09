@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Configure local OpenAI-compatible providers for Glow Agent.">
+  <script src="/assets/js/theme.js"></script>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <title>Providers — Glow Agent</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <a class="icon-button" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
+      <h1 class="app-title">Providers</h1>
+      <button class="header-link" id="openProviderDialog" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add</button>
+    </header>
+    <section class="intro"><p class="eyebrow">OpenAI-compatible</p><p>Provider credentials stay on this device and are never returned to the browser after save.</p></section>
+    <section aria-labelledby="providersLabel">
+      <div class="section-head"><h2 class="section-label" id="providersLabel">Configured providers</h2><span class="section-label section-count" id="providerCount"></span></div>
+      <div id="providersState" aria-live="polite"><div class="loading">Loading providers</div></div>
+    </section>
+    <p class="app-footer">GLOW AGENT · LOCAL-FIRST WORKSPACE</p>
+  </main>
+
+  <dialog class="dialog" id="providerDialog" aria-labelledby="providerDialogTitle">
+    <div class="dialog-handle" aria-hidden="true"></div>
+    <header class="dialog-head"><div><h2 id="providerDialogTitle">Add provider</h2><p class="dialog-kicker">OPENAI-COMPATIBLE BYOK</p></div><button class="icon-button" id="closeProviderDialog" type="button" aria-label="Close provider form"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></header>
+    <form id="providerForm">
+      <div class="field"><label for="providerName">Provider name <span>REQUIRED</span></label><input id="providerName" name="name" maxlength="80" autocomplete="off" placeholder="e.g. OpenAI" required></div>
+      <div class="field"><label for="providerBaseUrl">Base URL <span>REQUIRED</span></label><input id="providerBaseUrl" name="baseUrl" maxlength="600" inputmode="url" autocapitalize="none" autocomplete="url" placeholder="https://api.openai.com/v1" required></div>
+      <div class="field"><label for="providerApiKey">Primary API key <span id="keyRequirement">REQUIRED</span></label><input id="providerApiKey" name="apiKey" maxlength="500" type="password" autocapitalize="none" autocomplete="off" placeholder="Paste an API key" required><p class="hint" id="keyHint">Stored locally on this device. The value cannot be viewed again.</p></div>
+      <div id="backupKeyFields"></div>
+      <button class="button secondary full" id="addBackupKey" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add backup API key</button>
+      <div class="dialog-actions"><button class="button secondary" id="cancelProvider" type="button">Cancel</button><button class="button" id="saveProvider" type="submit">Save provider</button></div>
+    </form>
+  </dialog>
+  <script type="module" src="/assets/js/providers.js"></script>
+</body>
+</html>

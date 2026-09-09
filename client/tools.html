@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Review built-in Glow Agent tools.">
+  <script src="/assets/js/theme.js"></script>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <title>Tools — Glow Agent</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <a class="icon-button" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
+      <h1 class="app-title">Tools</h1>
+      <a class="header-link" href="/">Chat</a>
+    </header>
+    <section class="intro"><p class="eyebrow">Controlled capabilities</p><p>Tools run only after you select them for a message. Their inputs are validated by the local server; browser code does not execute agent-supplied commands.</p></section>
+    <section aria-labelledby="toolsLabel"><div class="section-head"><h2 class="section-label" id="toolsLabel">Available tools</h2><span class="section-label section-count">LOCAL ALLOWLIST</span></div><div id="toolsState"><div class="loading">Loading tools</div></div></section>
+    <p class="app-footer">GLOW AGENT · SERVER-SIDE TOOLS</p>
+  </main>
+  <script type="module" src="/assets/js/tools.js"></script>
+</body>
+</html>
