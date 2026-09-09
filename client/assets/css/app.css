@@ -223,7 +223,7 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .composer .icon-button { width: 33px; height: 33px; }
 .composer .icon-button.selected { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); }
 .composer .send { border: 0; background: var(--accent); color: var(--accent-ink); }
-.drawer { width: min(86vw, 365px); height: 100%; margin: 0 auto 0 0; padding: calc(19px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom)); border: 0; border-right: 1px solid var(--line); background: var(--surface-soft); color: var(--text); box-shadow: 20px 0 50px rgba(0,0,0,.4); }
+.drawer { position: fixed; inset: 0 auto auto 0; width: min(86vw, 365px); height: auto; max-height: 100dvh; margin: 0; padding: calc(19px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom)); overflow-y: auto; border: 0; border-right: 1px solid var(--line); background: var(--surface-soft); color: var(--text); box-shadow: 20px 0 50px rgba(0,0,0,.4); }
 .drawer[open] { display: flex; flex-direction: column; }
 .drawer::backdrop { background: rgba(3,4,6,.65); backdrop-filter: blur(8px); }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 15px; }
@@ -241,7 +241,7 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .route-arrow svg { width: 14px; height: 14px; stroke-width: 1.7; }
 .history-search { display: flex; height: 40px; align-items: center; gap: 8px; margin: 0 4px 15px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--quiet); font: 11px var(--mono); }
 .history-search svg { width: 13px; height: 13px; }
-.history-list { min-height: 0; flex: 1; padding: 0 4px; overflow: auto; }
+.history-list { min-height: 0; flex: 0 1 auto; padding: 0 4px; }
 .history-list h3 { margin: 0 0 7px; color: var(--quiet); font: 500 10px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
 .conversation-list { display: grid; gap: 3px; }
 .conversation-list button { display: block; width: 100%; min-width: 0; padding: 12px 10px; overflow: hidden; border: 1px solid transparent; border-radius: 11px; background: transparent; color: var(--text); font-size: 13px; font-weight: 700; letter-spacing: -.018em; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
