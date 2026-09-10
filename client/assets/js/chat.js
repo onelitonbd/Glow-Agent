@@ -184,7 +184,7 @@ function messageActions(message) {
     return [
       { id: 'regenerate', icon: 'refresh', label: 'Regenerate', run: () => regenerate(message.id) },
       { id: 'copy', icon: 'copy', label: 'Copy', run: () => copyText(message.content) },
-      { id: 'delete', icon: 'trash', label: 'Delete', run: () => removeMessage(message.id), danger: true, confirm: 'Delete both?' },
+      { id: 'delete', icon: 'trash', label: 'Delete', run: () => removeMessage(message.id), danger: true, confirmTitle: 'Tap again to delete' },
       { id: 'other-model', icon: 'database', label: 'Try another model', run: () => askForModel(message.id) }
     ];
   }
@@ -206,30 +206,33 @@ function renderActions(message) {
   bar.setAttribute('role', 'group');
   bar.setAttribute('aria-label', message.role === 'assistant' ? 'Answer options' : 'Your message options');
   for (const action of messageActions(message)) {
+    // Icon only: the label lives in aria-label and the tooltip, so the row stays quiet.
     const button = element('button', `message-action${action.danger ? ' danger' : ''}`);
     button.type = 'button';
     button.dataset.action = action.id;
     button.dataset.messageId = message.id;
     button.setAttribute('aria-label', action.label);
     button.title = action.label;
-    const label = element('span', 'message-action-label', action.label);
-    button.append(icon(action.icon), label);
+    button.append(icon(action.icon));
     button.disabled = state.busy;
     button.addEventListener('click', () => {
       if (button.disabled) return;
       // Destructive actions ask once more in place, which keeps the flow usable on a phone where
-      // a native confirm dialog is awkward.
-      if (action.confirm && !button.classList.contains('confirming')) {
+      // a native confirm dialog is awkward. With no label to change, the armed state is colour.
+      if (action.confirmTitle && !button.classList.contains('confirming')) {
         button.classList.add('confirming');
-        label.textContent = action.confirm;
+        button.title = action.confirmTitle;
+        button.setAttribute('aria-label', action.confirmTitle);
         setTimeout(() => {
           button.classList.remove('confirming');
-          label.textContent = action.label;
+          button.title = action.label;
+          button.setAttribute('aria-label', action.label);
         }, 4_000);
         return;
       }
       button.classList.remove('confirming');
-      label.textContent = action.label;
+      button.title = action.label;
+      button.setAttribute('aria-label', action.label);
       action.run();
     });
     bar.append(button);

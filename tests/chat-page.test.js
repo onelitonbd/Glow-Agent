@@ -125,8 +125,9 @@ async function waitFor(condition, ms = 2_000) {
   throw new Error('Timed out waiting for the page to catch up.');
 }
 
+// The buttons are icon-only, so their names live in aria-label, not in text.
 function labels(node) {
-  return node.querySelectorAll('button').map((button) => button.textContent);
+  return node.querySelectorAll('button').map((button) => button.getAttribute('aria-label'));
 }
 
 function actionButton(byId, role, actionId) {
@@ -146,6 +147,11 @@ test('an answer offers Regenerate, Copy, Delete, and Try another model', async (
   const bars = byId.get('chatLog').querySelectorAll('.message-actions');
   assert.deepEqual(bars.map((bar) => bar.className), ['message-actions user', 'message-actions assistant']);
   assert.deepEqual(labels(bars[1]), ['Regenerate', 'Copy', 'Delete', 'Try another model']);
+  // Icons only: nothing but the svg is rendered inside a button.
+  const regenerate = bars[1].querySelectorAll('button')[0];
+  assert.equal(regenerate.textContent, '');
+  assert.deepEqual(regenerate.children.map((child) => child.tagName), ['SVG']);
+  assert.equal(regenerate.title, 'Regenerate');
 });
 
 test('a question offers Copy and Edit, and copying uses the clipboard', async () => {
@@ -164,6 +170,7 @@ test('Delete on an answer asks once more, then removes the pair', async () => {
   const remove = actionButton(byId, 'assistant', 'delete');
   remove.dispatchEvent('click');
   assert.equal(remove.classList.contains('confirming'), true, 'the first tap only arms the button');
+  assert.equal(remove.getAttribute('aria-label'), 'Tap again to delete', 'the armed state is announced');
   assert.equal(requests.some((request) => request.method === 'DELETE'), false);
   remove.dispatchEvent('click');
   await waitFor(() => requests.some((request) => request.method === 'DELETE'));

@@ -212,16 +212,16 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .message.assistant > .tool-event:last-child { margin-bottom: 0; }
 /* Per-message actions. They sit below the bubble: inside a reply, and beside (not inside) the
    question pill, so the accent bubble keeps its own colour. */
-.message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+.message-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1px; margin-top: -7px; }
 .message-actions.assistant { justify-self: stretch; }
 .message-actions.user { justify-self: end; max-width: 88%; }
-.message-action { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font: 10.5px var(--mono); letter-spacing: .01em; white-space: nowrap; }
-.message-action svg { width: 13px; height: 13px; }
-.message-action:hover, .message-action:focus-visible { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); }
-.message-action.danger:hover, .message-action.danger:focus-visible { border-color: rgba(255,158,158,.42); background: var(--danger-wash); color: var(--danger); }
-.message-action.confirming, .message-action.confirming:hover { border-color: rgba(255,158,158,.55); background: var(--danger-wash); color: var(--danger); }
-.message-action:disabled { opacity: .5; }
-:root[data-theme="light"] .message-action { border-color: rgba(25,36,22,.16); background: #ffffff; }
+/* Bare icons: no box, no border, no label — the name is in the tooltip and aria-label. */
+.message-action { display: grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--quiet); }
+.message-action svg { width: 16px; height: 16px; }
+.message-action:hover, .message-action:focus-visible { background: rgba(198,255,107,.12); color: var(--accent); }
+.message-action.danger:hover, .message-action.danger:focus-visible { background: var(--danger-wash); color: var(--danger); }
+.message-action.confirming, .message-action.confirming:hover { background: var(--danger); color: #fff; }
+.message-action:disabled { opacity: .45; }
 /* Inline correction of a question: the textarea replaces the bubble's text until it is saved. */
 .message-editor { display: grid; gap: 8px; width: 100%; }
 .message-editor-input { display: block; width: 100%; min-height: 74px; padding: 8px 9px; resize: vertical; border: 1px solid rgba(25,36,22,.28); border-radius: 10px; background: #ffffff; color: #161b15; font: 14px/1.5 var(--font); }
