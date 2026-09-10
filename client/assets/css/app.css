@@ -346,6 +346,7 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .preset-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 13px; margin-top: 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-soft); }
 .preset-body { min-width: 0; display: grid; gap: 4px; }
 .preset-name { margin: 0; color: var(--text); font-size: 13px; font-weight: 700; }
+.preset-fields { margin: 0; color: var(--quiet); font: 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .preset-card .button { flex: 0 0 auto; min-height: 32px; }
 
 .section-spaced { margin-top: 22px; }

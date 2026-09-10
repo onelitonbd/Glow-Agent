@@ -129,7 +129,7 @@ test('an enabled MCP plugin gives the model that server\'s tools and runs them m
   assert.ok(offered.includes('calculator'), 'the built-in tools stay available alongside MCP tools');
   assert.deepEqual(firstRequest.tools.filter((tool) => tool.function.name.startsWith('mcp_')).length, 5, 'all five server tools are offered');
   const system = firstRequest.messages.find((message) => message.role === 'system').content;
-  assert.match(system, /Model Context Protocol/u);
+  assert.match(system, /An MCP \(Model Context Protocol\) server is connected and its tools/u);
   assert.match(system, /fixture-mcp/u);
   assert.match(system, /blocked until the user approves/u);
 

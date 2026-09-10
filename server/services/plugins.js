@@ -126,6 +126,43 @@ const MCP_PRESETS = Object.freeze({
     description: 'Read and change repositories, issues, and pull requests through GitHub\u2019s official MCP server.',
     accountAware: true,
     defaultToolsets: [...GITHUB_DEFAULT_TOOLSETS],
+    // The setup form for this server, and the authoritative list of settings it accepts. The
+    // Plugins page renders these fields and the service ignores any key that is not declared
+    // here, so there is no shared or generic form to fill in.
+    setup: [
+      {
+        key: 'mode',
+        label: 'How to run it',
+        type: 'select',
+        options: [
+          { value: 'remote', label: 'Remote — hosted by GitHub (nothing to install)', hint: 'GitHub hosts the server at https://api.githubcopilot.com/mcp/. Nothing to install; the token is sent as a bearer header.' },
+          { value: 'local-docker', label: 'Local — official Docker image', hint: 'Runs ghcr.io/github/github-mcp-server in Docker over stdio. Leave the token empty to use the image\u2019s own browser sign-in.' },
+          { value: 'local-binary', label: 'Local — native binary', hint: 'Runs a github-mcp-server binary on this machine with the stdio argument.' }
+        ]
+      },
+      {
+        key: 'token',
+        label: 'GitHub personal access token',
+        type: 'password',
+        placeholder: 'ghp_… or github_pat_…',
+        hint: 'Sent as Authorization: Bearer to the MCP server, or as GITHUB_PERSONAL_ACCESS_TOKEN for the local server. Leave it empty for the local server\u2019s own browser sign-in. Scope it to repo, read:org, and user. It is stored on this device and never shown again.',
+        secret: true
+      },
+      {
+        key: 'toolsets',
+        label: 'Toolsets',
+        type: 'list',
+        // The form starts with the curated default filled in, so a new plugin never silently asks
+        // the server for every toolset it has.
+        default: [...GITHUB_DEFAULT_TOOLSETS],
+        placeholder: 'repos,users,issues,pull_requests,context',
+        hint: 'Comma-separated. repos and users are needed for the account and repository list. Fewer toolsets means a smaller tool list for the model.'
+      },
+      { key: 'binary', label: 'Binary path', type: 'text', placeholder: 'github-mcp-server', showWhen: { mode: ['local-binary'] } },
+      { key: 'host', label: 'GitHub Enterprise host', type: 'text', placeholder: 'octocorp.ghe.com' },
+      { key: 'readOnly', label: 'Read-only — hide every tool that changes data', type: 'check' },
+      { key: 'localClone', label: 'Also keep a local clone for bulk file work (needs a token)', type: 'check' }
+    ],
     settings: (github = {}) => ({
       mode: safeString(github.mode) || 'remote',
       toolsets: Array.isArray(github.toolsets) ? stringList(github.toolsets) : [...GITHUB_DEFAULT_TOOLSETS],
@@ -186,7 +223,17 @@ export function listPresets() {
     name: preset.name,
     description: preset.description,
     accountAware: preset.accountAware === true,
-    defaultToolsets: [...preset.defaultToolsets]
+    defaultToolsets: [...preset.defaultToolsets],
+    setup: preset.setup.map(({ key, label, type, placeholder, hint, options, showWhen, secret, default: fallback }) => ({
+      key, label, type,
+      ...(fallback ? { default: [...fallback] } : {}),
+      ...(placeholder ? { placeholder } : {}),
+      ...(hint ? { hint } : {}),
+      ...(options ? { options } : {}),
+      ...(showWhen ? { showWhen } : {}),
+      // A secret field is rendered as a password and its stored value is never sent back.
+      ...(secret ? { secret: true } : {})
+    }))
   }));
 }
 
@@ -246,11 +293,18 @@ export function configurePlugin(db, rawId, body = {}) {
   const previous = config[preset.id] && typeof config[preset.id] === 'object' ? config[preset.id] : {};
   const incoming = body[preset.id] && typeof body[preset.id] === 'object' ? body[preset.id] : {};
   // Start from what is stored, then overlay only the keys the client actually sent.
+  const fields = new Map(preset.setup.map((field) => [field.key, field]));
   const merged = { ...preset.settings(previous) };
   for (const [key, value] of Object.entries(incoming)) {
-    if (value === undefined) continue;
-    if (key === 'toolsets') merged.toolsets = Array.isArray(value) ? stringList(value) : merged.toolsets;
-    else if (key === 'readOnly' || key === 'localClone') merged[key] = value === true;
+    const field = fields.get(key);
+    // Keys this server does not declare are dropped, so a client cannot add settings of its own.
+    if (!field || value === undefined) continue;
+    if (field.type === 'check') merged[key] = value === true;
+    else if (field.type === 'list') {
+      // An emptied list means "leave it alone", so a blank field can never drop the default.
+      const list = Array.isArray(value) ? stringList(value) : [];
+      if (list.length > 0) merged[key] = list;
+    }
     else if (typeof value === 'string' || typeof value === 'number') merged[key] = safeString(value);
   }
   const next = { ...config, preset: preset.id, [preset.id]: merged };

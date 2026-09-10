@@ -81,7 +81,9 @@ function systemMessage(skills, { plugin = null, mcp = null } = {}) {
   const failures = mcp?.failures || [];
   const mcpGuide = servers.length
     ? [
-      `${servers.length === 1 ? 'An MCP (Model Context Protocol) server is' : 'MCP (Model Context Protocol) servers are'} connected and their tools are available to you with an \`mcp_\` prefix. Inspect first with read-only tools, then make changes with the tools that need them.`,
+      servers.length === 1
+        ? 'An MCP (Model Context Protocol) server is connected and its tools are available to you with an \`mcp_\` prefix. Inspect first with read-only tools, then make changes with the tools that need them.'
+        : `MCP (Model Context Protocol) servers are connected and their tools are available to you with an \`mcp_\` prefix. Inspect first with read-only tools, then make changes with the tools that need them.`,
       ...servers.map((server) => [
         // The key is the namespace the model sees in every tool id for this server, so naming it
         // here is what lets the model tell two servers of the same kind apart.

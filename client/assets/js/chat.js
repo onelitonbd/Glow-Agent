@@ -298,7 +298,7 @@ function renderPluginPicker() {
   setPluginTrigger(active.length);
   chatPluginOptions.replaceChildren();
   if (state.plugins.length === 0) {
-    chatPluginOptions.append(element('p', 'hint', 'No plugins yet. Add the GitHub MCP server from the Plugins page.'));
+    chatPluginOptions.append(element('p', 'hint', 'No plugins yet. Add an MCP server from the Plugins page.'));
     return;
   }
   const toolTotal = active.reduce((total, plugin) => total + (plugin.config?.toolCount || 0), 0);
@@ -328,7 +328,8 @@ function renderPluginPicker() {
       status.append(icon('check'), document.createTextNode(`${config.serverName || 'MCP server'} · ${config.toolCount || 0} tools`));
       card.append(status);
 
-      if (config.preset === 'github') {
+      // Only servers that act on your account need a repository choice.
+      if (config.accountAware) {
         const repoRow = element('div', 'plugin-step-title');
         repoRow.append(element('span', 'step-num', '2'), document.createTextNode('Repository'));
         card.append(repoRow);

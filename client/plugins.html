@@ -18,8 +18,8 @@
     </header>
     <section class="intro">
       <p class="eyebrow">Extend the workspace</p>
-      <p>Plugins are <strong>MCP</strong> (Model Context Protocol) servers. Add one from the list below, connect it, and its tools become available to the assistant — no configuration files, no code. Everything the assistant can do with a plugin comes from that server's own tool list.</p>
-      <p class="hint">MCP is a protocol, not a login. A server still needs its own credential: for GitHub that is a <a href="https://github.com/settings/tokens" rel="noopener">personal access token</a>, or the local server's own browser sign-in where nothing is stored here.</p>
+      <p>Plugins are <strong>MCP</strong> (Model Context Protocol) servers. Add one from the list below, answer its own setup questions, and its tools become available to the assistant — no configuration files, no code.</p>
+      <p class="hint">Each server asks only for what it needs. MCP is a protocol, not a login, so a server still brings its own credential — for GitHub that is a <a href="https://github.com/settings/tokens" rel="noopener">personal access token</a>, or the local server's own browser sign-in where nothing is stored here.</p>
     </section>
 
     <section aria-labelledby="installedLabel">
@@ -29,47 +29,22 @@
 
     <section class="section-spaced" aria-labelledby="catalogLabel">
       <div class="section-head"><h2 class="section-label" id="catalogLabel">Available MCP servers</h2></div>
-      <p class="hint">Only the servers listed here can be added. Each one has its own setup below.</p>
+      <p class="hint">Only the servers listed here can be added, and each one has its own setup. Adding another MCP server to Glow Agent means adding it to this list.</p>
       <div id="presetState" aria-live="polite"><div class="loading">Loading catalog</div></div>
     </section>
     <p class="app-footer">GLOW AGENT · PLUGINS</p>
   </main>
 
-  <dialog class="dialog" id="githubDialog" aria-labelledby="githubDialogTitle">
+  <!-- The setup form is built from the chosen server's own field list, so a server never shows
+       another server's credentials form. -->
+  <dialog class="dialog" id="presetDialog" aria-labelledby="presetDialogTitle">
     <div class="dialog-handle" aria-hidden="true"></div>
-    <header class="dialog-head"><div><h2 id="githubDialogTitle">GitHub</h2><p class="dialog-kicker">MCP SERVER · CONNECT</p></div><button class="icon-button" id="closeGithubDialog" type="button" aria-label="Close GitHub setup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></header>
-    <form id="githubForm">
-      <div class="field">
-        <label for="mode">How to run it</label>
-        <select id="mode" name="mode">
-          <option value="remote">Remote — hosted by GitHub (nothing to install)</option>
-          <option value="local-docker">Local — official Docker image</option>
-          <option value="local-binary">Local — native binary</option>
-        </select>
-        <p class="hint" id="modeHint"></p>
-      </div>
-      <div class="field">
-        <label for="token">GitHub personal access token</label>
-        <input id="token" name="token" type="password" maxlength="200" autocomplete="off" placeholder="ghp_… or github_pat_…">
-        <p class="hint">Sent as <span class="inline-code">Authorization: Bearer</span> to the MCP server, or as <span class="inline-code">GITHUB_PERSONAL_ACCESS_TOKEN</span> for the local server. Leave it empty for the local server's own browser sign-in. Scope it to <span class="inline-code">repo</span>, <span class="inline-code">read:org</span>, and <span class="inline-code">user</span>. It is stored on this device and never shown again.</p>
-      </div>
-      <div class="field">
-        <label for="toolsets">Toolsets</label>
-        <input id="toolsets" name="toolsets" maxlength="300" autocomplete="off" placeholder="repos,users,issues,pull_requests,context">
-        <p class="hint">Comma-separated. <span class="inline-code">repos</span> and <span class="inline-code">users</span> are needed for the account and repository list. Fewer toolsets means a smaller tool list for the model.</p>
-      </div>
-      <div class="field" id="binaryField" hidden>
-        <label for="binary">Binary path</label>
-        <input id="binary" name="binary" maxlength="300" autocomplete="off" placeholder="github-mcp-server">
-      </div>
-      <div class="field" id="hostField" hidden>
-        <label for="host">GitHub Enterprise host</label>
-        <input id="host" name="host" maxlength="200" autocomplete="off" placeholder="octocorp.ghe.com">
-      </div>
-      <div class="check-row"><input type="checkbox" id="readOnly" name="readOnly"><label for="readOnly">Read-only — hide every tool that changes data</label></div>
-      <div class="check-row"><input type="checkbox" id="localClone" name="localClone"><label for="localClone">Also keep a local clone for bulk file work (needs a token)</label></div>
-      <div class="dialog-actions"><button class="button secondary" id="cancelGithub" type="button">Cancel</button><button class="button" id="saveGithub" type="submit">Connect</button></div>
-    </form>
+    <header class="dialog-head">
+      <div><h2 id="presetDialogTitle">Add a plugin</h2><p class="dialog-kicker" id="presetDialogKicker">MCP SERVER · SETUP</p></div>
+      <button class="icon-button" id="closePresetDialog" type="button" aria-label="Close setup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button>
+    </header>
+    <p class="hint" id="presetDialogDescription"></p>
+    <form id="presetForm"></form>
   </dialog>
 
   <script type="module" src="/assets/js/plugins.js"></script>

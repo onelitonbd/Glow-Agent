@@ -13,47 +13,159 @@ const state = {
 const pluginsState = document.getElementById('pluginsState');
 const pluginsCount = document.getElementById('pluginsCount');
 const presetState = document.getElementById('presetState');
-const dialog = document.getElementById('githubDialog');
-const form = document.getElementById('githubForm');
-const saveGithub = document.getElementById('saveGithub');
-const modeSelect = document.getElementById('mode');
-const modeHint = document.getElementById('modeHint');
-const tokenInput = document.getElementById('token');
-let dialogOpener = null;
-let editingPluginId = null;
+const dialog = document.getElementById('presetDialog');
+const dialogTitle = document.getElementById('presetDialogTitle');
+const dialogKicker = document.getElementById('presetDialogKicker');
+const dialogDescription = document.getElementById('presetDialogDescription');
+const form = document.getElementById('presetForm');
 
-const MODE_HINTS = {
-  remote: 'GitHub hosts the server at https://api.githubcopilot.com/mcp/. Nothing to install; the token is sent as a bearer header.',
-  'local-docker': 'Runs ghcr.io/github/github-mcp-server in Docker over stdio. Leave the token empty to use the image\'s own browser sign-in.',
-  'local-binary': 'Runs a github-mcp-server binary on this machine with the stdio argument.'
-};
+let dialogOpener = null;
+let dialogPreset = null;
+let editingPluginId = null;
+// The live form controls, keyed by the preset's own setting key.
+let dialogFields = new Map();
+let dialogHints = new Map();
+let dialogSubmit = null;
 
 function splitList(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
 }
 
-function syncDialogFields() {
-  modeHint.textContent = MODE_HINTS[modeSelect.value] || '';
-  // The binary path only applies to the native-binary mode; the host applies to all three.
-  document.getElementById('binaryField').hidden = modeSelect.value !== 'local-binary';
-  document.getElementById('hostField').hidden = false;
+// ---- the setup form, built from the chosen server's declared fields ----
+
+function fieldValue(field) {
+  const control = dialogFields.get(field.key);
+  if (!control) return undefined;
+  if (field.type === 'check') return control.checked;
+  if (field.type === 'list') return splitList(control.value);
+  const value = control.value.trim();
+  // An untouched secret is not sent, so re-saving a plugin never wipes a stored credential.
+  if (field.secret && value === '') return undefined;
+  return value;
 }
 
-function openDialog(opener, plugin = null) {
+function buildControl(field) {
+  if (field.type === 'select') {
+    const control = element('select');
+    for (const option of field.options || []) {
+      const node = element('option', '', option.label);
+      node.value = option.value;
+      control.append(node);
+    }
+    return control;
+  }
+  if (field.type === 'check') {
+    const control = element('input');
+    control.type = 'checkbox';
+    return control;
+  }
+  const control = element('input');
+  control.type = field.type === 'password' ? 'password' : 'text';
+  if (field.placeholder) control.placeholder = field.placeholder;
+  control.maxLength = 300;
+  control.autocomplete = 'off';
+  return control;
+}
+
+function renderFields(preset, config) {
+  form.replaceChildren();
+  dialogFields = new Map();
+  dialogHints = new Map();
+
+  for (const field of preset.setup || []) {
+    const control = buildControl(field);
+    control.id = `setup-${field.key}`;
+    control.name = field.key;
+    dialogFields.set(field.key, control);
+
+    if (field.type === 'check') {
+      const row = element('div', 'check-row');
+      control.checked = Boolean(config[field.key]);
+      const label = element('label', '', field.label);
+      label.htmlFor = control.id;
+      row.append(control, label);
+      form.append(row);
+      continue;
+    }
+
+    const wrap = element('div', 'field');
+    const label = element('label', '', field.label);
+    label.htmlFor = control.id;
+    wrap.append(label, control);
+    if (field.hint) wrap.append(element('p', 'hint', field.hint));
+    // A select explains the choice the user just made.
+    if (field.type === 'select') {
+      const hint = element('p', 'hint');
+      dialogHints.set(field.key, hint);
+      wrap.append(hint);
+    }
+    if (field.secret && config.hasToken) control.placeholder = 'Saved — enter a new value to replace it';
+    form.append(wrap);
+  }
+
+  const actions = element('div', 'dialog-actions');
+  const cancel = element('button', 'button secondary', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', closeDialog);
+  dialogSubmit = element('button', 'button', editingPluginId ? 'Save and connect' : 'Connect');
+  dialogSubmit.type = 'submit';
+  actions.append(cancel, dialogSubmit);
+  form.append(actions);
+
+  // Seed values and visibility from the stored settings.
+  for (const field of preset.setup || []) {
+    const control = dialogFields.get(field.key);
+    if (!control || field.type === 'check') continue;
+    const stored = config[field.key];
+    if (field.type === 'list') {
+      // A new plugin starts from the preset's default, which the user can then trim.
+      const list = Array.isArray(stored) && stored.length > 0 ? stored : (field.default || []);
+      control.value = list.join(',');
+    }
+    else if (!field.secret) control.value = stored || (field.options?.[0]?.value ?? '');
+  }
+  refreshHints();
+  applyVisibility(preset);
+}
+
+function refreshHints() {
+  if (!dialogPreset) return;
+  for (const field of dialogPreset.setup || []) {
+    const control = dialogFields.get(field.key);
+    const hint = dialogHints.get(field.key);
+    if (!control || !hint) continue;
+    const selected = (field.options || []).find((option) => option.value === control.value);
+    hint.textContent = selected?.hint || '';
+  }
+}
+
+// A field can declare that it only applies to some value of another field.
+function applyVisibility(preset) {
+  for (const field of preset.setup || []) {
+    const control = dialogFields.get(field.key);
+    if (!control) continue;
+    let visible = true;
+    for (const [dependency, allowed] of Object.entries(field.showWhen || {})) {
+      const source = dialogFields.get(dependency);
+      if (source && !allowed.includes(source.value)) visible = false;
+    }
+    const wrap = control.closest('.field, .check-row');
+    if (wrap) wrap.hidden = !visible;
+  }
+}
+
+function openDialog(opener, preset, plugin = null) {
   dialogOpener = opener;
+  dialogPreset = preset;
   editingPluginId = plugin?.id || null;
-  form.reset();
   const config = plugin?.config || {};
-  modeSelect.value = config.mode || 'remote';
-  document.getElementById('toolsets').value = (config.toolsets || []).join(',');
-  document.getElementById('host').value = config.host || '';
-  document.getElementById('readOnly').checked = Boolean(config.readOnly);
-  document.getElementById('localClone').checked = Boolean(config.localClone);
-  document.getElementById('binary').value = config.binary || '';
-  tokenInput.placeholder = config.hasToken ? 'Saved — enter a new value to replace it' : 'ghp_… or github_pat_…';
-  syncDialogFields();
+  dialogTitle.textContent = editingPluginId ? preset.name : `Add ${preset.name}`;
+  dialogKicker.textContent = 'MCP SERVER · SETUP';
+  dialogDescription.textContent = preset.description;
+  renderFields(preset, config);
   dialog.showModal();
-  setTimeout(() => tokenInput.focus(), 20);
+  const first = form.querySelector('select, input');
+  setTimeout(() => first?.focus(), 20);
 }
 
 function closeDialog() {
@@ -61,35 +173,33 @@ function closeDialog() {
   dialogOpener?.focus();
 }
 
+// Changing one answer can reveal or hide another field, and a select explains its own choice.
+form.addEventListener('change', () => {
+  refreshHints();
+  if (dialogPreset) applyVisibility(dialogPreset);
+});
+
 async function submitDialog(event) {
   event.preventDefault();
-  const token = tokenInput.value.trim();
-  const values = {
-    preset: 'github',
-    github: {
-      mode: modeSelect.value,
-      toolsets: splitList(document.getElementById('toolsets').value),
-      readOnly: document.getElementById('readOnly').checked,
-      localClone: document.getElementById('localClone').checked,
-      host: document.getElementById('host').value.trim(),
-      binary: document.getElementById('binary').value.trim(),
-      // An empty token means "keep whatever is stored", so it is simply not sent.
-      ...(token ? { token } : {})
-    }
-  };
-  setButtonBusy(saveGithub, true, 'Connecting…');
+  if (!dialogPreset) return;
+  const values = {};
+  for (const field of dialogPreset.setup || []) {
+    const value = fieldValue(field);
+    if (value !== undefined) values[field.key] = value;
+  }
+  setButtonBusy(dialogSubmit, true, 'Connecting…');
   try {
-    const pluginId = editingPluginId || (await api.plugins.create({ type: 'mcp', preset: 'github' })).id;
-    await api.plugins.configure(pluginId, values);
+    const pluginId = editingPluginId || (await api.plugins.create({ type: 'mcp', preset: dialogPreset.id })).id;
+    await api.plugins.configure(pluginId, { preset: dialogPreset.id, [dialogPreset.id]: values });
     await api.plugins.connect(pluginId);
     closeDialog();
     await load();
-    showToast('GitHub MCP server connected.');
+    showToast(`${dialogPreset.name} connected — the assistant now has its tools.`);
   } catch (error) {
     showToast(error.message, 'danger');
     await load();
   } finally {
-    setButtonBusy(saveGithub, false, 'Connect');
+    setButtonBusy(dialogSubmit, false, editingPluginId ? 'Save and connect' : 'Connect');
   }
 }
 
@@ -278,6 +388,7 @@ function localCloneSection(plugin) {
 function pluginCard(plugin) {
   const card = element('div', 'plugin-flow');
   const config = plugin.config || {};
+  const preset = state.presets.find((entry) => entry.id === config.preset) || { id: config.preset, name: config.presetName || config.preset, description: '', setup: [] };
   const head = element('div', 'plugin-card-head');
   const titleRow = element('div', 'plugin-step-title');
   titleRow.append(element('span', 'step-num', '1'), document.createTextNode(plugin.name));
@@ -295,7 +406,7 @@ function pluginCard(plugin) {
   const settings = element('button', 'button small secondary');
   settings.type = 'button';
   settings.append(icon('settings'), document.createTextNode('Setup'));
-  settings.addEventListener('click', () => openDialog(settings, plugin));
+  settings.addEventListener('click', () => openDialog(settings, preset, plugin));
   const test = element('button', 'button small secondary');
   test.type = 'button';
   test.append(icon('plug'), document.createTextNode('Test'));
@@ -376,6 +487,7 @@ function renderPresets() {
     const body = element('div', 'preset-body');
     body.append(element('h3', 'preset-name', preset.name));
     body.append(element('p', 'hint', preset.description));
+    body.append(element('p', 'preset-fields', `${preset.setup.length} setup question${preset.setup.length === 1 ? '' : 's'}`));
     card.append(body);
     const installed = state.plugins.find((plugin) => plugin.config?.preset === preset.id);
     const add = element('button', 'button small');
@@ -386,7 +498,7 @@ function renderPresets() {
       add.title = `${preset.name} is already set up.`;
     } else {
       add.append(icon('plus'), document.createTextNode(`Add ${preset.name}`));
-      add.addEventListener('click', () => openDialog(add));
+      add.addEventListener('click', () => openDialog(add, preset));
     }
     card.append(add);
     presetState.append(card);
@@ -415,10 +527,13 @@ async function load() {
   }
 }
 
-modeSelect.addEventListener('change', syncDialogFields);
 form.addEventListener('submit', submitDialog);
-document.getElementById('closeGithubDialog').addEventListener('click', closeDialog);
-document.getElementById('cancelGithub').addEventListener('click', closeDialog);
-dialog.addEventListener('close', () => { editingPluginId = null; });
+document.getElementById('closePresetDialog').addEventListener('click', closeDialog);
+dialog.addEventListener('close', () => {
+  editingPluginId = null;
+  dialogPreset = null;
+  dialogFields = new Map();
+  dialogHints = new Map();
+});
 
 load();

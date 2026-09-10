@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +29,24 @@ const FIXTURE = fileURLToPath(new URL('./fixtures/mcp-server.mjs', import.meta.u
 async function tempDatabase() {
   const directory = await mkdtemp(join(tmpdir(), 'glow-agent-plugins-'));
   return { db: createDatabase(join(directory, 'test.sqlite')), directory };
+}
+
+// The settings a preset stores, read back through the API rather than from the registry.
+function resolveSettings(presetId) {
+  const directory = mkdtempSync(join(tmpdir(), 'glow-agent-preset-'));
+  const db = createDatabase(join(directory, 'probe.sqlite'));
+  try {
+    const plugin = createPlugin(db, { type: 'mcp', preset: presetId });
+    const settings = { ...getPlugin(db, plugin.id).config };
+    const shared = ['preset', 'presetName', 'accountAware', 'hasToken', 'toolAllowlist', 'writesApproved', 'connected',
+      'serverName', 'serverVersion', 'serverInstructions', 'toolCount', 'tools', 'connectedAt', 'lastError',
+      'selectedRepo', 'ownerLogin', 'account', 'avatarUrl'];
+    for (const key of shared) delete settings[key];
+    return settings;
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 // The GitHub preset's local-binary mode is how the tests point a plugin at the fixture server:
@@ -130,6 +149,25 @@ test('only the shipped MCP servers can be added, and no generic server can be sm
   } finally {
     db.close();
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+// The setup form and the config writer must describe the same settings, or the page would offer
+// a field the server ignores (or the reverse).
+test('every declared setup field is a real setting of that server', () => {
+  for (const preset of listPresets()) {
+    const declared = preset.setup.map((field) => field.key);
+    // Secrets are stored but never returned, so the API shape plus the secret fields is the full
+    // set of settings this server accepts.
+    const secrets = preset.setup.filter((field) => field.secret).map((field) => field.key);
+    const accepted = [...Object.keys(resolveSettings(preset.id)), ...secrets];
+    assert.deepEqual([...declared].sort(), [...accepted].sort(), `${preset.id} form and settings agree`);
+    // A password field is the only kind that is never sent back to the browser.
+    assert.deepEqual(preset.setup.filter((field) => field.secret).map((field) => field.key), ['token']);
+    for (const field of preset.setup) {
+      assert.ok(field.label, `${preset.id}.${field.key} has a label`);
+      assert.ok(['select', 'text', 'password', 'list', 'check'].includes(field.type), `${preset.id}.${field.key} has a known type`);
+    }
   }
 });
 
