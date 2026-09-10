@@ -121,6 +121,24 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .data-subtitle { margin-top: 3px; color: var(--muted); font: 11px var(--mono); }
 .data-meta { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font: 10px var(--mono); }
 .data-meta i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.tool-disabled { opacity: 0.55; }
+.tool-disabled .data-meta i { background: var(--muted); box-shadow: none; }
+
+/* Live Approve/Deny card for gated tool calls (shell). Shown inline in the streaming message. */
+.approval-card { display: grid; gap: 10px; margin: 8px 0; padding: 12px; border: 1px solid rgba(255, 196, 107, .45); border-radius: 12px; background: rgba(255, 196, 107, .07); }
+.approval-head { display: flex; align-items: center; gap: 9px; }
+.approval-head .tool-call-icon { background: rgba(255, 196, 107, .16); color: #ffc46b; animation: tool-pulse 1s ease-in-out infinite; }
+.approval-card.is-approved .tool-call-icon,
+.approval-card.is-denied .tool-call-icon,
+.approval-card.is-expired .tool-call-icon,
+.approval-card.is-aborted .tool-call-icon { animation: none; }
+.approval-title { font: 800 12px var(--sans); color: var(--text); }
+.approval-command { margin: 0; padding: 9px 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); color: var(--text-soft); font: 11px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.approval-actions { display: flex; gap: 8px; }
+.approval-card.is-approved { border-color: rgba(198, 255, 107, .45); background: var(--accent-wash); }
+.approval-card.is-approved .tool-call-icon { background: rgba(198, 255, 107, .16); color: var(--accent); }
+.approval-card.is-denied, .approval-card.is-expired, .approval-card.is-aborted { border-color: rgba(255, 158, 158, .3); background: var(--danger-wash); }
+.approval-card.is-denied .tool-call-icon, .approval-card.is-expired .tool-call-icon, .approval-card.is-aborted .tool-call-icon { background: rgba(255, 158, 158, .14); color: var(--danger); }
 .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
 .card-actions .button { min-height: 40px; }
 .overflow-menu { position: absolute; top: calc(100% - 70px); right: 0; z-index: 3; display: grid; gap: 2px; width: 142px; padding: 5px; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; background: var(--surface-raised); box-shadow: 0 15px 35px rgba(0,0,0,.4); }

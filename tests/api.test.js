@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createApp } from '../server/app.js';
-import { executeToolCall, selectedTools } from '../server/services/tools.js';
+import { executeToolCall, serializeToolResult } from '../server/services/tools.js';
 import { listFiles, readFile, sqlQuery, writeFile } from '../server/services/workspace-tools.js';
 import { createDatabase } from '../server/db/database.js';
 
@@ -96,7 +96,16 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   assert.equal(health.response.status, 200);
   assert.equal(health.payload.data.status, 'ok');
   const tools = await json(`${base}/tools`);
-  assert.deepEqual(tools.payload.data.map((tool) => tool.id), ['calculator', 'current_time', 'list_files', 'read_file', 'write_file', 'sql_query', 'web_search', 'fetch_url']);
+  assert.deepEqual(tools.payload.data.map((tool) => tool.id), [
+    'calculator', 'current_time', 'list_files', 'read_file', 'write_file',
+    'edit_file', 'create_folder', 'create_file', 'delete_folder', 'delete_file', 'rename_folder', 'rename_file',
+    'run_shell', 'sql_query', 'web_search', 'fetch_url'
+  ]);
+  // Gated tools are still listed (with enabled flags) but only offered in chat when enabled.
+  const flagged = Object.fromEntries(tools.payload.data.map((tool) => [tool.id, tool.enabled]));
+  assert.equal(flagged.run_shell, false);
+  assert.equal(flagged.edit_file, true);
+  assert.equal(flagged.calculator, true);
 
   const created = await json(`${base}/providers`, {
     method: 'POST',
@@ -175,8 +184,7 @@ test('local API persists safe providers, skills, models, and a provider-backed r
 });
 
 test('allowlisted tools use a bounded arithmetic parser and safe time-zone handling', async () => {
-  const selected = selectedTools(['calculator', 'current_time']);
-  const arithmetic = await executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"(2 + 3) * 4"}' } }, new Set(selected.map((tool) => tool.id)));
+  const arithmetic = await executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"(2 + 3) * 4"}' } }, new Set(['calculator', 'current_time']));
   assert.equal(arithmetic.result.result, 20);
   const rejected = await executeToolCall({ function: { name: 'calculator', arguments: '{"expression":"process.exit()"}' } }, new Set(['calculator']));
   assert.match(rejected.result.error, /Expression must use/u);

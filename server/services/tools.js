@@ -1,7 +1,14 @@
-import { validation } from '../lib/errors.js';
 import { fetchUrl, listFiles, readFile, sqlQuery, webSearch, writeFile } from './workspace-tools.js';
+import { createFile, createFolder, deleteFile, deleteFolder, editFile, renameFile, renameFolder, runShell } from './developer-tools.js';
 import { executeGithubTool } from './github-tools.js';
 import { MCP_TOOL_PREFIX, executeMcpTool } from './mcp-tools.js';
+
+// Tool ids grouped by the settings gate that controls them. listTools() always advertises the
+// full catalog; conversations filter these sets out when the user has not enabled the group.
+export const FILE_MANAGEMENT_TOOL_IDS = Object.freeze([
+  'edit_file', 'create_file', 'create_folder', 'delete_file', 'delete_folder', 'rename_file', 'rename_folder'
+]);
+export const SHELL_TOOL_IDS = Object.freeze(['run_shell']);
 
 const toolCatalog = Object.freeze({
   calculator: Object.freeze({
@@ -39,24 +46,29 @@ const toolCatalog = Object.freeze({
   list_files: Object.freeze({
     id: 'list_files',
     name: 'List files',
-    description: 'List files and folders inside the local workspace (the Glow Agent project directory). Use it to find files before reading them.',
+    description: 'List files and folders inside the local workspace (the Glow Agent project directory). Use it to find files before reading them. Lists one directory by default; set recursive to true to walk the whole tree.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
-        path: { type: 'string', description: 'Directory path relative to the workspace root. Defaults to the root.' }
+        path: { type: 'string', description: 'Directory path relative to the workspace root. Defaults to the root.' },
+        recursive: { type: 'boolean', description: 'When true, walk the full subtree (up to 400 entries). Defaults to false (only the directory itself).' }
       }
     }
   }),
   read_file: Object.freeze({
     id: 'read_file',
     name: 'Read file',
-    description: 'Read a text file from the local workspace as UTF-8 text. Use a path relative to the workspace root.',
+    description: 'Read a text file from the local workspace as UTF-8 text. Use a path relative to the workspace root. Large files are returned in pages: use offset and limit to continue reading.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['path'],
-      properties: { path: { type: 'string', description: 'File path relative to the workspace root, for example notes/todo.md.' } }
+      properties: {
+        path: { type: 'string', description: 'File path relative to the workspace root, for example notes/todo.md.' },
+        offset: { type: 'integer', description: 'Character position to start reading from (default 0).' },
+        limit: { type: 'integer', description: 'Maximum characters to return (default and maximum 262144).' }
+      }
     }
   }),
   write_file: Object.freeze({
@@ -70,6 +82,133 @@ const toolCatalog = Object.freeze({
       properties: {
         path: { type: 'string', description: 'File path relative to the workspace root.' },
         content: { type: 'string', description: 'The text content to write.' }
+      }
+    }
+  }),
+  edit_file: Object.freeze({
+    id: 'edit_file',
+    name: 'Edit file',
+    group: 'fileManagement',
+    description: 'Make targeted search-and-replace edits to an existing text file in the workspace. Every search text must match exactly once unless replaceAll is true; the first failing edit stops the call so you know how far it got. Prefer this over write_file when changing part of a file.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path', 'edits'],
+      properties: {
+        path: { type: 'string', description: 'File path relative to the workspace root.' },
+        edits: {
+          type: 'array',
+          description: 'Ordered list of search/replace operations (max 25).',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['search', 'replace'],
+            properties: {
+              search: { type: 'string', description: 'Exact text to find, including surrounding context to make it unique.' },
+              replace: { type: 'string', description: 'Replacement text (may be empty to delete).' }
+            }
+          }
+        },
+        replaceAll: { type: 'boolean', description: 'Allow each search text to match and replace multiple occurrences. Defaults to false.' }
+      }
+    }
+  }),
+  create_folder: Object.freeze({
+    id: 'create_folder',
+    name: 'Create folder',
+    group: 'fileManagement',
+    description: 'Create a new folder in the workspace, including any missing parent folders. Succeeds without changes if the folder already exists.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path'],
+      properties: { path: { type: 'string', description: 'Folder path relative to the workspace root.' } }
+    }
+  }),
+  create_file: Object.freeze({
+    id: 'create_file',
+    name: 'Create file',
+    group: 'fileManagement',
+    description: 'Create a new text file in the workspace. Fails if the file already exists: use edit_file to modify an existing file or write_file to replace it completely.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path', 'content'],
+      properties: {
+        path: { type: 'string', description: 'File path relative to the workspace root.' },
+        content: { type: 'string', description: 'The text content for the new file.' }
+      }
+    }
+  }),
+  delete_folder: Object.freeze({
+    id: 'delete_folder',
+    name: 'Delete folder',
+    group: 'fileManagement',
+    description: 'Permanently delete a folder from the workspace. Only empty folders are deleted unless recursive is true. The workspace root itself can never be deleted.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path'],
+      properties: {
+        path: { type: 'string', description: 'Folder path relative to the workspace root.' },
+        recursive: { type: 'boolean', description: 'Delete the folder and everything inside it. Defaults to false.' }
+      }
+    }
+  }),
+  delete_file: Object.freeze({
+    id: 'delete_file',
+    name: 'Delete file',
+    group: 'fileManagement',
+    description: 'Permanently delete a single file from the workspace.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path'],
+      properties: { path: { type: 'string', description: 'File path relative to the workspace root.' } }
+    }
+  }),
+  rename_folder: Object.freeze({
+    id: 'rename_folder',
+    name: 'Rename folder',
+    group: 'fileManagement',
+    description: 'Rename or move a folder within the workspace. The destination must not already exist; missing destination parents are created.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['from', 'to'],
+      properties: {
+        from: { type: 'string', description: 'Current folder path relative to the workspace root.' },
+        to: { type: 'string', description: 'New folder path relative to the workspace root.' }
+      }
+    }
+  }),
+  rename_file: Object.freeze({
+    id: 'rename_file',
+    name: 'Rename file',
+    group: 'fileManagement',
+    description: 'Rename or move a file within the workspace. The destination must not already exist; missing destination parents are created.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['from', 'to'],
+      properties: {
+        from: { type: 'string', description: 'Current file path relative to the workspace root.' },
+        to: { type: 'string', description: 'New file path relative to the workspace root.' }
+      }
+    }
+  }),
+  run_shell: Object.freeze({
+    id: 'run_shell',
+    name: 'Shell command',
+    group: 'shell',
+    description: 'Run a one-off shell command in the local workspace (unsandboxed, as the local user). Use non-interactive commands only; the process group is killed at the timeout. Pipe large output through head/tail — captured output is truncated at 16 KB per stream. Commands referencing *.sqlite database files are refused. Only available when the user enables shell access in settings.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['command'],
+      properties: {
+        command: { type: 'string', description: 'The shell command line, run with sh -c from the workspace root.' },
+        timeoutMs: { type: 'integer', description: 'Kill the command after this many milliseconds (default 30000, max 120000).' }
       }
     }
   }),
@@ -117,7 +256,19 @@ const toolCatalog = Object.freeze({
 export function listTools() {
   return Object.values(toolCatalog)
     .filter((tool) => tool.id !== 'read_skill')
-    .map(({ id, name, description, parameters }) => ({ id, name, description, parameters }));
+    .map((tool) => ({ id: tool.id, name: tool.name, description: tool.description, parameters: tool.parameters, group: tool.group || null }));
+}
+
+// The tools actually offered to the model for a request: developer-tool groups drop out when
+// the user has not enabled them in settings.
+export function toolsForSettings(developerTools = {}) {
+  const fileManagement = developerTools.fileManagement !== false;
+  const shell = developerTools.shell === true;
+  return listTools().filter((tool) => {
+    if (FILE_MANAGEMENT_TOOL_IDS.includes(tool.id)) return fileManagement;
+    if (SHELL_TOOL_IDS.includes(tool.id)) return shell;
+    return true;
+  });
 }
 
 // read_skill is an internal mechanism that lets the model load skill instructions on demand,
@@ -127,18 +278,25 @@ export function readSkillTool() {
   return { id: tool.id, name: tool.name, description: tool.description, parameters: tool.parameters };
 }
 
-export function selectedTools(rawToolIds) {
-  if (rawToolIds === undefined) return [];
-  if (!Array.isArray(rawToolIds) || rawToolIds.length > 5) throw validation('Tool selection must contain at most 5 tools.');
-  const unique = [...new Set(rawToolIds)];
-  if (!unique.every((id) => typeof id === 'string' && Object.hasOwn(toolCatalog, id))) {
-    throw validation('One or more selected tools are not available.');
-  }
-  return unique.map((id) => toolCatalog[id]);
-}
-
 export function openAiToolDefinitions(tools) {
   return tools.map((tool) => ({ type: 'function', function: { name: tool.id, description: tool.description, parameters: tool.parameters } }));
+}
+
+// Tool results enter the provider context as JSON text. An uncapped result (a big file read, a
+// long listing) could blow the context window, so oversized results shrink to a preview the
+// model can page through with read_file instead.
+export const TOOL_RESULT_LIMIT = 32_000;
+
+export function serializeToolResult(result) {
+  const json = JSON.stringify(result);
+  if (json.length <= TOOL_RESULT_LIMIT) return json;
+  if (result && typeof result === 'object' && typeof result.content === 'string') {
+    const keep = Math.max(1_000, TOOL_RESULT_LIMIT - 500);
+    const shrunk = { ...result, content: `${result.content.slice(0, keep)}\n…[truncated — call the tool again with an offset to continue]`, truncated: true };
+    const shrunkJson = JSON.stringify(shrunk);
+    if (shrunkJson.length <= TOOL_RESULT_LIMIT * 1.25) return shrunkJson;
+  }
+  return JSON.stringify({ truncated: true, note: 'The tool result was too large to return in full; a JSON preview follows.', preview: json.slice(0, TOOL_RESULT_LIMIT) });
 }
 
 function calculator(expression) {
@@ -220,13 +378,26 @@ function summary(tool, result) {
   if (tool.id === 'list_files') return `Listed files in ${result.directory} (${result.entryCount} entries)`;
   if (tool.id === 'read_file') return `Read file: ${result.path}`;
   if (tool.id === 'write_file') return `Wrote file: ${result.path} (${result.bytes} bytes)`;
+  if (tool.id === 'edit_file') return `Edited file: ${result.path} (${result.replacements} replacement${result.replacements === 1 ? '' : 's'})`;
+  if (tool.id === 'create_file') return `Created file: ${result.path} (${result.bytes} bytes)`;
+  if (tool.id === 'create_folder') return result.created ? `Created folder: ${result.path}` : `Folder already exists: ${result.path}`;
+  if (tool.id === 'delete_file') return `Deleted file: ${result.path}`;
+  if (tool.id === 'delete_folder') return `Deleted folder: ${result.path}${result.recursive ? ' and its contents' : ''}`;
+  if (tool.id === 'rename_file') return `Renamed file: ${result.from} → ${result.to}`;
+  if (tool.id === 'rename_folder') return `Renamed folder: ${result.from} → ${result.to}`;
+  if (tool.id === 'run_shell') {
+    const firstLine = String(result.command || '').split('\n')[0];
+    const compact = firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+    if (result.timedOut) return `Shell command timed out and was killed: ${compact}`;
+    return `Shell command exited ${result.exitCode}: ${compact}`;
+  }
   if (tool.id === 'sql_query') return `SQL query returned ${result.rowCount} rows`;
   if (tool.id === 'web_search') return `Web search: "${result.query}" (${result.results.length} results)`;
   if (tool.id === 'fetch_url') return `Fetched ${result.url}`;
   return tool.name;
 }
 
-export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, plugin, mcp } = {}) {
+export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, plugin, mcp, developerTools = null } = {}) {
   const id = typeof call?.function?.name === 'string' ? call.function.name : '';
   // MCP tools come from the connected MCP server; the `mcp` context carries the live session
   // and the name map built from that server's tools/list response.
@@ -261,12 +432,32 @@ export async function executeToolCall(call, allowedToolIds, { getSkill, db, root
     const result = { skillId: skill.id, name: skill.name, description: skill.description, instructions: skill.instructions };
     return { toolId: id, result, summary: summary(tool, result) };
   }
+  // Defense in depth: even a call that arrives when the tool is in the allowed set (for
+  // example a replayed or stale conversation) is refused when the settings gate is off.
+  if (developerTools) {
+    if (FILE_MANAGEMENT_TOOL_IDS.includes(id) && developerTools.fileManagement === false) {
+      const result = { error: 'File-management tools are disabled in settings.' };
+      return { toolId: id, result, summary: summary(tool, result) };
+    }
+    if (SHELL_TOOL_IDS.includes(id) && developerTools.shell !== true) {
+      const result = { error: 'Shell access is disabled in settings.' };
+      return { toolId: id, result, summary: summary(tool, result) };
+    }
+  }
   let result;
   if (id === 'calculator') result = calculator(argumentsObject.expression);
   else if (id === 'current_time') result = currentTime(argumentsObject.timeZone);
-  else if (id === 'list_files') result = listFiles(rootDirectory, argumentsObject.path);
-  else if (id === 'read_file') result = readFile(rootDirectory, argumentsObject.path);
+  else if (id === 'list_files') result = listFiles(rootDirectory, argumentsObject.path, { recursive: argumentsObject.recursive === true });
+  else if (id === 'read_file') result = readFile(rootDirectory, argumentsObject.path, { offset: argumentsObject.offset, limit: argumentsObject.limit });
   else if (id === 'write_file') result = writeFile(rootDirectory, argumentsObject.path, argumentsObject.content);
+  else if (id === 'edit_file') result = editFile(rootDirectory, argumentsObject.path, argumentsObject.edits, { replaceAll: argumentsObject.replaceAll === true });
+  else if (id === 'create_file') result = createFile(rootDirectory, argumentsObject.path, argumentsObject.content);
+  else if (id === 'create_folder') result = createFolder(rootDirectory, argumentsObject.path);
+  else if (id === 'delete_file') result = deleteFile(rootDirectory, argumentsObject.path);
+  else if (id === 'delete_folder') result = deleteFolder(rootDirectory, argumentsObject.path, { recursive: argumentsObject.recursive === true });
+  else if (id === 'rename_file') result = renameFile(rootDirectory, argumentsObject.from, argumentsObject.to);
+  else if (id === 'rename_folder') result = renameFolder(rootDirectory, argumentsObject.from, argumentsObject.to);
+  else if (id === 'run_shell') result = await runShell(rootDirectory, argumentsObject.command, { timeoutMs: argumentsObject.timeoutMs });
   else if (id === 'sql_query') result = sqlQuery(db, argumentsObject.sql);
   else if (id === 'web_search') result = await webSearch(argumentsObject.query, argumentsObject.maxResults);
   else if (id === 'fetch_url') result = await fetchUrl(argumentsObject.url, argumentsObject.maxChars);

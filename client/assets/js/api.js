@@ -86,6 +86,9 @@ async function stream(path, body, onEvent) {
 export const api = {
   health: () => request('/health'),
   tools: { list: () => request('/tools') },
+  approvals: {
+    decide: (id, decision) => request(`/approvals/${encodeURIComponent(id)}`, { method: 'POST', body: { decision } })
+  },
   providers: {
     list: () => request('/providers'),
     get: (id) => request(`/providers/${encodeURIComponent(id)}`),

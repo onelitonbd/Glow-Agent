@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { renderMarkdown } from './markdown.js';
-import { element, icon, iconButton, showToast } from './ui.js';
+import { element, icon, iconButton, showToast, toolIconName } from './ui.js';
 
 const state = {
   conversations: [],
@@ -91,6 +91,14 @@ const TOOL_NAMES = {
   sql_query: 'SQL query',
   web_search: 'Web search',
   fetch_url: 'Fetch URL',
+  edit_file: 'Edit file',
+  create_file: 'Create file',
+  create_folder: 'Create folder',
+  delete_file: 'Delete file',
+  delete_folder: 'Delete folder',
+  rename_file: 'Rename file',
+  rename_folder: 'Rename folder',
+  run_shell: 'Shell command',
   github_list_repos: 'GitHub list repos',
   github_clone: 'GitHub clone repo',
   github_list_files: 'GitHub list files',
@@ -101,13 +109,6 @@ const TOOL_NAMES = {
   github_commit: 'GitHub commit',
   github_push: 'GitHub push'
 };
-
-function toolIconName(toolId) {
-  if (toolId === 'calculator') return 'calculator';
-  if (toolId === 'current_time') return 'clock';
-  if (toolId.startsWith('github_') || toolId.startsWith('mcp_')) return 'plug';
-  return 'spark';
-}
 
 // MCP tool ids are discovered at runtime (mcp_<server tool>), so they get a readable label
 // instead of a lookup in the static catalog.
@@ -146,6 +147,54 @@ function renderToolResult(toolId, summary) {
   return row;
 }
 
+// Live approval card for a gated tool call. It exists only in the streaming assistant timeline
+// (never persisted); after the stream closes, the persisted tool_result summary tells the story.
+function renderApprovalCard(entry) {
+  const pending = !entry.outcome;
+  const card = element('div', `approval-card${entry.outcome ? ` is-${entry.outcome}` : ''}`);
+  const head = element('div', 'approval-head');
+  const badge = element('span', 'tool-call-icon'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon('terminal'));
+  const title = element('span', 'approval-title', pending
+    ? 'Shell command needs your approval'
+    : entry.outcome === 'approved'
+      ? 'Approved — running'
+      : entry.outcome === 'denied'
+        ? 'Denied — not run'
+        : 'Not run — approval ended');
+  head.append(badge, title);
+  const pre = element('pre', 'approval-command');
+  pre.textContent = entry.command || '';
+  card.append(head, pre);
+  if (pending) {
+    const row = element('div', 'approval-actions');
+    const approve = element('button', 'button small', 'Approve');
+    approve.type = 'button';
+    const deny = element('button', 'button small danger', 'Deny');
+    deny.type = 'button';
+    approve.addEventListener('click', () => decideApproval(entry, 'approve', [approve, deny]));
+    deny.addEventListener('click', () => decideApproval(entry, 'deny', [approve, deny]));
+    row.append(approve, deny);
+    card.append(row);
+  }
+  return card;
+}
+
+async function decideApproval(entry, decision, buttons) {
+  buttons.forEach((button) => { button.disabled = true; });
+  const previous = entry.outcome;
+  entry.outcome = decision === 'approve' ? 'approved' : 'denied';
+  renderLog();
+  try {
+    await api.approvals.decide(entry.approvalId, decision);
+  } catch (error) {
+    // Roll the card back so the user can act again (for example after an expired approval is
+    // replaced by a fresh proposal from the model).
+    entry.outcome = previous;
+    showToast(error.message, 'danger');
+    renderLog();
+  }
+}
+
 function renderTimeline(message) {
   const fragment = document.createDocumentFragment();
   const timeline = Array.isArray(message.timeline) ? message.timeline : [];
@@ -166,6 +215,9 @@ function renderTimeline(message) {
       index += 1;
     } else if (entry.type === 'tool_result') {
       fragment.append(renderToolResult(entry.toolId, entry.summary));
+      index += 1;
+    } else if (entry.type === 'confirmation') {
+      fragment.append(renderApprovalCard(entry));
       index += 1;
     } else {
       index += 1;
@@ -1201,11 +1253,18 @@ function appendStreamDelta(event, payload) {
     timeline.push({ type: 'tool_call', name: payload.name });
   } else if (event === 'tool_result') {
     timeline.push({ type: 'tool_result', toolId: payload.toolId, summary: payload.summary });
+  } else if (event === 'confirmation_required') {
+    timeline.push({ type: 'confirmation', approvalId: payload.approvalId, toolId: payload.toolId, command: payload.command, outcome: null });
+  } else if (event === 'confirmation_resolved') {
+    const entry = timeline.find((item) => item.type === 'confirmation' && item.approvalId === payload.approvalId);
+    // A local tap may already have flipped the card; the stream outcome is the source of truth.
+    if (entry && payload.outcome !== 'approved' && payload.outcome !== 'denied') entry.outcome = payload.outcome;
+    else if (entry && !entry.outcome) entry.outcome = payload.outcome;
   }
   renderLog();
 }
 
-const STREAM_EVENTS = new Set(['started', 'status', 'thinking', 'token', 'tool_call', 'tool_result']);
+const STREAM_EVENTS = new Set(['started', 'status', 'thinking', 'token', 'tool_call', 'tool_result', 'confirmation_required', 'confirmation_resolved']);
 
 // Every way of getting an answer — a new message, a regenerate, a different model — streams
 // through here, so the live status line and the error recovery behave the same everywhere.

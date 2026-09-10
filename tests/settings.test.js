@@ -81,7 +81,9 @@ test('settings default to off and are validated before they are stored', async (
     titleGeneration: { enabled: false, providerId: null, modelId: null },
     systemPrompt: { text: '' },
     // Automatic capability testing is on unless the user turns it off.
-    autoTesting: { enabled: true }
+    autoTesting: { enabled: true },
+    // File management on, shell off, until the user changes them deliberately.
+    developerTools: { fileManagement: true, shell: false, confirmShell: false }
   });
 
   const missing = await json(`${base}/settings`, { method: 'PUT', body: {} });
@@ -105,6 +107,15 @@ test('settings default to off and are validated before they are stored', async (
   // Turning it off keeps the saved choice, so switching back on is one tap.
   const off = await json(`${base}/settings`, { method: 'PUT', body: { titleGeneration: { enabled: false, providerId: provider.id, modelId: 'titler' } } });
   assert.deepEqual(off.payload.data.titleGeneration, { enabled: false, providerId: provider.id, modelId: 'titler' });
+
+  // Developer tools: default fileManagement on / shell off, and a roundtrip through the API
+  // returns the whole settings object so one card's save cannot clobber the other sections.
+  const dev = await json(`${base}/settings`, { method: 'PUT', body: { developerTools: { fileManagement: false, shell: true } } });
+  assert.equal(dev.response.status, 200);
+  assert.deepEqual(dev.payload.data.developerTools, { fileManagement: false, shell: true, confirmShell: false });
+  assert.deepEqual(dev.payload.data.titleGeneration, { enabled: false, providerId: provider.id, modelId: 'titler' });
+  const invalidDev = await json(`${base}/settings`, { method: 'PUT', body: { developerTools: 'yes' } });
+  assert.equal(invalidDev.response.status, 400);
 });
 
 test('the first answer of a new chat is named by the configured model, and only that one', async (t) => {

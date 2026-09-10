@@ -11,6 +11,63 @@ const statusLine = document.getElementById('titleStatus');
 const promptText = document.getElementById('systemPromptText');
 const promptCount = document.getElementById('promptCount');
 const savePromptButton = document.getElementById('saveSystemPrompt');
+const devFileToggle = document.getElementById('devFileManagement');
+const devShellToggle = document.getElementById('devShell');
+const devConfirmToggle = document.getElementById('devConfirmShell');
+const saveDevToolsButton = document.getElementById('saveDeveloperTools');
+const devToolsStatus = document.getElementById('devToolsStatus');
+
+const devTools = { fileManagement: true, shell: false, confirmShell: false };
+
+function syncSwitch(button, on, labelOn, labelOff) {
+  button.setAttribute('aria-checked', String(on));
+  button.setAttribute('aria-label', on ? labelOn : labelOff);
+}
+
+function syncDevTools() {
+  syncSwitch(devFileToggle, devTools.fileManagement, 'Turn off file-management tools', 'Turn on file-management tools');
+  syncSwitch(devShellToggle, devTools.shell, 'Turn off shell commands', 'Turn on shell commands');
+  syncSwitch(devConfirmToggle, devTools.confirmShell, 'Turn off per-command approval', 'Turn on per-command approval');
+  // Approval only makes sense while shell itself is enabled, but the saved choice is kept so a
+  // temporary off/on of shell does not erase it.
+  devConfirmToggle.disabled = false;
+}
+
+devFileToggle.addEventListener('click', () => {
+  devTools.fileManagement = !devTools.fileManagement;
+  syncDevTools();
+});
+
+devShellToggle.addEventListener('click', () => {
+  devTools.shell = !devTools.shell;
+  syncDevTools();
+});
+
+devConfirmToggle.addEventListener('click', () => {
+  devTools.confirmShell = !devTools.confirmShell;
+  syncDevTools();
+});
+
+saveDevToolsButton.addEventListener('click', async () => {
+  saveDevToolsButton.disabled = true;
+  try {
+    const saved = await api.settings.update({ developerTools: { fileManagement: devTools.fileManagement, shell: devTools.shell, confirmShell: devTools.confirmShell } });
+    devTools.fileManagement = saved.developerTools.fileManagement;
+    devTools.shell = saved.developerTools.shell;
+    devTools.confirmShell = saved.developerTools.confirmShell === true;
+    syncDevTools();
+    devToolsStatus.textContent = saved.developerTools.shell
+      ? (saved.developerTools.confirmShell
+        ? 'Shell commands are ON — each one pauses for your approval before it runs.'
+        : 'Shell commands are ON — the model can run real commands as this device’s user without asking.')
+      : (saved.developerTools.fileManagement ? 'File tools are on; shell commands are off.' : 'All developer tools are off.');
+    showToast('Developer tools saved.');
+  } catch (error) {
+    showToast(error.message, 'danger');
+  } finally {
+    saveDevToolsButton.disabled = false;
+  }
+});
 
 // Kept in step with the server's own limit so the counter is never a lie.
 const PROMPT_MAX = 8_000;
@@ -143,6 +200,15 @@ async function load() {
     syncStatus(settings);
     promptText.value = settings.systemPrompt?.text || '';
     syncPromptCount();
+    devTools.fileManagement = settings.developerTools?.fileManagement !== false;
+    devTools.shell = settings.developerTools?.shell === true;
+    devTools.confirmShell = settings.developerTools?.confirmShell === true;
+    syncDevTools();
+    devToolsStatus.textContent = devTools.shell
+      ? (devTools.confirmShell
+        ? 'Shell commands are ON — each one pauses for your approval before it runs.'
+        : 'Shell commands are ON — the model can run real commands as this device’s user without asking.')
+      : (devTools.fileManagement ? 'File tools are on; shell commands are off.' : 'All developer tools are off.');
   } catch (error) {
     showToast(error.message, 'danger');
   }

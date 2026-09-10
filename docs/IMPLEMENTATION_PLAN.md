@@ -1,6 +1,6 @@
 # Glow Agent MVP implementation plan
 
-**Status:** Foundation, local data workflows, the first safe agentic-tool vertical slice, and live provider response streaming are implemented. Attachments, authenticated network access, and richer tools remain later phases.
+**Status:** Foundation, local data workflows, the first safe agentic-tool vertical slice, live provider response streaming, and the developer-tooling wave (workspace-confined file management plus a gated shell tool) are implemented. Attachments and authenticated network access remain later phases.
 
 ## Product boundary for this first working release
 
@@ -59,7 +59,7 @@ Mutating requests accept JSON only. JSON API responses use a `{ "data": ... }` e
 - SQL uses prepared statements. Inputs are bounded and validated at the server boundary.
 - The upstream OpenAI-compatible request is made only by the server. The UI works with safe provider metadata and IDs.
 - Credential strings are never logged, returned, persisted in browser storage, interpolated into HTML, or included in query strings.
-- Tool calls are limited to an explicit server-side allowlist; no shell, file, network, or arbitrary JavaScript execution is available to a model.
+- Tool calls are limited to an explicit server-side allowlist. The allowlist now includes workspace file management (create/edit/rename/delete) with realpath confinement, protected paths (`.git`, `.env`, `*.sqlite`), and a settings-gated shell tool (`run_shell`, off by default, unsandboxed, timeout-killed, output-capped, database-commands refused). An optional per-command approval mode pauses the chat stream on a user Approve/Deny card before any shell command runs; approvals are single-use, server-settled, and never resolvable by the model. No model-supplied arbitrary JavaScript is ever executed.
 - The project currently refuses non-loopback binding. LAN/public support will be a separate authenticated release rather than an unsafe environment toggle.
 
 ## Deferred, not omitted

@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { AppError } from '../lib/errors.js';
+import { AppError, notFound, validation } from '../lib/errors.js';
+import { approvals } from '../services/approvals.js';
 import {
   addSelectedModel,
   createProvider,
@@ -22,7 +23,7 @@ import {
   respondToConversation,
   respondToConversationStream
 } from '../services/conversations.js';
-import { listTools } from '../services/tools.js';
+import { FILE_MANAGEMENT_TOOL_IDS, SHELL_TOOL_IDS, listTools } from '../services/tools.js';
 import { getSettings, updateSettings } from '../services/settings.js';
 import {
   capabilityReport,
@@ -115,7 +116,32 @@ export function createApiRouter({ db, config, autoTests = null }) {
   router.get('/health', (_request, response) => success(response, {
     status: 'ok', service: 'glow-agent', time: new Date().toISOString()
   }));
-  router.get('/tools', (_request, response) => success(response, listTools()));
+  router.get('/tools', (_request, response) => {
+    const { developerTools } = getSettings(db);
+    success(response, listTools().map((tool) => ({
+      ...tool,
+      enabled: FILE_MANAGEMENT_TOOL_IDS.includes(tool.id)
+        ? developerTools.fileManagement !== false
+        : SHELL_TOOL_IDS.includes(tool.id)
+          ? developerTools.shell === true
+          : true
+    })));
+  });
+
+  // One-shot approvals for gated tool calls. The chat stream emits a confirmation_required
+  // event carrying the approval id; this route is the ONLY way such an approval settles —
+  // the model never sees the id and its tool loop stays paused until a decision lands.
+  router.post('/approvals/:approvalId', (request, response, next) => {
+    try {
+      const raw = request.body?.decision;
+      const decision = raw === 'approve' ? 'approved' : raw === 'deny' ? 'denied' : null;
+      if (!decision) throw validation('Send decision: "approve" or "deny".');
+      if (!approvals.decide(request.params.approvalId, decision)) throw notFound('Pending approval');
+      success(response, { status: decision });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.route('/providers')
     .get((_request, response) => success(response, listProviders(db)))

@@ -3,7 +3,8 @@ import { notFound, validation, AppError } from '../lib/errors.js';
 import { identifier, modelId, requiredString } from '../lib/validate.js';
 import { now } from '../db/database.js';
 import { providerCredentials, providerFetch, upstreamUrl } from './providers.js';
-import { executeToolCall, listTools, openAiToolDefinitions, readSkillTool } from './tools.js';
+import { executeToolCall, openAiToolDefinitions, readSkillTool, serializeToolResult, toolsForSettings } from './tools.js';
+import { approvals } from './approvals.js';
 import { listSkills } from './skills.js';
 import { githubToolDefinitions } from './github-tools.js';
 import { activeMcpPlugins, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
@@ -79,7 +80,7 @@ export function getConversation(db, rawConversationId) {
   return { ...toConversation(conversation), messages };
 }
 
-function systemMessage(skills, { plugin = null, mcp = null, customPrompt = '' } = {}) {
+function systemMessage(skills, { plugin = null, mcp = null, customPrompt = '', developerTools = null } = {}) {
   const servers = mcp?.servers || [];
   const failures = mcp?.failures || [];
   const mcpGuide = servers.length
@@ -113,6 +114,20 @@ function systemMessage(skills, { plugin = null, mcp = null, customPrompt = '' } 
     // must still be told about the server's tools when no clone is configured.
     ...(mcpFailure ? [mcpFailure] : []),
     ...(mcpGuide ? [mcpGuide] : []),
+    // Developer-tool guidance only appears when at least one of the gated groups is on.
+    ...(developerTools && (developerTools.fileManagement !== false || developerTools.shell === true) ? [
+      [
+        developerTools.fileManagement !== false
+          ? 'File-management tools are available: create_file and create_folder make new things (create_file refuses to overwrite), edit_file makes targeted search/replace changes (prefer it for existing files), rename_file and rename_folder move things, and delete_file / delete_folder remove them permanently. Reads of large files page through read_file offset and limit. Protected paths (.git, .env, and database files) refuse every tool operation.'
+          : '',
+        developerTools.shell === true
+          ? 'A run_shell tool runs one-off shell commands from the workspace root: unsandboxed, non-interactive (no editors or TUIs), killed at its timeout, with output truncated at 16 KB per stream, and refused when it references database files. Long-running servers do not survive the timeout; keep commands short-lived and inspect the exit code and stderr before declaring success.'
+          : '',
+        developerTools.shell === true && developerTools.confirmShell === true
+          ? 'Every command you propose through run_shell is shown to the user for approval before it runs. Propose small, self-explanatory commands; a denied command did not run, and you must not retry it or a lightly rewritten version of it — ask the user how to proceed.'
+          : ''
+      ].filter(Boolean).join(' ')
+    ] : []),
     ...(plugin ? [
       'A local clone of the selected repository is also available in the workspace. Use github_list_files / github_read_file to inspect it, github_write_file to edit or create files, github_rename_file and github_delete_file to move or remove files, then github_commit to stage and commit locally. Push to GitHub with github_push, but note that pushing always requires the user to confirm first — if push is blocked for confirmation, tell the user and stop rather than retrying. Although the plugin may not be cloned yet, call github_clone first if you need to refresh it. Prefer the MCP tools for GitHub itself and use the clone for bulk file work.'
     ] : []),
@@ -129,6 +144,69 @@ function skillResolver(db) {
     const row = db.prepare('SELECT id, name, description, instructions FROM skills WHERE id = ?').get(skillId);
     return row || null;
   };
+}
+
+// ---- Per-call user approvals (Phase 3: proof-of-consent before dangerous tool runs) ---------
+
+const APPROVAL_GATED_TOOLS = new Set(['run_shell']);
+
+function needsApproval(context, toolId) {
+  return APPROVAL_GATED_TOOLS.has(toolId)
+    && context.developerTools?.shell === true
+    && context.developerTools?.confirmShell === true;
+}
+
+function approvalCommand(call) {
+  try {
+    const args = JSON.parse(call.function?.arguments || '{}');
+    if (typeof args?.command === 'string' && args.command.trim()) return args.command.trim();
+  } catch { /* fall through to the raw argument text below */ }
+  return typeof call.function?.arguments === 'string' ? call.function.arguments : '';
+}
+
+function compactCommand(command) {
+  const firstLine = String(command).split('\n')[0];
+  return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+}
+
+// Runs one tool call, pausing for an explicit user decision first when the settings call for an
+// approval card. Only the live stream can collect a decision, so on the plain JSON endpoint a
+// gated call is refused with a clear tool result instead of hanging the request. The model is
+// never told the approval id and can never settle it — only the /approvals route can.
+async function executeWithApproval(context, db, call, emit, { rootDirectory, fetchTimeoutMs }) {
+  const toolId = typeof call.function?.name === 'string' ? call.function.name : '';
+  const toolArgs = [
+    call,
+    new Set(context.tools.map((tool) => tool.id)),
+    { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp, developerTools: context.developerTools }
+  ];
+  if (!needsApproval(context, toolId)) return executeToolCall(...toolArgs);
+  if (!emit) {
+    return {
+      toolId,
+      result: { error: 'Shell commands need the user\'s approval, which only the live chat stream can collect. Ask the user to send the message in the chat window.' },
+      summary: 'Shell command skipped — approval needs the live chat stream'
+    };
+  }
+  const command = approvalCommand(call);
+  const approval = approvals.create({ conversationId: context.conversation.id, toolId, command });
+  emit('confirmation_required', { approvalId: approval.id, toolId, command });
+  const outcome = await approval.wait;
+  emit('confirmation_resolved', { approvalId: approval.id, outcome });
+  if (outcome !== 'approved') {
+    const error = outcome === 'expired'
+      ? 'Approval timed out and the command was not run.'
+      : outcome === 'aborted'
+        ? 'The stream ended before the command was approved, so it was not run.'
+        : 'The user denied this command. It did not run. Do not retry it or a lightly rewritten version of it; ask the user how they would like to proceed instead.';
+    return {
+      toolId,
+      result: { error, approved: false },
+      summary: outcome === 'denied' ? `Shell command denied by the user: ${compactCommand(command)}` : 'Shell command not run — no approval'
+    };
+  }
+  const execution = await executeToolCall(...toolArgs);
+  return { ...execution, summary: `Approved by user — ${execution.summary}` };
 }
 
 function normalizeAssistantContent(content) {
@@ -306,9 +384,11 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
     ? parseJsonArray(existingUserMessage.attachments, [])
     : parseAttachments(db, body, { providerId, selectedModelId });
   const skills = listSkills(db);
-  // Every available built-in tool is always offered to the model; no selection is needed.
+  const settings = getSettings(db);
+  // Built-in tools are always offered; developer-tool groups only when their setting is on.
   // read_skill is added only when skills exist so the model can load instructions on demand.
-  const tools = skills.length ? [...listTools(), readSkillTool()] : listTools();
+  const baseTools = toolsForSettings(settings.developerTools);
+  const tools = skills.length ? [...baseTools, readSkillTool()] : baseTools;
   // A connected, enabled GitHub plugin with a selected repo exposes GitHub tools and a repo
   // workspace. The model can list/clone/read/edit/commit files and (on confirmation) push.
   const plugin = activeGithubPlugin(db, body.pluginId, workspaceDirectory);
@@ -336,7 +416,7 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
     }
     : persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId, attachments });
   const messages = conversationMessages(db, conversation.id);
-  const system = systemMessage(skills, { plugin, mcp, customPrompt: getSettings(db).systemPrompt.text });
+  const system = systemMessage(skills, { plugin, mcp, customPrompt: settings.systemPrompt.text, developerTools: settings.developerTools });
   if (system) messages.unshift({ role: 'system', content: system });
   // Only the first question of a chat names it. Counting the other questions (rather than the
   // rows) means a regenerate of that first question can still write the title.
@@ -345,6 +425,7 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
   return {
     conversation, content, providerId, selectedModelId, tools, plugin, mcp, userMessage, messages,
     attachments,
+    developerTools: settings.developerTools,
     capabilities: modelCapabilities(db, providerId, selectedModelId),
     isFirstExchange: otherQuestions === 0,
     reasoningEffort: thinkingRung ? thinkingRung.value : null,
@@ -768,10 +849,10 @@ export async function respondToConversation(db, rawConversationId, body, timeout
       context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
       for (const call of toolCalls) {
         timeline.push({ type: 'tool_call', name: typeof call.function?.name === 'string' ? call.function.name : '' });
-        const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp });
+        const execution = await executeWithApproval(context, db, call, null, { rootDirectory, fetchTimeoutMs });
         toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
         timeline.push({ type: 'tool_result', toolId: execution.toolId, summary: execution.summary });
-        context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
+        context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: serializeToolResult(execution.result) });
       }
     }
     return await finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline, { fetchTimeoutMs });
@@ -819,10 +900,10 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
       if (result.toolCalls.length === 0) break;
       context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
       for (const call of result.toolCalls) {
-        const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp });
+        const execution = await executeWithApproval(context, db, call, emit, { rootDirectory, fetchTimeoutMs });
         toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
         timelineEmit('tool_result', { toolId: execution.toolId, summary: execution.summary });
-        context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
+        context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: serializeToolResult(execution.result) });
       }
     }
     // Derive the persisted content/reasoning from the emitted timeline so a resumed stream keeps

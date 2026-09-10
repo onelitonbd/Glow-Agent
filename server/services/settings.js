@@ -7,6 +7,7 @@ import { now } from '../db/database.js';
 const TITLE_KEY = 'titleGeneration';
 const PROMPT_KEY = 'systemPrompt';
 const AUTO_TEST_KEY = 'autoTesting';
+const DEVELOPER_TOOLS_KEY = 'developerTools';
 
 // Long enough for detailed standing instructions, short enough that it cannot crowd out the
 // conversation itself in the context window.
@@ -20,6 +21,13 @@ export function defaultTitleSettings() {
 // learns what it can do without the user having to open the Testing page and press a button.
 export function defaultAutoTestSettings() {
   return { enabled: true };
+}
+
+// File-management tools default ON: they are confined to the workspace by the same guard the
+// built-in read/write/list tools always used. Shell defaults OFF: it is unsandboxed arbitrary
+// command execution, so the user has to opt in deliberately.
+export function defaultDeveloperToolsSettings() {
+  return { fileManagement: true, shell: false, confirmShell: false };
 }
 
 function readSetting(db, key) {
@@ -45,6 +53,7 @@ export function getSettings(db) {
   const title = readSetting(db, TITLE_KEY);
   const prompt = readSetting(db, PROMPT_KEY);
   const autoTest = readSetting(db, AUTO_TEST_KEY);
+  const devTools = readSetting(db, DEVELOPER_TOOLS_KEY);
   return {
     titleGeneration: {
       enabled: title?.enabled === true,
@@ -54,7 +63,15 @@ export function getSettings(db) {
     // An empty prompt means "no extra instructions", which is the default.
     systemPrompt: { text: typeof prompt?.text === 'string' ? prompt.text : '' },
     // Missing means "never changed", which still means on.
-    autoTesting: { enabled: autoTest?.enabled !== false }
+    autoTesting: { enabled: autoTest?.enabled !== false },
+    // fileManagement defaults on, shell defaults off; a saved value always wins.
+    developerTools: {
+      fileManagement: typeof devTools?.fileManagement === 'boolean' ? devTools.fileManagement : true,
+      shell: devTools?.shell === true,
+      // Only meaningful while shell access is on: every run_shell call then pauses the chat for
+      // an explicit Approve/Deny tap from the user before anything executes.
+      confirmShell: devTools?.confirmShell === true
+    }
   };
 }
 
@@ -64,7 +81,18 @@ export function updateSettings(db, body = {}) {
   const hasTitle = patch.titleGeneration !== undefined;
   const hasPrompt = patch.systemPrompt !== undefined;
   const hasAutoTest = patch.autoTesting !== undefined;
-  if (!hasTitle && !hasPrompt && !hasAutoTest) throw validation('Nothing to save. Send the settings you want to change.');
+  const hasDevTools = patch.developerTools !== undefined;
+  if (!hasTitle && !hasPrompt && !hasAutoTest && !hasDevTools) throw validation('Nothing to save. Send the settings you want to change.');
+
+  if (hasDevTools) {
+    const next = patch.developerTools;
+    if (!next || typeof next !== 'object') throw validation('Developer tools settings are required.');
+    writeSetting(db, DEVELOPER_TOOLS_KEY, {
+      fileManagement: next.fileManagement !== false,
+      shell: next.shell === true,
+      confirmShell: next.confirmShell === true
+    });
+  }
 
   if (hasAutoTest) {
     const next = patch.autoTesting;
