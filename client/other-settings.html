@@ -38,6 +38,17 @@
         <button class="button full" id="saveTitleSettings" type="button">Save settings</button>
       </div>
     </section>
+    <section aria-labelledby="promptSettingsLabel">
+      <div class="section-head"><h2 class="section-label" id="promptSettingsLabel">System prompt</h2></div>
+      <div class="card settings-card">
+        <p class="hint">Added to every message you send, in every chat. Use it for standing instructions — how to answer, what to always include, what to avoid. Leave it empty to use the built-in instructions only.</p>
+        <div class="field">
+          <label for="systemPromptText">Instructions <span id="promptCount">0 / 8000</span></label>
+          <textarea id="systemPromptText" class="instructions" maxlength="8000" placeholder="e.g. Always answer in Bengali unless I write in English. Keep answers under 150 words. Start with the answer, then explain."></textarea>
+        </div>
+        <button class="button full" id="saveSystemPrompt" type="button">Save system prompt</button>
+      </div>
+    </section>
     <p class="app-footer">GLOW AGENT · SETTINGS</p>
   </main>
   <script type="module" src="/assets/js/other-settings.js"></script>

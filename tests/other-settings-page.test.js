@@ -108,6 +108,26 @@ test('saving sends the switch and both selections together', async () => {
   assert.equal(byId.get('titleEnabled').getAttribute('aria-checked'), 'true', 'the switch reflects what was saved');
 });
 
+test('the saved system prompt loads into the box and saves on its own', async () => {
+  const { byId, requests } = await loadPage({
+    settings: { titleGeneration: { enabled: false, providerId: null, modelId: null }, systemPrompt: { text: 'Always answer in Bengali.' } }
+  });
+  const box = byId.get('systemPromptText');
+  assert.equal(box.value, 'Always answer in Bengali.');
+  assert.equal(byId.get('promptCount').textContent, '25 / 8000', 'the counter matches the loaded text');
+
+  box.value = 'Keep every answer under 150 words.';
+  box.dispatchEvent('input');
+  assert.equal(byId.get('promptCount').textContent, '34 / 8000', 'the counter follows typing');
+
+  byId.get('saveSystemPrompt').dispatchEvent('click');
+  await waitFor(() => requests.some((request) => request.method === 'PUT'));
+  // Only the prompt is sent, so saving it cannot disturb the title setting.
+  assert.deepEqual(requests.find((request) => request.method === 'PUT').body, {
+    systemPrompt: { text: 'Keep every answer under 150 words.' }
+  });
+});
+
 test('with no providers the page says so instead of showing an empty box', async () => {
   const { document, byId } = createDom(PAGE_HTML);
   globalThis.document = document;

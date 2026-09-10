@@ -77,7 +77,7 @@ test('settings default to off and are validated before they are stored', async (
 
   const defaults = await json(`${base}/settings`);
   assert.equal(defaults.response.status, 200);
-  assert.deepEqual(defaults.payload.data, { titleGeneration: { enabled: false, providerId: null, modelId: null } });
+  assert.deepEqual(defaults.payload.data, { titleGeneration: { enabled: false, providerId: null, modelId: null }, systemPrompt: { text: '' } });
 
   const missing = await json(`${base}/settings`, { method: 'PUT', body: {} });
   assert.equal(missing.response.status, 400);
@@ -96,6 +96,7 @@ test('settings default to off and are validated before they are stored', async (
   const saved = await json(`${base}/settings`, { method: 'PUT', body: { titleGeneration: { enabled: true, providerId: provider.id, modelId: 'titler' } } });
   assert.equal(saved.response.status, 200);
   assert.deepEqual(saved.payload.data.titleGeneration, { enabled: true, providerId: provider.id, modelId: 'titler' });
+  assert.deepEqual(saved.payload.data.systemPrompt, { text: '' }, 'saving titles leaves the prompt untouched');
   // Turning it off keeps the saved choice, so switching back on is one tap.
   const off = await json(`${base}/settings`, { method: 'PUT', body: { titleGeneration: { enabled: false, providerId: provider.id, modelId: 'titler' } } });
   assert.deepEqual(off.payload.data.titleGeneration, { enabled: false, providerId: provider.id, modelId: 'titler' });
@@ -177,4 +178,48 @@ test('with the setting off nothing extra is asked of any model', async (t) => {
   })).payload.data;
   assert.equal(result.conversation.title, 'Help me plan a trip.');
   assert.equal(calls.filter((call) => call.model === 'titler').length, 0);
+});
+
+test('a saved system prompt reaches the model on every message, and clearing it takes it away', async (t) => {
+  const { base, upstream, calls, cleanup } = await setup();
+  t.after(cleanup);
+
+  const provider = (await json(`${base}/providers`, { method: 'POST', body: { name: 'Titles', baseUrl: upstream, apiKey: 'k' } })).payload.data;
+  await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'alpha' } });
+  const conversation = (await json(`${base}/conversations`, { method: 'POST' })).payload.data;
+  const ask = { providerId: provider.id, modelId: 'alpha' };
+  const systemOf = (call) => call.messages.find((message) => message.role === 'system')?.content || '';
+
+  // Nothing saved yet: the built-in instructions only.
+  await json(`${base}/conversations/${conversation.id}/respond`, { method: 'POST', body: { message: 'First question.', ...ask } });
+  assert.equal(systemOf(calls.at(-1)).includes('standing instructions'), false);
+  assert.match(systemOf(calls.at(-1)), /GitHub-flavored Markdown/u, 'the built-in instructions are still there');
+
+  // Validation.
+  const tooLong = await json(`${base}/settings`, { method: 'PUT', body: { systemPrompt: { text: 'x'.repeat(8_001) } } });
+  assert.equal(tooLong.response.status, 400);
+  const notText = await json(`${base}/settings`, { method: 'PUT', body: { systemPrompt: { text: 42 } } });
+  assert.equal(notText.response.status, 400);
+  const nothing = await json(`${base}/settings`, { method: 'PUT', body: {} });
+  assert.equal(nothing.response.status, 400);
+
+  const saved = await json(`${base}/settings`, { method: 'PUT', body: { systemPrompt: { text: 'Always answer in Bengali.' } } });
+  assert.equal(saved.payload.data.systemPrompt.text, 'Always answer in Bengali.');
+  // Saving the prompt must not disturb the title setting, and vice versa.
+  assert.deepEqual(saved.payload.data.titleGeneration, { enabled: false, providerId: null, modelId: null });
+
+  await json(`${base}/conversations/${conversation.id}/respond`, { method: 'POST', body: { message: 'Second question.', ...ask } });
+  assert.match(systemOf(calls.at(-1)), /standing instructions/u);
+  assert.match(systemOf(calls.at(-1)), /Always answer in Bengali\./u);
+  assert.match(systemOf(calls.at(-1)), /GitHub-flavored Markdown/u, 'the custom prompt is added, not substituted');
+
+  // A new chat gets it too.
+  const other = (await json(`${base}/conversations`, { method: 'POST' })).payload.data;
+  await json(`${base}/conversations/${other.id}/respond`, { method: 'POST', body: { message: 'Another chat.', ...ask } });
+  assert.match(systemOf(calls.at(-1)), /Always answer in Bengali\./u);
+
+  const cleared = await json(`${base}/settings`, { method: 'PUT', body: { systemPrompt: { text: '' } } });
+  assert.equal(cleared.payload.data.systemPrompt.text, '');
+  await json(`${base}/conversations/${other.id}/respond`, { method: 'POST', body: { message: 'After clearing.', ...ask } });
+  assert.equal(systemOf(calls.at(-1)).includes('Always answer in Bengali.'), false);
 });

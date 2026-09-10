@@ -8,6 +8,12 @@ const modelSelect = document.getElementById('titleModel');
 const toggle = document.getElementById('titleEnabled');
 const saveButton = document.getElementById('saveTitleSettings');
 const statusLine = document.getElementById('titleStatus');
+const promptText = document.getElementById('systemPromptText');
+const promptCount = document.getElementById('promptCount');
+const savePromptButton = document.getElementById('saveSystemPrompt');
+
+// Kept in step with the server's own limit so the counter is never a lie.
+const PROMPT_MAX = 8_000;
 
 function renderProviderOptions() {
   providerSelect.replaceChildren();
@@ -104,6 +110,26 @@ saveButton.addEventListener('click', async () => {
   }
 });
 
+function syncPromptCount() {
+  promptCount.textContent = `${promptText.value.length} / ${PROMPT_MAX}`;
+}
+
+promptText.addEventListener('input', syncPromptCount);
+
+savePromptButton.addEventListener('click', async () => {
+  savePromptButton.disabled = true;
+  try {
+    const saved = await api.settings.update({ systemPrompt: { text: promptText.value } });
+    promptText.value = saved.systemPrompt.text;
+    syncPromptCount();
+    showToast(saved.systemPrompt.text ? 'System prompt saved — it applies to every chat.' : 'System prompt cleared.');
+  } catch (error) {
+    showToast(error.message, 'danger');
+  } finally {
+    savePromptButton.disabled = false;
+  }
+});
+
 async function load() {
   try {
     const [settings, providers] = await Promise.all([api.settings.get(), api.providers.list()]);
@@ -115,6 +141,8 @@ async function load() {
     await loadModelsFor(state.providerId, settings.titleGeneration.modelId || '');
     syncToggle();
     syncStatus(settings);
+    promptText.value = settings.systemPrompt?.text || '';
+    syncPromptCount();
   } catch (error) {
     showToast(error.message, 'danger');
   }

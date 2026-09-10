@@ -77,7 +77,7 @@ export function getConversation(db, rawConversationId) {
   return { ...toConversation(conversation), messages };
 }
 
-function systemMessage(skills, { plugin = null, mcp = null } = {}) {
+function systemMessage(skills, { plugin = null, mcp = null, customPrompt = '' } = {}) {
   const servers = mcp?.servers || [];
   const failures = mcp?.failures || [];
   const mcpGuide = servers.length
@@ -113,6 +113,10 @@ function systemMessage(skills, { plugin = null, mcp = null } = {}) {
     ...(mcpGuide ? [mcpGuide] : []),
     ...(plugin ? [
       'A local clone of the selected repository is also available in the workspace. Use github_list_files / github_read_file to inspect it, github_write_file to edit or create files, github_rename_file and github_delete_file to move or remove files, then github_commit to stage and commit locally. Push to GitHub with github_push, but note that pushing always requires the user to confirm first — if push is blocked for confirmation, tell the user and stop rather than retrying. Although the plugin may not be cloned yet, call github_clone first if you need to refresh it. Prefer the MCP tools for GitHub itself and use the clone for bulk file work.'
+    ] : []),
+    // The user's own standing instructions go last, so they are the last thing the model reads.
+    ...(customPrompt ? [
+      `The user has set these standing instructions for every reply in this workspace. Follow them in addition to everything above:\n${customPrompt}`
     ] : [])
   ].join('\n');
 }
@@ -245,7 +249,7 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
     }
     : persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
-  const system = systemMessage(skills, { plugin, mcp });
+  const system = systemMessage(skills, { plugin, mcp, customPrompt: getSettings(db).systemPrompt.text });
   if (system) messages.unshift({ role: 'system', content: system });
   // Only the first question of a chat names it. Counting the other questions (rather than the
   // rows) means a regenerate of that first question can still write the title.
