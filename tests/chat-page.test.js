@@ -154,14 +154,26 @@ test('an answer offers Regenerate, Copy, Delete, and Try another model', async (
   assert.equal(regenerate.title, 'Regenerate');
 });
 
-test('a question offers Copy and Edit, and copying uses the clipboard', async () => {
+test('a question offers Regenerate, Copy, and Edit, and copying uses the clipboard', async () => {
   const { byId, copied } = await loadChat();
   await openConversation(byId);
   const bars = byId.get('chatLog').querySelectorAll('.message-actions');
-  assert.deepEqual(labels(bars[0]), ['Copy', 'Edit']);
+  assert.deepEqual(labels(bars[0]), ['Regenerate', 'Copy', 'Edit']);
   actionButton(byId, 'user', 'copy').dispatchEvent('click');
   await waitFor(() => copied.length === 1);
   assert.deepEqual(copied, ['Write me a haiku.']);
+});
+
+test('Regenerate on a question re-answers that question', async () => {
+  const { byId, requests } = await loadChat();
+  await openConversation(byId);
+  actionButton(byId, 'user', 'regenerate').dispatchEvent('click');
+  await waitFor(() => requests.some((request) => request.path.endsWith('/regenerate/stream')));
+  const regenerate = requests.find((request) => request.path.endsWith('/regenerate/stream'));
+  assert.equal(regenerate.path, '/api/v1/conversations/conv-1/messages/msg-user/regenerate/stream');
+  assert.equal(regenerate.body.modelId, 'alpha');
+  await waitFor(() => byId.get('chatLog').textContent.includes('Answer from alpha.'));
+  assert.equal(byId.get('chatLog').querySelectorAll('.message.user').length, 1, 'the question is answered again, not duplicated');
 });
 
 test('Delete on an answer asks once more, then removes the pair', async () => {

@@ -189,6 +189,9 @@ function messageActions(message) {
     ];
   }
   return [
+    // Re-answering works from the question too: regenerate() re-answers the question a reply
+    // belongs to, so a question just points at itself.
+    { id: 'regenerate', icon: 'refresh', label: 'Regenerate', run: () => regenerate(message.id) },
     { id: 'copy', icon: 'copy', label: 'Copy', run: () => copyText(message.content) },
     { id: 'edit', icon: 'pencil', label: 'Edit', run: () => startEditing(message.id) }
   ];
