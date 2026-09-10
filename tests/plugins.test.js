@@ -18,6 +18,7 @@ import {
   inspectPlugin,
   listPlugins,
   listPresets,
+  pluginRepositories,
   repoListFiles,
   resolveServer,
   selectPluginRepo,
@@ -25,6 +26,8 @@ import {
 } from '../server/services/plugins.js';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/mcp-server.mjs', import.meta.url));
+// Answers get_me and search_repositories the way the GitHub server does.
+const GITHUB_FIXTURE = fileURLToPath(new URL('./fixtures/mcp-server-github.mjs', import.meta.url));
 
 async function tempDatabase() {
   const directory = await mkdtemp(join(tmpdir(), 'glow-agent-plugins-'));
@@ -38,9 +41,10 @@ function resolveSettings(presetId) {
   try {
     const plugin = createPlugin(db, { type: 'mcp', preset: presetId });
     const settings = { ...getPlugin(db, plugin.id).config };
+    // Status the plugin reports about itself, as opposed to settings the user can change.
     const shared = ['preset', 'presetName', 'accountAware', 'hasToken', 'toolAllowlist', 'writesApproved', 'connected',
       'serverName', 'serverVersion', 'serverInstructions', 'toolCount', 'tools', 'connectedAt', 'lastError',
-      'selectedRepo', 'ownerLogin', 'account', 'avatarUrl'];
+      'selectedRepo', 'defaultBranch', 'ownerLogin', 'account', 'avatarUrl'];
     for (const key of shared) delete settings[key];
     return settings;
   } finally {
@@ -344,6 +348,37 @@ test('the optional local clone stays off until the plugin enables it', async () 
     selectPluginRepo(db, created.id, { owner: 'acme', repo: 'widgets', defaultBranch: 'main' });
     // Not cloned yet, so the workspace read reports that instead of inventing files.
     assert.equal(repoListFiles(db, created.id, directory, '').error, 'The repository has not been cloned yet.');
+  } finally {
+    db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+// Connecting should leave the plugin ready to work: an account, a repository, and no second
+// round of setup for the user.
+test('connecting resolves the account and picks a repository automatically', async () => {
+  const { db, directory } = await tempDatabase();
+  try {
+    const created = createPlugin(db, { type: 'mcp', preset: 'github', name: 'GitHub' });
+    configurePlugin(db, created.id, { preset: 'github', github: { mode: 'local-binary', binary: GITHUB_FIXTURE } });
+    const connect = await connectPlugin(db, created.id);
+    assert.equal(connect.server.name, 'github-mcp-fixture');
+
+    const plugin = getPlugin(db, created.id);
+    assert.equal(plugin.config.ownerLogin, 'octocat');
+    assert.equal(plugin.config.account, 'The Octocat');
+    // The most recently updated repository, not the first one the server happens to list.
+    assert.equal(plugin.config.selectedRepo, 'octocat/gizmos');
+    assert.equal(plugin.config.defaultBranch, 'trunk');
+
+    const repos = await pluginRepositories(db, created.id);
+    assert.deepEqual(repos.map((repo) => repo.fullName), ['octocat/gizmos', 'octocat/widgets']);
+    assert.equal(repos[0].private, true);
+
+    // An explicit choice still wins on the next connection.
+    selectPluginRepo(db, created.id, { owner: 'octocat', repo: 'widgets', defaultBranch: 'main' });
+    await connectPlugin(db, created.id);
+    assert.equal(getPlugin(db, created.id).config.selectedRepo, 'octocat/widgets');
   } finally {
     db.close();
     await rm(directory, { recursive: true, force: true });

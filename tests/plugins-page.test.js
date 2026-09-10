@@ -64,7 +64,13 @@ test('the setup form is built from the chosen server\'s own fields, not a shared
   assert.equal(byId.get('presetDialogTitle').textContent, 'Add GitHub');
   const form = byId.get('presetForm');
   const fields = controls(form);
-  assert.deepEqual(fields.map((field) => field.name), ['mode', 'token', 'toolsets', 'binary', 'host', 'readOnly', 'localClone']);
+  assert.deepEqual(fields.map((field) => field.name), ['token', 'mode', 'toolsets', 'binary', 'host', 'readOnly', 'localClone']);
+
+  // GitHub asks for one thing. Everything else is still reachable, but folded away.
+  const visible = fields.filter((field) => !field.closest('details'));
+  assert.deepEqual(visible.map((field) => field.name), ['token'], 'only the token is asked for up front');
+  assert.equal(form.querySelector('details summary').textContent, 'Advanced settings');
+  assert.equal(form.querySelector('details').open, undefined, 'the advanced section starts closed');
 
   // The credential field for this server is a password, and the page never declares its own
   // GitHub inputs — the HTML ships no server-specific form at all.

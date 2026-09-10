@@ -92,6 +92,7 @@ function safePlugin(row) {
       connectedAt: safeString(config.connectedAt),
       lastError: safeString(config.lastError),
       selectedRepo: safeString(config.selectedRepo),
+      defaultBranch: safeString(config.defaultBranch),
       ownerLogin: safeString(config.ownerLogin || config.owner),
       account: safeString(config.account),
       avatarUrl: safeString(config.avatarUrl)
@@ -129,11 +130,22 @@ const MCP_PRESETS = Object.freeze({
     // The setup form for this server, and the authoritative list of settings it accepts. The
     // Plugins page renders these fields and the service ignores any key that is not declared
     // here, so there is no shared or generic form to fill in.
+    // One question. The rest still works, but sits behind an Advanced disclosure: someone
+    // connecting their own account should paste a token and be done.
     setup: [
+      {
+        key: 'token',
+        label: 'GitHub personal access token',
+        type: 'password',
+        placeholder: 'ghp_… or github_pat_…',
+        hint: 'Paste a token with the repo, read:org, and user scopes and everything else is chosen for you. It is stored on this device and never shown again.',
+        secret: true
+      },
       {
         key: 'mode',
         label: 'How to run it',
         type: 'select',
+        advanced: true,
         options: [
           { value: 'remote', label: 'Remote — hosted by GitHub (nothing to install)', hint: 'GitHub hosts the server at https://api.githubcopilot.com/mcp/. Nothing to install; the token is sent as a bearer header.' },
           { value: 'local-docker', label: 'Local — official Docker image', hint: 'Runs ghcr.io/github/github-mcp-server in Docker over stdio. Leave the token empty to use the image\u2019s own browser sign-in.' },
@@ -141,27 +153,20 @@ const MCP_PRESETS = Object.freeze({
         ]
       },
       {
-        key: 'token',
-        label: 'GitHub personal access token',
-        type: 'password',
-        placeholder: 'ghp_… or github_pat_…',
-        hint: 'Sent as Authorization: Bearer to the MCP server, or as GITHUB_PERSONAL_ACCESS_TOKEN for the local server. Leave it empty for the local server\u2019s own browser sign-in. Scope it to repo, read:org, and user. It is stored on this device and never shown again.',
-        secret: true
-      },
-      {
         key: 'toolsets',
         label: 'Toolsets',
         type: 'list',
+        advanced: true,
         // The form starts with the curated default filled in, so a new plugin never silently asks
         // the server for every toolset it has.
         default: [...GITHUB_DEFAULT_TOOLSETS],
         placeholder: 'repos,users,issues,pull_requests,context',
         hint: 'Comma-separated. repos and users are needed for the account and repository list. Fewer toolsets means a smaller tool list for the model.'
       },
-      { key: 'binary', label: 'Binary path', type: 'text', placeholder: 'github-mcp-server', showWhen: { mode: ['local-binary'] } },
-      { key: 'host', label: 'GitHub Enterprise host', type: 'text', placeholder: 'octocorp.ghe.com' },
-      { key: 'readOnly', label: 'Read-only — hide every tool that changes data', type: 'check' },
-      { key: 'localClone', label: 'Also keep a local clone for bulk file work (needs a token)', type: 'check' }
+      { key: 'binary', label: 'Binary path', type: 'text', placeholder: 'github-mcp-server', advanced: true, showWhen: { mode: ['local-binary'] } },
+      { key: 'host', label: 'GitHub Enterprise host', type: 'text', placeholder: 'octocorp.ghe.com', advanced: true },
+      { key: 'readOnly', label: 'Read-only — hide every tool that changes data', type: 'check', advanced: true },
+      { key: 'localClone', label: 'Also keep a local clone for bulk file work (needs a token)', type: 'check', advanced: true }
     ],
     settings: (github = {}) => ({
       mode: safeString(github.mode) || 'remote',
@@ -285,8 +290,9 @@ export function listPresets() {
     description: preset.description,
     accountAware: preset.accountAware === true,
     ...(preset.defaultToolsets ? { defaultToolsets: [...preset.defaultToolsets] } : {}),
-    setup: preset.setup.map(({ key, label, type, placeholder, hint, options, showWhen, secret, default: fallback }) => ({
+    setup: preset.setup.map(({ key, label, type, placeholder, hint, options, showWhen, secret, advanced, default: fallback }) => ({
       key, label, type,
+      ...(advanced ? { advanced: true } : {}),
       ...(fallback ? { default: [...fallback] } : {}),
       ...(placeholder ? { placeholder } : {}),
       ...(hint ? { hint } : {}),
@@ -445,8 +451,14 @@ export async function connectPlugin(db, rawId, body = null) {
       try {
         const account = await accountFromClient(client);
         next = { ...next, ...account };
+        // Pick the most recently updated repository as well, so the assistant can start working
+        // without a second round of setup. A user can still choose a different one.
+        if (!safeString(next.selectedRepo) && storedTools.some((tool) => tool.name === 'search_repositories')) {
+          const chosen = await autoSelectRepository(client, account.ownerLogin);
+          if (chosen) next = { ...next, ...chosen };
+        }
       } catch {
-        // The account is cosmetic; a failure here must not fail the connection.
+        // The account and repository are conveniences; a failure here must not fail the connection.
       }
     }
   } catch (error) {
@@ -458,6 +470,24 @@ export async function connectPlugin(db, rawId, body = null) {
   }
   saveConfig(db, row, next);
   return { plugin: getPlugin(db, row.id), server: { name: next.serverName, version: next.serverVersion, toolCount: next.toolCount } };
+}
+
+// The repository the assistant should work on by default: the one the account touched last.
+async function autoSelectRepository(client, login) {
+  if (!safeString(login)) return null;
+  const response = await client.callTool('search_repositories', { query: `user:${safeString(login)}`, sort: 'updated', order: 'desc', per_page: 1 }, { timeoutMs: 20_000 });
+  if (response?.isError === true) return null;
+  const payload = parseJsonText(textFromResult(response)) || {};
+  const items = Array.isArray(payload.items) ? payload.items : (Array.isArray(payload.repositories) ? payload.repositories : []);
+  const fullName = safeString(items[0]?.full_name || items[0]?.fullName);
+  const slash = fullName.indexOf('/');
+  if (slash <= 0) return null;
+  return {
+    owner: fullName.slice(0, slash),
+    repo: fullName.slice(slash + 1),
+    selectedRepo: fullName,
+    defaultBranch: safeString(items[0].default_branch || items[0].defaultBranch) || 'main'
+  };
 }
 
 async function accountFromClient(client) {

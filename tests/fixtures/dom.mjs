@@ -185,7 +185,25 @@ function* walk(node) {
 // Supports `tag`, `.class`, `#id`, `tag.class`, and comma-separated lists — all the page's
 // queries are that simple.
 function matches(node, selector) {
-  return String(selector).split(',').map((part) => part.trim()).some((part) => matchesOne(node, part));
+  return String(selector).split(',').map((part) => part.trim()).some((part) => matchesSequence(node, part));
+}
+
+// Handles descendant combinators ("details summary") as well as a single compound selector.
+function matchesSequence(node, sequence) {
+  const parts = sequence.split(/\s+/u).filter(Boolean);
+  if (parts.length === 0) return false;
+  if (!matchesOne(node, parts.at(-1))) return false;
+  let current = node.parentNode;
+  for (let index = parts.length - 2; index >= 0; index -= 1) {
+    let found = null;
+    while (current) {
+      if (matchesOne(current, parts[index])) { found = current; break; }
+      current = current.parentNode;
+    }
+    if (!found) return false;
+    current = found.parentNode;
+  }
+  return true;
 }
 
 function matchesOne(node, selector) {

@@ -67,12 +67,24 @@ function buildControl(field) {
   return control;
 }
 
+// Only the fields a server asks about up front; the rest live under "Advanced settings".
+function primaryFields(preset) {
+  return (preset.setup || []).filter((field) => !field.advanced);
+}
+
+function advancedFields(preset) {
+  return (preset.setup || []).filter((field) => field.advanced);
+}
+
 function renderFields(preset, config) {
   form.replaceChildren();
   dialogFields = new Map();
   dialogHints = new Map();
+  // Advanced settings stay reachable but out of the way; the disclosure is closed by default.
+  const advanced = advancedFields(preset).length > 0 ? element('details', 'setup-advanced') : null;
+  if (advanced) advanced.append(element('summary', '', 'Advanced settings'));
 
-  for (const field of preset.setup || []) {
+  for (const field of primaryFields(preset)) {
     const control = buildControl(field);
     control.id = `setup-${field.key}`;
     control.name = field.key;
@@ -102,6 +114,36 @@ function renderFields(preset, config) {
     if (field.secret && config.hasToken) control.placeholder = 'Saved — enter a new value to replace it';
     form.append(wrap);
   }
+
+  for (const field of advancedFields(preset)) {
+    const control = dialogFields.get(field.key) || buildControl(field);
+    control.id = control.id || `setup-${field.key}`;
+    control.name = field.key;
+    dialogFields.set(field.key, control);
+
+    if (field.type === 'check') {
+      const row = element('div', 'check-row');
+      control.checked = Boolean(config[field.key]);
+      const label = element('label', '', field.label);
+      label.htmlFor = control.id;
+      row.append(control, label);
+      advanced.append(row);
+      continue;
+    }
+
+    const wrap = element('div', 'field');
+    const label = element('label', '', field.label);
+    label.htmlFor = control.id;
+    wrap.append(label, control);
+    if (field.hint) wrap.append(element('p', 'hint', field.hint));
+    if (field.type === 'select') {
+      const hint = element('p', 'hint');
+      dialogHints.set(field.key, hint);
+      wrap.append(hint);
+    }
+    advanced.append(wrap);
+  }
+  if (advanced) form.append(advanced);
 
   const actions = element('div', 'dialog-actions');
   const cancel = element('button', 'button secondary', 'Cancel');
@@ -161,9 +203,11 @@ function openDialog(opener, preset, plugin = null) {
   const config = plugin?.config || {};
   dialogTitle.textContent = editingPluginId ? preset.name : `Add ${preset.name}`;
   dialogKicker.textContent = 'MCP SERVER · SETUP';
-  dialogDescription.textContent = preset.setup?.length
-    ? preset.description
-    : `${preset.description} There is nothing to configure — connect it and its tools are available.`;
+  dialogDescription.textContent = primaryFields(preset).length === 0
+    ? `${preset.description} There is nothing to configure — connect it and its tools are available.`
+    : primaryFields(preset).length === 1 && advancedFields(preset).length > 0
+      ? `${preset.description} Answer the one question below; everything else is already chosen for you.`
+      : preset.description;
   renderFields(preset, config);
   dialog.showModal();
   const first = form.querySelector('select, input');
@@ -489,9 +533,11 @@ function renderPresets() {
     const body = element('div', 'preset-body');
     body.append(element('h3', 'preset-name', preset.name));
     body.append(element('p', 'hint', preset.description));
-    body.append(element('p', 'preset-fields', preset.setup.length === 0
+    const asks = primaryFields(preset).length;
+    const extra = advancedFields(preset).length;
+    body.append(element('p', 'preset-fields', asks === 0
       ? 'No setup needed'
-      : `${preset.setup.length} setup question${preset.setup.length === 1 ? '' : 's'}`));
+      : `${asks} setup question${asks === 1 ? '' : 's'}${extra ? ` · ${extra} optional` : ''}`));
     card.append(body);
     const installed = state.plugins.find((plugin) => plugin.config?.preset === preset.id);
     const add = element('button', 'button small');
@@ -501,7 +547,7 @@ function renderPresets() {
       add.disabled = true;
       add.title = `${preset.name} is already set up.`;
     } else {
-      add.append(icon('plus'), document.createTextNode(preset.setup.length === 0 ? `Add ${preset.name}` : `Set up ${preset.name}`));
+      add.append(icon('plus'), document.createTextNode(primaryFields(preset).length === 0 ? `Add ${preset.name}` : `Set up ${preset.name}`));
       add.addEventListener('click', () => openDialog(add, preset));
     }
     card.append(add);
