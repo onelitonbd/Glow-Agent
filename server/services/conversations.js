@@ -8,6 +8,7 @@ import { listSkills } from './skills.js';
 import { githubToolDefinitions } from './github-tools.js';
 import { activeMcpPlugins, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
 import { getSettings } from './settings.js';
+import { THINKING_LEVELS } from './model-tests.js';
 
 function toConversation(row) {
   return {
@@ -218,6 +219,13 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
   const selectedModelId = modelId(body.modelId);
   const selected = db.prepare('SELECT 1 FROM provider_models WHERE provider_id = ? AND model_id = ?').get(providerId, selectedModelId);
   if (!selected) throw validation('Select this model for the provider before starting a chat.');
+  // Optional thinking level. It is sent as `reasoning_effort`; a model that ignores the parameter
+  // simply answers as usual, which is why an untested level is allowed rather than blocked.
+  const thinkingLevel = body.thinkingLevel === undefined || body.thinkingLevel === null || body.thinkingLevel === ''
+    ? null
+    : String(body.thinkingLevel);
+  const thinkingRung = thinkingLevel ? THINKING_LEVELS.find((level) => level.id === thinkingLevel) : null;
+  if (thinkingLevel && !thinkingRung) throw validation('That thinking level is not one this workspace offers.');
   const skills = listSkills(db);
   // Every available built-in tool is always offered to the model; no selection is needed.
   // read_skill is added only when skills exist so the model can load instructions on demand.
@@ -255,7 +263,12 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
   // rows) means a regenerate of that first question can still write the title.
   const otherQuestions = db.prepare(`SELECT COUNT(*) AS count FROM messages WHERE conversation_id = ? AND role = 'user' AND id <> ?`)
     .get(conversation.id, userMessage.id).count;
-  return { conversation, content, providerId, selectedModelId, tools, plugin, mcp, userMessage, messages, isFirstExchange: otherQuestions === 0 };
+  return {
+    conversation, content, providerId, selectedModelId, tools, plugin, mcp, userMessage, messages,
+    isFirstExchange: otherQuestions === 0,
+    reasoningEffort: thinkingRung ? thinkingRung.value : null,
+    thinkingLabel: thinkingRung ? thinkingRung.label : null
+  };
 }
 
 // The local clone is now optional: MCP tools work on GitHub directly, so this only returns a
@@ -352,7 +365,7 @@ async function ensureRepositoryCloned(db, plugin, workspaceDirectory) {
   }
 }
 
-async function providerCompletion(provider, credentials, selectedModelId, messages, tools, timeoutMs) {
+async function providerCompletion(provider, credentials, selectedModelId, messages, tools, timeoutMs, reasoningEffort = null) {
   let response;
   try {
     response = await providerFetch(upstreamUrl(provider.baseUrl, '/chat/completions'), credentials, {
@@ -362,6 +375,7 @@ async function providerCompletion(provider, credentials, selectedModelId, messag
       body: JSON.stringify({
         model: selectedModelId,
         messages,
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
         ...(tools.length ? { tools: openAiToolDefinitions(tools), tool_choice: 'auto' } : {})
       })
     });
@@ -375,11 +389,11 @@ async function providerCompletion(provider, credentials, selectedModelId, messag
   return response;
 }
 
-async function providerCompletionWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, maxRetries }) {
+async function providerCompletionWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, maxRetries, reasoningEffort = null }) {
   let attempt = 0;
   while (attempt <= maxRetries) {
     try {
-      return await providerCompletion(provider, credentials, selectedModelId, messages, tools, timeoutMs);
+      return await providerCompletion(provider, credentials, selectedModelId, messages, tools, timeoutMs, reasoningEffort);
     } catch (error) {
       if (attempt >= maxRetries) throw error;
       await new Promise((resolve) => setTimeout(resolve, Math.min(400 * (attempt + 1), 2_500)));
@@ -533,12 +547,12 @@ function streamFailure(shift, code, message) {
 // A provider round is allowed to be retried. On a retry after a partial stream, the partial
 // assistant text is pushed back into the conversation so the model continues from where it
 // stopped instead of restarting. Incomplete tool calls are not resumed (they are regenerated).
-async function streamProviderRoundWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, maxRetries }) {
+async function streamProviderRoundWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, maxRetries, reasoningEffort = null }) {
   let attempt = 0;
   while (attempt <= maxRetries) {
     emit('status', { tone: 'info', text: attempt === 0 ? 'Waiting for the model…' : `Waiting for the model — attempt ${attempt + 1}…` });
     try {
-      return await streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit });
+      return await streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, reasoningEffort });
     } catch (error) {
       if (attempt >= maxRetries) throw error;
       const partial = error.partial;
@@ -554,7 +568,7 @@ async function streamProviderRoundWithRetry({ provider, credentials, selectedMod
   throw failureError('PROVIDER_RETRY_EXHAUSTED', 'The provider could not be reached after repeated attempts.');
 }
 
-async function streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit }) {
+async function streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, reasoningEffort = null }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let content = '';
@@ -574,6 +588,7 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
           model: selectedModelId,
           messages,
           stream: true,
+          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
           ...(tools.length ? { tools: openAiToolDefinitions(tools), tool_choice: 'auto' } : {})
         })
       });
@@ -650,7 +665,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
   try {
     for (let round = 0; round < maxToolRounds; round += 1) {
-      const response = await providerCompletionWithRetry({ provider, credentials, selectedModelId: context.selectedModelId, messages: context.messages, tools: context.tools, timeoutMs, maxRetries: maxProviderRetries });
+      const response = await providerCompletionWithRetry({ provider, credentials, selectedModelId: context.selectedModelId, messages: context.messages, tools: context.tools, timeoutMs, maxRetries: maxProviderRetries, reasoningEffort: context.reasoningEffort });
       let payload;
       try {
         payload = await response.json();
@@ -696,6 +711,7 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
   }
   emit('started', { conversationId: context.conversation.id });
   emit('status', { tone: 'info', text: `Connecting to ${provider.name}…` });
+  if (context.thinkingLabel) emit('status', { tone: 'info', text: `Thinking level: ${context.thinkingLabel}.` });
   if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
   const toolEvents = [];
   const timeline = [];
@@ -716,7 +732,8 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
         tools: context.tools,
         timeoutMs,
         emit: timelineEmit,
-        maxRetries: maxProviderRetries
+        maxRetries: maxProviderRetries,
+        reasoningEffort: context.reasoningEffort
       });
       if (result.toolCalls.length === 0) break;
       context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });

@@ -87,6 +87,47 @@ async function loadChat() {
     if (method === 'GET' && path === '/api/v1/plugins') return { status: 200, ok: true, json: async () => ({ data: [] }) };
     if (method === 'GET' && path === '/api/v1/providers') return { status: 200, ok: true, json: async () => ({ data: [{ id: 'prov-1', name: 'Local' }] }) };
     if (method === 'GET' && path === '/api/v1/providers/prov-1/models') return { status: 200, ok: true, json: async () => ({ data: [{ modelId: 'alpha' }, { modelId: 'beta' }] }) };
+    // What the Testing page proved about alpha: three thinking levels work, two were refused.
+    if (method === 'GET' && path === '/api/v1/tests/report') {
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          data: {
+            testedAt: '2026-09-10T08:00:00.000Z',
+            levels: [
+              { id: 'low', label: 'Low', value: 'low' },
+              { id: 'medium', label: 'Medium', value: 'medium' },
+              { id: 'high', label: 'High', value: 'high' },
+              { id: 'xhigh', label: 'Extra High', value: 'xhigh' },
+              { id: 'max', label: 'Max', value: 'max' }
+            ],
+            entries: [{
+              providerId: 'prov-1',
+              providerName: 'Local',
+              modelId: 'alpha',
+              key: 'prov-1:alpha',
+              rank: 1,
+              score: 44,
+              testedAt: '2026-09-10T08:00:00.000Z',
+              results: {
+                baseline: { status: 'works', ms: 120, reason: 'READY' },
+                thinking: {
+                  low: { status: 'works', reason: 'The model returned reasoning text.' },
+                  medium: { status: 'works', reason: 'The model returned reasoning text.' },
+                  high: { status: 'works', reason: 'The model returned reasoning text.' },
+                  xhigh: { status: 'rejected', reason: 'unknown reasoning_effort xhigh' },
+                  max: { status: 'rejected', reason: 'unknown reasoning_effort max' }
+                },
+                vision: { status: 'works', reason: 'The model answered the image: RED' },
+                files: { status: 'rejected', reason: 'file parts are not supported' },
+                tools: { status: 'works', reason: 'The model called ping.' }
+              }
+            }]
+          }
+        })
+      };
+    }
     if (method === 'DELETE' && messagePath) {
       const target = conversation.messages.find((entry) => entry.id === messagePath[1]);
       const index = conversation.messages.indexOf(target);
@@ -225,6 +266,27 @@ test('Regenerate re-answers the same question with the model already selected', 
   // No new question is written: the log still holds exactly one of them.
   await waitFor(() => byId.get('chatLog').textContent.includes('Answer from alpha.'));
   assert.equal(byId.get('chatLog').querySelectorAll('.message.user').length, 1);
+});
+
+test('the thinking button lists the levels the test proved, and sends the chosen one', async () => {
+  const { byId, requests } = await loadChat();
+  await openConversation(byId);
+  byId.get('openThinking').dispatchEvent('click');
+  assert.equal(byId.get('thinkingDialog').open, true);
+  const options = byId.get('thinkingOptions').querySelectorAll('button');
+  // Off first, then the proven levels, then the refused ones — not the ladder's own order.
+  assert.deepEqual(options.map((option) => option.querySelector('b').textContent), ['Off', 'Low', 'Medium', 'High', 'Extra High', 'Max']);
+  const refused = options.find((option) => option.dataset.level === 'xhigh');
+  assert.equal(refused.querySelector('.chip').textContent, 'Not supported');
+  assert.match(byId.get('thinkingHint').textContent, /Tested/u, 'the hint says when the model was probed');
+
+  options.find((option) => option.dataset.level === 'high').dispatchEvent('click');
+  assert.equal(byId.get('thinkingDialog').open, false);
+  assert.equal(byId.get('openThinking').title, 'Thinking level: High');
+
+  actionButton(byId, 'assistant', 'regenerate').dispatchEvent('click');
+  await waitFor(() => requests.some((request) => request.path.endsWith('/regenerate/stream')));
+  assert.equal(requests.find((request) => request.path.endsWith('/regenerate/stream')).body.thinkingLevel, 'high');
 });
 
 test('Edit replaces the bubble with a field and re-sends the corrected message', async () => {

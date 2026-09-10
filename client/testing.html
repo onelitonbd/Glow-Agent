@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Test what each configured model actually supports.">
+  <script src="/assets/js/theme.js"></script>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <title>Testing — Glow Agent</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <a class="icon-button" href="/settings.html" aria-label="Back to settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
+      <h1 class="app-title">Testing</h1>
+      <span class="header-spacer" aria-hidden="true"></span>
+    </header>
+    <section class="intro"><p class="eyebrow">Capability probes</p><p>Every model you selected, tested one by one: thinking levels, image input, file attachments, and tool use. The results build the ranking below and decide which thinking levels the chat offers for each model.</p></section>
+
+    <section aria-labelledby="testModelsLabel">
+      <div class="section-head"><h2 class="section-label" id="testModelsLabel">Models to test</h2><span class="section-label section-count" id="testModelCount"></span></div>
+      <div id="testModelList" class="test-list" aria-live="polite"><div class="loading">Gathering models</div></div>
+      <button class="button full button-spaced" id="runTests" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 3 14 9-14 9V3Z"/></svg>Run tests</button>
+      <div class="test-progress" id="testProgress" aria-live="polite" hidden></div>
+    </section>
+
+    <section aria-labelledby="rankingLabel">
+      <div class="section-head"><h2 class="section-label" id="rankingLabel">Ranking report</h2><span class="section-label section-count" id="rankingUpdated"></span></div>
+      <div id="rankingReport"><div class="empty-state"><span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/></svg></span><h2>No results yet</h2><p>Run the tests to rank your models by what they can actually do.</p></div></div>
+    </section>
+    <p class="app-footer">GLOW AGENT · TESTING</p>
+  </main>
+  <script type="module" src="/assets/js/testing.js"></script>
+</body>
+</html>

@@ -24,6 +24,7 @@ import {
 } from '../services/conversations.js';
 import { listTools } from '../services/tools.js';
 import { getSettings, updateSettings } from '../services/settings.js';
+import { listTestableModels, modelTestReport, runModelTests, supportedThinkingLevels, THINKING_LEVELS } from '../services/model-tests.js';
 import {
   approvePluginWrites,
   cloneGithubRepo,
@@ -160,6 +161,19 @@ export function createApiRouter({ db, config }) {
   router.put('/settings', (request, response, next) => {
     try { success(response, updateSettings(db, request.body ?? {})); } catch (error) { next(error); }
   });
+
+  // ---- Model capability testing ----
+  // The Testing page gathers every selected model, probes each one, and ranks the results.
+  router.get('/tests/models', (_request, response) => success(response, listTestableModels(db)));
+  router.get('/tests/levels', (_request, response) => success(response, THINKING_LEVELS));
+  router.get('/tests/report', (_request, response) => success(response, modelTestReport(db)));
+  router.get('/tests/levels/:providerId/:modelId', (request, response, next) => {
+    try { success(response, supportedThinkingLevels(db, request.params.providerId, request.params.modelId)); } catch (error) { next(error); }
+  });
+  router.post('/tests/run/stream', rateLimit({ windowMs: 60_000, max: 6, code: 'MODEL_TEST_RATE_LIMITED' }), sseRoute(async (request, emit) => {
+    const only = Array.isArray(request.body?.models) ? request.body.models.map((key) => String(key)).slice(0, 200) : null;
+    await runModelTests(db, { timeoutMs: Math.min(config.providerFetchTimeoutMs + 5_000, 30_000), emit, only });
+  }));
 
   router.get('/conversations/:conversationId', (request, response, next) => {
     try { success(response, getConversation(db, request.params.conversationId)); } catch (error) { next(error); }

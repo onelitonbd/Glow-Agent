@@ -373,6 +373,34 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 @media (prefers-reduced-motion: reduce) { .stream-status-dot { animation: none; } }
 
 .repo-field { margin-top: 10px; }
+/* Testing page: the model checklist, the live probe line, and the ranking report. */
+.test-list { display: grid; gap: 7px; }
+.test-row { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; }
+.test-row input { width: 19px; height: 19px; flex: 0 0 auto; accent-color: var(--accent); }
+.test-row-copy { display: grid; gap: 2px; min-width: 0; }
+.test-row .data-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.test-progress { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 9px 11px; border: 1px dashed rgba(198,255,107,.5); border-radius: 11px; background: var(--accent-wash); color: var(--accent); font: 11px var(--mono); }
+.test-progress.warn { border-color: rgba(255,158,158,.5); background: var(--danger-wash); color: var(--danger); }
+.test-progress[hidden] { display: none; }
+.rank-card { padding: 13px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
+.rank-card + .rank-card { margin-top: 9px; }
+.rank-head { display: flex; align-items: baseline; gap: 8px; }
+.rank-place { color: var(--accent); font: 11px var(--mono); }
+.rank-model { min-width: 0; flex: 1; overflow: hidden; font-size: 15px; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.rank-score { color: var(--text-soft); font: 11px var(--mono); }
+.rank-provider { margin: 2px 0 9px; color: var(--muted); font-size: 11.5px; }
+.score-bar { height: 5px; margin-bottom: 11px; border-radius: 99px; background: var(--surface-raised); overflow: hidden; }
+.score-bar-fill { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.capability { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 5px 0; }
+.capability-label { color: var(--muted); font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.capability-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.rank-meta { margin: 9px 0 0; color: var(--quiet); font: 10px var(--mono); }
+/* Capability verdicts. Colour is the signal: green proved, amber accepted but unproven, red refused. */
+.chip { padding: 3px 7px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface-soft); color: var(--muted); font: 9.5px var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.chip.ok { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); }
+.chip.maybe { border-color: rgba(255,208,120,.42); background: rgba(255,208,120,.12); color: #ffcf7a; }
+.chip.no { border-color: rgba(255,158,158,.42); background: var(--danger-wash); color: var(--danger); }
+.model-option .chip { flex: 0 0 auto; }
 /* Settings cards: a switch with its label, then the fields it controls. */
 .settings-card { padding: 14px; }
 .settings-card .hint { margin: 10px 0 0; }

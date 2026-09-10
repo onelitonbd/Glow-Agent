@@ -18,7 +18,10 @@ const state = {
   busy: false,
   editingMessageId: null,
   // Set while the model picker is open to re-answer one message instead of choosing a default.
-  modelPickFor: null
+  modelPickFor: null,
+  // Capability results from the Testing page, and the thinking level for the next message.
+  testReport: null,
+  thinkingLevel: null
 };
 const chatLog = document.getElementById('chatLog');
 const title = document.getElementById('conversationTitle');
@@ -38,6 +41,10 @@ const toolsDialog = document.getElementById('toolsDialog');
 const chatToolOptions = document.getElementById('chatToolOptions');
 const chatSkillOptions = document.getElementById('chatSkillOptions');
 const chatPluginOptions = document.getElementById('chatPluginOptions');
+const thinkingTrigger = document.getElementById('openThinking');
+const thinkingDialog = document.getElementById('thinkingDialog');
+const thinkingOptions = document.getElementById('thinkingOptions');
+const thinkingHint = document.getElementById('thinkingHint');
 const historyDrawer = document.getElementById('historyDrawer');
 const conversationList = document.getElementById('conversationList');
 const themeToggle = document.getElementById('toggleTheme');
@@ -175,6 +182,81 @@ function renderToolEvents(toolEvents) {
   });
   wrap.append(list);
   return wrap;
+}
+
+// What the Testing page proved about the model that is currently selected.
+function currentModelTest() {
+  if (!state.testReport || !state.selectedProviderId || !state.selectedModelId) return null;
+  return state.testReport.entries.find((entry) => entry.providerId === state.selectedProviderId && entry.modelId === state.selectedModelId) || null;
+}
+
+const THINKING_STATUS = {
+  works: { label: 'Works', tone: 'ok' },
+  accepted: { label: 'Accepted', tone: 'maybe' },
+  rejected: { label: 'Not supported', tone: 'no' },
+  skipped: { label: 'Skipped', tone: 'no' },
+  unknown: { label: 'Untested', tone: 'unknown' }
+};
+
+function syncThinkingTrigger() {
+  if (!thinkingTrigger) return;
+  const level = state.thinkingLevel;
+  thinkingTrigger.classList.toggle('selected', Boolean(level));
+  const label = level ? (state.testReport?.levels || []).find((entry) => entry.id === level)?.label || level : null;
+  thinkingTrigger.title = label ? `Thinking level: ${label}` : 'Thinking level';
+  thinkingTrigger.setAttribute('aria-label', thinkingTrigger.title);
+}
+
+// The levels offered depend on what the probe found for this model: proven first, then merely
+// accepted, with unsupported ones last and clearly marked.
+function renderThinkingPicker() {
+  const levels = state.testReport?.levels || [];
+  const test = currentModelTest();
+  thinkingOptions.replaceChildren();
+  thinkingHint.textContent = !state.selectedModelId
+    ? 'Choose a model first.'
+    : test
+      ? `Tested ${new Date(test.testedAt).toLocaleString()}. “Works” means the probe saw reasoning come back; “Accepted” means the parameter went through but no reasoning was returned.`
+      : 'This model has not been tested yet, so every level is offered. Run the Testing page to see which ones it really supports.';
+
+  const off = element('button', `model-option${state.thinkingLevel ? '' : ' selected'}`);
+  off.type = 'button';
+  off.dataset.level = '';
+  const offBadge = element('span', 'data-icon violet'); offBadge.setAttribute('aria-hidden', 'true'); offBadge.append(icon('close'));
+  const offCopy = element('span', 'copy'); offCopy.append(element('b', 'data-name', 'Off'), element('span', 'data-subtitle', 'Answer without a thinking level'));
+  off.append(offBadge, offCopy);
+  if (!state.thinkingLevel) off.append(icon('check'));
+  off.addEventListener('click', () => chooseThinkingLevel(null));
+  thinkingOptions.append(off);
+
+  const rank = (status) => (status === 'works' ? 0 : status === 'accepted' ? 1 : status === 'unknown' ? 2 : 3);
+  levels
+    .map((level) => ({ level, status: test?.results?.thinking?.[level.id]?.status || 'unknown', reason: test?.results?.thinking?.[level.id]?.reason || '' }))
+    .sort((a, b) => rank(a.status) - rank(b.status))
+    .forEach(({ level, status, reason }) => {
+      const info = THINKING_STATUS[status] || THINKING_STATUS.unknown;
+      const option = element('button', `model-option${state.thinkingLevel === level.id ? ' selected' : ''}`);
+      option.type = 'button';
+      option.dataset.level = level.id;
+      const badge = element('span', 'data-icon violet'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon('spark'));
+      const copy = element('span', 'copy');
+      copy.append(element('b', 'data-name', level.label), element('span', 'data-subtitle', reason || info.label));
+      option.append(badge, copy, chip(info.label, info.tone));
+      option.addEventListener('click', () => chooseThinkingLevel(level.id));
+      thinkingOptions.append(option);
+    });
+}
+
+function chip(text, tone) {
+  return element('span', `chip ${tone}`, text);
+}
+
+function chooseThinkingLevel(levelId) {
+  state.thinkingLevel = levelId;
+  syncThinkingTrigger();
+  renderThinkingPicker();
+  thinkingDialog.close();
+  showToast(levelId ? `Thinking level set to ${levelId}.` : 'Thinking level turned off.');
 }
 
 // The buttons under each message. An answer can be re-asked, copied, removed, or sent to a
@@ -374,7 +456,8 @@ async function regenerate(messageId, model = {}) {
   await runStream((onEvent) => api.conversations.streamRegenerate(conversation.id, questionId, {
     providerId,
     modelId,
-    toolIds: state.tools.map((tool) => tool.id)
+    toolIds: state.tools.map((tool) => tool.id),
+    ...(state.thinkingLevel ? { thinkingLevel: state.thinkingLevel } : {})
   }, onEvent));
 }
 
@@ -486,8 +569,14 @@ function renderModelPicker() {
 }
 
 function selectModel(entry) {
+  const changed = entry.providerId !== state.selectedProviderId || entry.modelId !== state.selectedModelId;
   state.selectedProviderId = entry.providerId;
   state.selectedModelId = entry.modelId;
+  // A level tested on the old model says nothing about the new one.
+  if (changed) {
+    state.thinkingLevel = null;
+    syncThinkingTrigger();
+  }
   modelTrigger.classList.add('selected');
   modelTrigger.setAttribute('aria-label', `Selected model: ${entry.modelId}. Choose provider and model.`);
   modelTrigger.title = `${entry.providerName} · ${entry.modelId}`;
@@ -691,11 +780,15 @@ async function loadPluginRepos() {
 
 async function loadWorkspace() {
   try {
-    const [conversations, skills, tools, plugins] = await Promise.all([api.conversations.list(), api.skills.list(), api.tools.list(), api.plugins.list()]);
+    const [conversations, skills, tools, plugins, testReport] = await Promise.all([
+      api.conversations.list(), api.skills.list(), api.tools.list(), api.plugins.list(), api.tests.report()
+    ]);
     state.conversations = conversations;
     state.skills = skills;
     state.tools = tools;
     state.plugins = plugins;
+    state.testReport = testReport;
+    syncThinkingTrigger();
     renderConversationList();
     renderSkillPicker();
     renderToolPicker();
@@ -818,7 +911,8 @@ composer.addEventListener('submit', (event) => {
       message,
       providerId: state.selectedProviderId,
       modelId: state.selectedModelId,
-      toolIds: state.tools.map((tool) => tool.id)
+      toolIds: state.tools.map((tool) => tool.id),
+      ...(state.thinkingLevel ? { thinkingLevel: state.thinkingLevel } : {})
     }, onEvent);
   });
 });
@@ -832,6 +926,7 @@ modelDialog.addEventListener('close', () => {
 document.getElementById('openSkills').addEventListener('click', () => { renderSkillPicker(); skillsDialog.showModal(); });
 document.getElementById('openTools').addEventListener('click', () => { renderToolPicker(); toolsDialog.showModal(); });
 document.getElementById('openPlugins')?.addEventListener('click', () => { renderPluginPicker(); document.getElementById('pluginsDialog').showModal(); });
+thinkingTrigger?.addEventListener('click', () => { renderThinkingPicker(); thinkingDialog.showModal(); });
 document.getElementById('attachButton').addEventListener('click', () => showToast('Attachments are the next capability phase.'));
 themeToggle?.addEventListener('click', () => { window.GlowTheme?.toggle?.(); });
 document.addEventListener('glow-theme-change', syncThemeToggle);

@@ -37,7 +37,7 @@ test('theme controller restores, toggles, and persists the selected theme', () =
 test('every served page loads the shared theme controller before the stylesheet', async () => {
   const clientDirectory = join(process.cwd(), 'client');
   const pages = (await readdir(clientDirectory)).filter((name) => name.endsWith('.html'));
-  assert.deepEqual(pages.sort(), ['404.html', 'index.html', 'models.html', 'other-settings.html', 'plugins.html', 'providers.html', 'settings.html', 'skills.html', 'tools.html']);
+  assert.deepEqual(pages.sort(), ['404.html', 'index.html', 'models.html', 'other-settings.html', 'plugins.html', 'providers.html', 'settings.html', 'skills.html', 'testing.html', 'tools.html']);
   for (const page of pages) {
     const markup = await readFile(join(clientDirectory, page), 'utf8');
     assert.ok(markup.indexOf('/assets/js/theme.js') < markup.indexOf('/assets/css/app.css'), `${page} must apply a saved theme before CSS loads`);

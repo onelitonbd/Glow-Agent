@@ -104,6 +104,13 @@ export const api = {
     update: (id, values) => request(`/skills/${encodeURIComponent(id)}`, { method: 'PUT', body: values }),
     remove: (id) => request(`/skills/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
+  tests: {
+    models: () => request('/tests/models'),
+    levels: () => request('/tests/levels'),
+    report: () => request('/tests/report'),
+    levelsFor: (providerId, modelId) => request(`/tests/levels/${encodeURIComponent(providerId)}/${encodeURIComponent(modelId)}`),
+    streamRun: (models, onEvent) => stream('/tests/run/stream', models ? { models } : {}, onEvent)
+  },
   settings: {
     get: () => request('/settings'),
     update: (values) => request('/settings', { method: 'PUT', body: values })
