@@ -105,6 +105,18 @@ const migrations = [
           .run('mcp', JSON.stringify(next), now(), row.id);
       }
     }
+  },
+  {
+    // Workspace preferences that outlive a request but are not environment configuration, so
+    // they belong in the database rather than in .env. One row per named setting, JSON value.
+    version: 8,
+    sql: `
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `
   }
 ];
 

@@ -373,6 +373,16 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 @media (prefers-reduced-motion: reduce) { .stream-status-dot { animation: none; } }
 
 .repo-field { margin-top: 10px; }
+/* Settings cards: a switch with its label, then the fields it controls. */
+.settings-card { padding: 14px; }
+.settings-card .hint { margin: 10px 0 0; }
+.settings-card .button { margin-top: 14px; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.setting-copy { display: grid; gap: 2px; min-width: 0; }
+.settings-provider-link + .settings-provider-link { margin-top: 10px; }
+/* Same arrow the repository picker uses, without tying the class name to repositories. */
+.select-field select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; appearance: none; padding-right: 30px; }
+.select-field select:disabled { opacity: .55; }
 .repo-field select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; appearance: none; padding-right: 30px; }
 
 /* Advanced settings stay available but out of the way */

@@ -23,6 +23,7 @@ import {
   respondToConversationStream
 } from '../services/conversations.js';
 import { listTools } from '../services/tools.js';
+import { getSettings, updateSettings } from '../services/settings.js';
 import {
   approvePluginWrites,
   cloneGithubRepo,
@@ -154,6 +155,12 @@ export function createApiRouter({ db, config }) {
     .post((request, response, next) => {
       try { success(response, createConversation(db, request.body ?? {}), 201); } catch (error) { next(error); }
     });
+  // Workspace preferences. Declared before /conversations so the literal path is unambiguous.
+  router.get('/settings', (_request, response) => success(response, getSettings(db)));
+  router.put('/settings', (request, response, next) => {
+    try { success(response, updateSettings(db, request.body ?? {})); } catch (error) { next(error); }
+  });
+
   router.get('/conversations/:conversationId', (request, response, next) => {
     try { success(response, getConversation(db, request.params.conversationId)); } catch (error) { next(error); }
   });

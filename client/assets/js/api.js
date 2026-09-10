@@ -104,6 +104,10 @@ export const api = {
     update: (id, values) => request(`/skills/${encodeURIComponent(id)}`, { method: 'PUT', body: values }),
     remove: (id) => request(`/skills/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
+  settings: {
+    get: () => request('/settings'),
+    update: (values) => request('/settings', { method: 'PUT', body: values })
+  },
   conversations: {
     list: () => request('/conversations'),
     create: (title) => request('/conversations', { method: 'POST', body: title ? { title } : {} }),

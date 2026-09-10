@@ -7,6 +7,7 @@ import { executeToolCall, listTools, openAiToolDefinitions, readSkillTool } from
 import { listSkills } from './skills.js';
 import { githubToolDefinitions } from './github-tools.js';
 import { activeMcpPlugins, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
+import { getSettings } from './settings.js';
 
 function toConversation(row) {
   return {
@@ -246,7 +247,11 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
   const system = systemMessage(skills, { plugin, mcp });
   if (system) messages.unshift({ role: 'system', content: system });
-  return { conversation, content, providerId, selectedModelId, tools, plugin, mcp, userMessage, messages };
+  // Only the first question of a chat names it. Counting the other questions (rather than the
+  // rows) means a regenerate of that first question can still write the title.
+  const otherQuestions = db.prepare(`SELECT COUNT(*) AS count FROM messages WHERE conversation_id = ? AND role = 'user' AND id <> ?`)
+    .get(conversation.id, userMessage.id).count;
+  return { conversation, content, providerId, selectedModelId, tools, plugin, mcp, userMessage, messages, isFirstExchange: otherQuestions === 0 };
 }
 
 // The local clone is now optional: MCP tools work on GitHub directly, so this only returns a
@@ -385,7 +390,59 @@ function shortStatus(error) {
   return String(error?.message || 'connection failed').replace(/\s+/gu, ' ').trim().slice(0, 120);
 }
 
-function finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline = null) {
+// The prompt that names a chat. The model sees both sides of the first exchange, so the title can
+// describe what the conversation is actually about instead of just echoing the question.
+const TITLE_SYSTEM_PROMPT = [
+  'You name chat conversations.',
+  'Read the first exchange below and write one title of 8 to 10 words that says what the conversation is about.',
+  'Reply with the title only: no quotes, no leading or trailing punctuation, no explanation, no line breaks.'
+].join(' ');
+
+// Models wrap titles in quotes and end them with a full stop even when told not to; both are
+// stripped so the saved title reads like a title.
+function normalizeTitle(value) {
+  const text = String(value ?? '')
+    .trim()
+    .replace(/\s+/gu, ' ')
+    .replace(/^[\s"'“”‘’]+|[\s"'“”‘’]+$/gu, '')
+    .replace(/\.$/u, '')
+    .trim();
+  return text ? text.slice(0, 120) : null;
+}
+
+// Asks the configured model for a title. A title is cosmetic, so any failure falls back to the
+// first words of the question — it must never cost the user their answer.
+async function generateConversationTitle(db, context, assistantContent, { emit, fetchTimeoutMs } = {}) {
+  if (!context.isFirstExchange) return null;
+  const settings = getSettings(db).titleGeneration;
+  if (!settings.enabled || !settings.providerId || !settings.modelId) return null;
+  emit?.('status', { tone: 'info', text: `Naming this chat with ${settings.modelId}…` });
+  try {
+    const { provider, credentials } = providerCredentials(db, settings.providerId);
+    const response = await providerFetch(upstreamUrl(provider.baseUrl, '/chat/completions'), credentials, {
+      method: 'POST',
+      timeoutMs: Math.min(fetchTimeoutMs || 15_000, 20_000),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: settings.modelId,
+        temperature: 0.3,
+        messages: [
+          { role: 'system', content: TITLE_SYSTEM_PROMPT },
+          { role: 'user', content: `User asked:\n${context.content.slice(0, 4_000)}\n\nAssistant answered:\n${String(assistantContent).slice(0, 4_000)}` }
+        ]
+      })
+    });
+    if (!response?.ok) return null;
+    const payload = await response.json();
+    const title = normalizeTitle(payload?.choices?.[0]?.message?.content);
+    if (title) emit?.('status', { tone: 'info', text: `Chat named “${title}”.` });
+    return title;
+  } catch {
+    return null;
+  }
+}
+
+async function finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline = null, { emit, fetchTimeoutMs } = {}) {
   if (!assistantContent) {
     throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider did not return a final chat response after tool use.', { expose: true });
   }
@@ -399,7 +456,8 @@ function finishResponse(db, context, assistantContent, reasoning, toolEvents, ti
     toolEvents,
     timeline
   });
-  const title = context.conversation.title === 'New conversation' ? context.content.slice(0, 72) : context.conversation.title;
+  const generated = await generateConversationTitle(db, context, assistantContent, { emit, fetchTimeoutMs });
+  const title = generated || (context.conversation.title === 'New conversation' ? context.content.slice(0, 72) : context.conversation.title);
   db.prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?').run(title, now(), context.conversation.id);
   return { conversation: getConversation(db, context.conversation.id), userMessage: context.userMessage, assistantMessage };
 }
@@ -616,7 +674,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
         context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
       }
     }
-    return finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
+    return await finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline, { fetchTimeoutMs });
   } finally {
     await closeMcpContexts(db, context.mcp);
   }
@@ -669,7 +727,7 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
     // the partial text that was already shown live, rather than only the last retry's segment.
     const assistantContent = timeline.filter((entry) => entry.type === 'content').map((entry) => entry.text).join('');
     const reasoning = timeline.filter((entry) => entry.type === 'thinking').map((entry) => entry.text).join('');
-    const result = finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
+    const result = await finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline, { emit, fetchTimeoutMs });
     emit('completed', result);
     return result;
   } finally {

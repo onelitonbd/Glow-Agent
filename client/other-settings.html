@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Other Glow Agent workspace settings.">
+  <script src="/assets/js/theme.js"></script>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <title>Other settings — Glow Agent</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <a class="icon-button" href="/settings.html" aria-label="Back to settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
+      <h1 class="app-title">Other settings</h1>
+      <span class="header-spacer" aria-hidden="true"></span>
+    </header>
+    <section class="intro"><p class="eyebrow">Workspace preferences</p><p>Small behaviours that run on their own. Like everything else here, they stay on this device.</p></section>
+
+    <section aria-labelledby="titleSettingsLabel">
+      <div class="section-head"><h2 class="section-label" id="titleSettingsLabel">Conversation titles</h2></div>
+      <div class="card settings-card">
+        <div class="setting-row">
+          <span class="setting-copy"><b class="data-name">Auto-generate title</b><span class="data-subtitle">Names a new chat after its first answer</span></span>
+          <button class="switch" id="titleEnabled" type="button" role="switch" aria-checked="false" aria-label="Auto-generate title"></button>
+        </div>
+        <p class="hint">After the first answer in a new chat, this model reads your question and that answer, then writes a short 8–10 word title for the chat. It runs only for the first message of a chat — later replies leave the title alone. Chat itself keeps using whichever model you pick in the chat screen.</p>
+        <div class="field select-field">
+          <label for="titleProvider">Provider <span>REQUIRED</span></label>
+          <select id="titleProvider" aria-label="Provider used to write titles"></select>
+        </div>
+        <div class="field select-field">
+          <label for="titleModel">Model <span>FROM THAT PROVIDER</span></label>
+          <select id="titleModel" aria-label="Model used to write titles"></select>
+        </div>
+        <p class="hint" id="titleStatus" aria-live="polite"></p>
+        <button class="button full" id="saveTitleSettings" type="button">Save settings</button>
+      </div>
+    </section>
+    <p class="app-footer">GLOW AGENT · SETTINGS</p>
+  </main>
+  <script type="module" src="/assets/js/other-settings.js"></script>
+</body>
+</html>
