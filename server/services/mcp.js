@@ -382,36 +382,6 @@ export class McpClient {
   }
 }
 
-// Builds the client options for a stored plugin config, expanding the GitHub preset into a
-// concrete HTTP or stdio server definition.
-export function mcpServerOptions(config = {}) {
-  const transport = config.transport === 'stdio' ? 'stdio' : 'http';
-  const timeoutMs = Number.isFinite(config.timeoutMs) && config.timeoutMs > 0 ? config.timeoutMs : 90_000;
-  if (transport === 'stdio') {
-    const command = typeof config.command === 'string' ? config.command.trim() : '';
-    if (!command) throw rpcError('This MCP plugin needs a command to start.', { code: 'MCP_CONFIG_INVALID', status: 400 });
-    return {
-      transport,
-      command,
-      args: Array.isArray(config.args) ? config.args.filter((arg) => typeof arg === 'string') : [],
-      env: stringMap(config.env),
-      fetchTimeoutMs: timeoutMs
-    };
-  }
-  const url = typeof config.url === 'string' ? config.url.trim() : '';
-  if (!url) throw rpcError('This MCP plugin needs a server URL.', { code: 'MCP_CONFIG_INVALID', status: 400 });
-  return { transport, url, headers: stringMap(config.headers), fetchTimeoutMs: timeoutMs };
-}
-
-function stringMap(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const out = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (typeof key === 'string' && typeof item === 'string') out[key] = item;
-  }
-  return out;
-}
-
 // Opens a session, runs `body(client)`, and always closes the session again.
 export async function withMcpClient(options, body, { connectTimeoutMs } = {}) {
   const client = new McpClient(options);

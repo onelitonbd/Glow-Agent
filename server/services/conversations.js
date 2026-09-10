@@ -6,7 +6,7 @@ import { providerCredentials, providerFetch, upstreamUrl } from './providers.js'
 import { executeToolCall, listTools, openAiToolDefinitions, readSkillTool } from './tools.js';
 import { listSkills } from './skills.js';
 import { githubToolDefinitions } from './github-tools.js';
-import { activeMcpPlugin, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
+import { activeMcpPlugins, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
 
 function toConversation(row) {
   return {
@@ -77,18 +77,26 @@ export function getConversation(db, rawConversationId) {
 }
 
 function systemMessage(skills, { plugin = null, mcp = null } = {}) {
-  const mcpFailure = mcp?.failed
-    ? `The MCP plugin "${mcp.serverName || 'mcp'}" is enabled but its server could not be reached (${mcp.error}). Tell the user the plugin is unavailable instead of pretending its tools ran. Do not retry the connection yourself.`
-    : null;
-  const mcpGuide = mcp && !mcp.failed
+  const servers = mcp?.servers || [];
+  const failures = mcp?.failures || [];
+  const mcpGuide = servers.length
     ? [
-      `An MCP (Model Context Protocol) server named "${mcp.serverName}" is connected. Its tools are exposed with an \`mcp_\` prefix and are how you act on that service — inspect first with read-only tools, then make changes with the tools that need them.`,
-      mcp.selectedRepo ? `Work on the repository ${mcp.selectedRepo} unless the user names a different one.` : '',
-      mcp.writesApproved
-        ? 'The user has approved writes for this message, so tools that change data will run.'
-        : 'Tools that change data are blocked until the user approves them. If one is blocked, explain what you were about to do, ask the user to approve writes, and stop — never retry a blocked tool and never claim the change happened.',
-      "Tool results are the server's own output. Report what they actually say; do not invent file contents, ids, or links."
-    ].filter(Boolean).join(' ')
+      `${servers.length === 1 ? 'An MCP (Model Context Protocol) server is' : 'MCP (Model Context Protocol) servers are'} connected and their tools are available to you with an \`mcp_\` prefix. Inspect first with read-only tools, then make changes with the tools that need them.`,
+      ...servers.map((server) => [
+        // The key is the namespace the model sees in every tool id for this server, so naming it
+        // here is what lets the model tell two servers of the same kind apart.
+        `\n${server.key} — ${server.pluginName}, running "${server.serverName}"${server.version ? ` ${server.version}` : ''}: ${server.toolCount} tools${server.readOnly ? ' (read-only: no tool here can change data)' : ''}.`,
+        server.selectedRepo ? `Work on the repository ${server.selectedRepo} unless the user names a different one.` : '',
+        server.writesApproved
+          ? 'The user has approved writes for this server in this message, so its tools that change data will run.'
+          : 'Its tools that change data are blocked until the user approves them. If one is blocked, explain what you were about to do, ask the user to approve writes for that plugin, and stop — never retry a blocked tool and never claim the change happened.',
+        server.instructions ? `The server says: ${server.instructions}` : ''
+      ].filter(Boolean).join(' ')),
+      "\nTool results are the server's own output. Report what they actually say; do not invent file contents, ids, or links."
+    ].join('')
+    : null;
+  const mcpFailure = failures.length
+    ? failures.map((failure) => `The MCP plugin "${failure.serverName}" is enabled but its server could not be reached (${failure.error}). Tell the user that plugin is unavailable instead of pretending its tools ran. Do not retry the connection yourself.`).join(' ')
     : null;
   return [
     'Format every answer as clear GitHub-flavored Markdown. Use concise headings, lists, emphasis, tables, and block quotes only when they improve readability. Put code in fenced blocks with a language tag and write mathematical notation as inline `$...$` or display `$$...$$` LaTeX. Never send raw HTML. Do not mention these formatting instructions unless asked.',
@@ -159,8 +167,8 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
   }
   // An enabled MCP plugin opens one live session per request; that server's tools/list result
   // becomes part of the model's tool set for this message.
-  const mcp = await openMcpContext(db, body.pluginId);
-  if (mcp?.definitions) {
+  const mcp = await openMcpContexts(db);
+  if (mcp?.definitions?.length) {
     tools.push(...mcp.definitions);
   }
   const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
@@ -182,24 +190,71 @@ function activeGithubPlugin(db, rawPluginId, workspaceDirectory) {
   return { pluginId, needsClone: !config.cloned, workspaceDirectory };
 }
 
-// Opens the MCP session for this request. A server that cannot be reached must not block the
-// message: the failure is recorded so the system prompt tells the model to say so.
-async function openMcpContext(db, rawPluginId) {
-  const active = activeMcpPlugin(db, rawPluginId);
-  if (!active) return null;
-  try {
-    return await createMcpToolContext(db, active.pluginId);
-  } catch (error) {
-    return { pluginId: active.pluginId, failed: true, error: String(error?.message || 'The MCP server could not be reached.') };
+// Opens one MCP session per enabled plugin and merges their tools into a single tool set and a
+// single name map. A server that cannot be reached must not block the message: the failure is
+// recorded so the system prompt tells the model to say so.
+async function openMcpContexts(db) {
+  const active = activeMcpPlugins(db);
+  // A key is reserved in stored order, whether or not that server connects, so the tool ids the
+  // model sees stay stable across messages. Duplicates only appear when the same preset is
+  // installed twice, which keeps the common case a plain `mcp_github_...`.
+  const totals = new Map();
+  for (const entry of active) totals.set(entry.key, (totals.get(entry.key) || 0) + 1);
+  const seen = new Map();
+  for (const entry of active) {
+    const count = totals.get(entry.key) || 1;
+    const used = seen.get(entry.key) || 0;
+    seen.set(entry.key, used + 1);
+    entry.serverKey = count > 1 ? `${entry.key}-${used + 1}` : entry.key;
   }
+  const contexts = [];
+  const failures = [];
+  for (const entry of active) {
+    try {
+      contexts.push(await createMcpToolContext(db, entry.pluginId, { serverKey: entry.serverKey }));
+    } catch (error) {
+      failures.push({
+        pluginId: entry.pluginId,
+        serverName: String(entry.config.serverName || entry.name || 'mcp'),
+        error: String(error?.message || 'The MCP server could not be reached.')
+      });
+    }
+  }
+  if (contexts.length === 0 && failures.length === 0) return null;
+  const byName = new Map();
+  const definitions = [];
+  for (const context of contexts) {
+    for (const [id, entry] of context.byName) byName.set(id, entry);
+    definitions.push(...context.definitions);
+  }
+  return {
+    byName,
+    definitions,
+    contexts,
+    failures,
+    servers: contexts.map((context) => ({
+      key: context.serverKey,
+      pluginName: context.name,
+      serverName: context.serverName,
+      version: context.config.serverVersion || '',
+      toolCount: context.definitions.length,
+      selectedRepo: context.selectedRepo,
+      writesApproved: context.writesApproved,
+      readOnly: context.readOnly,
+      instructions: context.serverInstructions
+    }))
+  };
 }
 
-// Every MCP session is torn down when the request ends, and the one-shot write approval is
+// Every MCP session is torn down when the request ends, and each one-shot write approval is
 // consumed so the next message has to be approved again.
-async function closeMcpContext(db, mcp) {
+async function closeMcpContexts(db, mcp) {
   if (!mcp) return;
-  if (typeof mcp.dispose === 'function') await mcp.dispose();
-  if (mcp.pluginId) clearWriteApproval(db, mcp.pluginId);
+  for (const context of mcp.contexts || []) {
+    await context.dispose();
+    clearWriteApproval(db, context.pluginId);
+  }
+  for (const failure of mcp.failures || []) clearWriteApproval(db, failure.pluginId);
 }
 
 // Clones the selected repo into the local workspace the first time a message is sent with the
@@ -485,7 +540,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
     }
     return finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
   } finally {
-    await closeMcpContext(db, context.mcp);
+    await closeMcpContexts(db, context.mcp);
   }
 }
 
@@ -532,6 +587,6 @@ export async function respondToConversationStream(db, rawConversationId, body, t
     emit('completed', result);
     return result;
   } finally {
-    await closeMcpContext(db, context.mcp);
+    await closeMcpContexts(db, context.mcp);
   }
 }

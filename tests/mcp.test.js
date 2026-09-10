@@ -152,16 +152,40 @@ test('a missing stdio command is reported instead of hanging', async () => {
   }
 });
 
-test('MCP tools are exposed to the model with an mcp_ prefix and a provider-safe schema', () => {
+// executeMcpTool reads everything it needs from the map entry, which is how one merged map can
+// serve tools from several servers. This mirrors what createMcpToolContext attaches.
+function attach(tools, { serverKey = 'github', client = null, writesApproved = false, label } = {}) {
+  const toolset = buildMcpToolset(tools, { serverKey });
+  for (const entry of toolset.byName.values()) {
+    entry.client = client;
+    entry.writesApproved = writesApproved;
+    entry.toolTimeoutMs = 5_000;
+    entry.serverLabel = label || serverKey;
+  }
+  return toolset;
+}
+
+function recordingClient(tag, calls) {
+  return {
+    async callTool(name, args) {
+      calls.push({ tag, name, args });
+      return { content: [{ type: 'text', text: `${tag}:${name}` }] };
+    }
+  };
+}
+
+test('MCP tools are exposed to the model with a per-server mcp_ prefix and a provider-safe schema', () => {
   const { definitions, byName } = buildMcpToolset([
     { name: 'read_thing', description: 'Read one thing.', inputSchema: { $schema: 'x', type: 'object', properties: { id: { type: 'string' } }, required: ['id', 'missing'] } },
     { name: 'write_thing', description: 'Write one thing.', annotations: { readOnlyHint: false }, inputSchema: { type: 'object', properties: { id: { type: 'string' } } } }
-  ]);
-  assert.deepEqual(definitions.map((tool) => tool.id), [`${MCP_TOOL_PREFIX}read_thing`, `${MCP_TOOL_PREFIX}write_thing`]);
+  ], { serverKey: 'github' });
+  assert.deepEqual(definitions.map((tool) => tool.id), [`${MCP_TOOL_PREFIX}github_read_thing`, `${MCP_TOOL_PREFIX}github_write_thing`]);
   const read = definitions[0];
   assert.equal(read.parameters.$schema, undefined, 'the $schema keyword is dropped');
   assert.deepEqual(read.parameters.required, ['id'], 'required entries that are not properties are dropped');
-  assert.equal(byName.get(`${MCP_TOOL_PREFIX}read_thing`).serverName, 'read_thing');
+  assert.equal(byName.get(`${MCP_TOOL_PREFIX}github_read_thing`).toolName, 'read_thing');
+  // The name the model sends is prefixed; the name sent to the server is not.
+  assert.equal(byName.get(`${MCP_TOOL_PREFIX}github_write_thing`).mutating, true);
 });
 
 test('read-only mode hides mutating tools and annotations beat the name heuristic', () => {
@@ -171,8 +195,8 @@ test('read-only mode hides mutating tools and annotations beat the name heuristi
     { name: 'read_thing', annotations: { readOnlyHint: true }, inputSchema: {} },
     { name: 'write_thing', annotations: { readOnlyHint: false }, inputSchema: {} },
     { name: 'delete_thing', inputSchema: {} }
-  ], { readOnly: true });
-  assert.deepEqual(definitions.map((tool) => tool.id), [`${MCP_TOOL_PREFIX}read_thing`]);
+  ], { serverKey: 'github', readOnly: true });
+  assert.deepEqual(definitions.map((tool) => tool.id), [`${MCP_TOOL_PREFIX}github_read_thing`]);
 });
 
 test('mutating MCP tools are blocked until the user approves writes', async () => {
@@ -183,35 +207,58 @@ test('mutating MCP tools are blocked until the user approves writes', async () =
       return { content: [{ type: 'text', text: `ran ${name}` }] };
     }
   };
-  const { byName, definitions } = buildMcpToolset([
+  const tools = [
     { name: 'read_thing', annotations: { readOnlyHint: true }, inputSchema: {} },
     { name: 'write_thing', annotations: { readOnlyHint: false }, inputSchema: {} }
-  ]);
-  const readId = definitions[0].id;
-  const writeId = definitions[1].id;
+  ];
+  const closed = attach(tools, { client, writesApproved: false });
+  const readId = closed.definitions[0].id;
+  const writeId = closed.definitions[1].id;
 
-  const allowed = await executeMcpTool({ function: { name: readId, arguments: '{"id":"1"}' } }, { client, byName, writesApproved: false });
+  const allowed = await executeMcpTool({ function: { name: readId, arguments: '{"id":"1"}' } }, { byName: closed.byName });
   assert.equal(allowed.result.text, 'ran read_thing');
   assert.deepEqual(calls.at(-1), { name: 'read_thing', args: { id: '1' } });
 
-  const blocked = await executeMcpTool({ function: { name: writeId, arguments: '{"id":"1"}' } }, { client, byName, writesApproved: false });
+  const blocked = await executeMcpTool({ function: { name: writeId, arguments: '{"id":"1"}' } }, { byName: closed.byName });
   assert.equal(blocked.result.blocked, true);
   assert.match(blocked.result.error, /needs the user's approval/u);
   assert.equal(blocked.summary.includes('needs your approval'), true);
   assert.equal(calls.length, 1, 'a blocked tool never reaches the server');
 
-  const approved = await executeMcpTool({ function: { name: writeId, arguments: '{"id":"1"}' } }, { client, byName, writesApproved: true });
+  const open = attach(tools, { client, writesApproved: true });
+  const approved = await executeMcpTool({ function: { name: writeId, arguments: '{"id":"1"}' } }, { byName: open.byName });
   assert.equal(approved.result.text, 'ran write_thing');
   assert.equal(calls.length, 2);
 });
 
+// Two servers may expose a tool with the same name; the model must still reach the right one.
+test('tools from two servers stay separate and route to their own server', async () => {
+  const calls = [];
+  const one = recordingClient('one', calls);
+  const two = recordingClient('two', calls);
+  const a = attach([{ name: 'search', annotations: { readOnlyHint: true }, inputSchema: {} }], { serverKey: 'github', client: one });
+  const b = attach([{ name: 'search', annotations: { readOnlyHint: true }, inputSchema: {} }, { name: 'delete_thing', inputSchema: {} }], { serverKey: 'github-2', client: two });
+  const byName = new Map([...a.byName, ...b.byName]);
+  const ids = [...a.definitions, ...b.definitions].map((tool) => tool.id);
+  assert.deepEqual(ids, ['mcp_github_search', 'mcp_github-2_search', 'mcp_github-2_delete_thing']);
+  assert.equal(byName.size, 3, 'no id is shared between the two servers');
+
+  const first = await executeMcpTool({ function: { name: 'mcp_github_search', arguments: '{}' } }, { byName });
+  const second = await executeMcpTool({ function: { name: 'mcp_github-2_search', arguments: '{}' } }, { byName });
+  assert.equal(first.result.text, 'one:search');
+  assert.equal(second.result.text, 'two:search');
+  // The write gate belongs to the server the tool is on, not to the merged context.
+  const blocked = await executeMcpTool({ function: { name: 'mcp_github-2_delete_thing', arguments: '{}' } }, { byName });
+  assert.equal(blocked.result.blocked, true);
+  assert.deepEqual(calls.map((call) => [call.tag, call.name]), [['one', 'search'], ['two', 'search']]);
+});
+
 test('an unknown or malformed MCP tool call is rejected without reaching the server', async () => {
   let called = false;
-  const client = { callTool: async () => { called = true; return {}; } };
-  const { byName } = buildMcpToolset([{ name: 'read_thing', annotations: { readOnlyHint: true }, inputSchema: {} }]);
-  const unknown = await executeMcpTool({ function: { name: 'mcp_nope', arguments: '{}' } }, { client, byName });
+  const { byName } = attach([{ name: 'read_thing', annotations: { readOnlyHint: true }, inputSchema: {} }], { client: { callTool: async () => { called = true; return {}; } } });
+  const unknown = await executeMcpTool({ function: { name: 'mcp_github_nope', arguments: '{}' } }, { byName });
   assert.equal(unknown.result.error, 'That MCP tool is not available.');
-  const badArgs = await executeMcpTool({ function: { name: 'mcp_read_thing', arguments: 'not-json' } }, { client, byName });
+  const badArgs = await executeMcpTool({ function: { name: 'mcp_github_read_thing', arguments: 'not-json' } }, { byName });
   assert.match(badArgs.result.error, /JSON object/u);
   assert.equal(called, false);
 });

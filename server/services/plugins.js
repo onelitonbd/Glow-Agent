@@ -6,7 +6,7 @@ import { join, resolve, sep, dirname, relative } from 'node:path';
 import { notFound, validation, AppError } from '../lib/errors.js';
 import { requiredString } from '../lib/validate.js';
 import { now } from '../db/database.js';
-import { McpClient, mcpServerOptions } from './mcp.js';
+import { McpClient } from './mcp.js';
 import { buildMcpToolset, isMutatingTool } from './mcp-tools.js';
 
 const execFileP = promisify(execFile);
@@ -37,15 +37,6 @@ function stringList(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim()) : [];
 }
 
-function stringMap(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const out = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (typeof key === 'string' && typeof item === 'string') out[key] = item;
-  }
-  return out;
-}
-
 // The stored `mutating` flag must match what the write gate enforces, so both use isMutatingTool
 // (annotations when the server publishes them, the tool-name heuristic when it does not).
 function storedTool(tool) {
@@ -68,9 +59,15 @@ function parseJsonText(text) {
 
 // A plugin row stores the MCP server definition in a JSON config blob. Secrets (the GitHub
 // token, custom headers, custom env) are never returned to the browser.
+// A plugin row stores the preset id plus that preset's settings in a JSON config blob. Secrets
+// (the GitHub token) are never returned to the browser, and there is no generic URL/command to
+// expose because a plugin can only ever be one of the shipped presets.
 function safePlugin(row) {
   const config = safeConfig(row.config);
-  const github = config.github && typeof config.github === 'object' ? config.github : {};
+  const presetId = safeString(config.preset).toLowerCase();
+  const preset = Object.hasOwn(MCP_PRESETS, presetId) ? MCP_PRESETS[presetId] : null;
+  const settings = preset ? preset.settings(config[presetId]) : {};
+  const { token, ...visibleSettings } = settings;
   return {
     id: row.id,
     type: row.type,
@@ -79,21 +76,17 @@ function safePlugin(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     config: {
-      preset: safeString(config.preset) || 'custom',
-      mode: safeString(github.mode) || 'remote',
-      transport: config.transport === 'stdio' ? 'stdio' : 'http',
-      url: safeString(config.url),
-      command: safeString(config.command),
-      args: stringList(config.args),
-      toolsets: stringList(github.toolsets),
-      readOnly: github.readOnly === true,
-      host: safeString(github.host),
-      localClone: github.localClone === true,
+      preset: presetId,
+      presetName: preset ? preset.name : presetId,
+      accountAware: preset?.accountAware === true,
+      ...visibleSettings,
+      hasToken: Boolean(safeString(token)),
       toolAllowlist: stringList(config.toolAllowlist),
-      hasToken: Boolean(safeString(github.token) || stringMap(config.headers).Authorization),
+      writesApproved: config.writesApproved === true,
       connected: config.connected === true,
       serverName: safeString(config.serverName),
       serverVersion: safeString(config.serverVersion),
+      serverInstructions: safeString(config.serverInstructions),
       toolCount: Number(config.toolCount) || 0,
       tools: Array.isArray(config.tools) ? config.tools.slice(0, MAX_STORED_TOOLS) : [],
       connectedAt: safeString(config.connectedAt),
@@ -119,62 +112,106 @@ function saveConfig(db, row, config) {
 
 // ---- Server definition: preset + stored config -> concrete MCP transport options ----
 
-// Expands the GitHub preset into a real server definition, or passes a custom one through.
-export function resolveServer(config = {}) {
-  const preset = safeString(config.preset) || 'custom';
-  const github = config.github && typeof config.github === 'object' ? config.github : {};
-  const token = safeString(github.token);
-  const toolsets = stringList(github.toolsets);
-  const readOnly = github.readOnly === true;
-  const host = safeString(github.host);
-  const timeoutMs = Number.isFinite(config.timeoutMs) && config.timeoutMs > 0 ? config.timeoutMs : 90_000;
-
-  if (preset === 'github') {
-    const mode = safeString(github.mode) || 'remote';
-    if (mode === 'local-docker' || mode === 'local-binary') {
-      const flags = [];
-      if (mode === 'local-binary') flags.push('stdio');
-      if (toolsets.length) flags.push('--toolsets', toolsets.join(','));
-      if (readOnly) flags.push('--read-only');
-      if (host) flags.push('--gh-host', host);
-      const env = {};
-      if (token) env.GITHUB_PERSONAL_ACCESS_TOKEN = token;
-      if (host) env.GITHUB_HOST = host;
-      if (mode === 'local-docker') {
-        return {
-          transport: 'stdio',
-          command: 'docker',
-          args: [
-            'run', '-i', '--rm',
-            ...(token ? ['-e', 'GITHUB_PERSONAL_ACCESS_TOKEN'] : []),
-            ...(host ? ['-e', 'GITHUB_HOST'] : []),
-            GITHUB_DOCKER_IMAGE,
-            ...flags
-          ],
-          env,
-          fetchTimeoutMs: timeoutMs
-        };
+// The catalog of MCP servers Glow Agent ships. Only servers listed here can be added: the UI
+// renders this list and the service refuses anything else, so there is no "bring your own
+// server" form. Adding a server later means adding one entry here.
+//
+// The remote GitHub server is hosted by GitHub; the local server runs the official image or
+// binary and speaks MCP over stdio. Toolsets are selected with the X-MCP-Toolsets header
+// (remote) or the --toolsets flag (local); read-only mode uses X-MCP-Readonly / --read-only.
+const MCP_PRESETS = Object.freeze({
+  github: Object.freeze({
+    id: 'github',
+    name: 'GitHub',
+    description: 'Read and change repositories, issues, and pull requests through GitHub\u2019s official MCP server.',
+    accountAware: true,
+    defaultToolsets: [...GITHUB_DEFAULT_TOOLSETS],
+    settings: (github = {}) => ({
+      mode: safeString(github.mode) || 'remote',
+      toolsets: Array.isArray(github.toolsets) ? stringList(github.toolsets) : [...GITHUB_DEFAULT_TOOLSETS],
+      readOnly: github.readOnly === true,
+      localClone: github.localClone === true,
+      host: safeString(github.host),
+      binary: safeString(github.binary),
+      token: safeString(github.token)
+    }),
+    // Turns the stored settings into concrete MCP transport options.
+    build(github = {}, timeoutMs) {
+      const token = safeString(github.token);
+      const toolsets = stringList(github.toolsets);
+      const readOnly = github.readOnly === true;
+      const host = safeString(github.host);
+      const mode = safeString(github.mode) || 'remote';
+      if (mode === 'local-docker' || mode === 'local-binary') {
+        const flags = [];
+        if (mode === 'local-binary') flags.push('stdio');
+        if (toolsets.length) flags.push('--toolsets', toolsets.join(','));
+        if (readOnly) flags.push('--read-only');
+        if (host) flags.push('--gh-host', host);
+        const env = {};
+        if (token) env.GITHUB_PERSONAL_ACCESS_TOKEN = token;
+        if (host) env.GITHUB_HOST = host;
+        if (mode === 'local-docker') {
+          return {
+            transport: 'stdio',
+            command: 'docker',
+            args: [
+              'run', '-i', '--rm',
+              ...(token ? ['-e', 'GITHUB_PERSONAL_ACCESS_TOKEN'] : []),
+              ...(host ? ['-e', 'GITHUB_HOST'] : []),
+              GITHUB_DOCKER_IMAGE,
+              ...flags
+            ],
+            env,
+            fetchTimeoutMs: timeoutMs
+          };
+        }
+        const binary = safeString(github.binary) || 'github-mcp-server';
+        return { transport: 'stdio', command: binary, args: flags, env, fetchTimeoutMs: timeoutMs };
       }
-      const binary = safeString(github.binary) || 'github-mcp-server';
-      return { transport: 'stdio', command: binary, args: flags, env, fetchTimeoutMs: timeoutMs };
+      const headers = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (toolsets.length) headers['X-MCP-Toolsets'] = toolsets.join(',');
+      if (readOnly) headers['X-MCP-Readonly'] = 'true';
+      const url = host ? `https://copilot-api.${host}/mcp/` : GITHUB_REMOTE_URL;
+      return { transport: 'http', url, headers, fetchTimeoutMs: timeoutMs };
     }
-    const headers = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    if (toolsets.length) headers['X-MCP-Toolsets'] = toolsets.join(',');
-    if (readOnly) headers['X-MCP-Readonly'] = 'true';
-    const url = host ? `https://copilot-api.${host}/mcp/` : GITHUB_REMOTE_URL;
-    return { transport: 'http', url, headers, fetchTimeoutMs: timeoutMs };
-  }
+  })
+});
 
-  return mcpServerOptions({ ...config, timeoutMs });
+// Metadata the Plugins page renders. Secrets are never part of a preset definition.
+export function listPresets() {
+  return Object.values(MCP_PRESETS).map((preset) => ({
+    id: preset.id,
+    name: preset.name,
+    description: preset.description,
+    accountAware: preset.accountAware === true,
+    defaultToolsets: [...preset.defaultToolsets]
+  }));
+}
+
+function presetFor(config = {}) {
+  const id = safeString(config.preset).toLowerCase();
+  const preset = Object.hasOwn(MCP_PRESETS, id) ? MCP_PRESETS[id] : null;
+  if (!preset) {
+    throw validation(`Unknown MCP server "${id || 'none'}". Only the servers offered on the Plugins page are supported.`);
+  }
+  return preset;
+}
+
+// Expands the stored settings for a plugin into real MCP transport options.
+export function resolveServer(config = {}) {
+  const preset = presetFor(config);
+  const settings = config[preset.id] && typeof config[preset.id] === 'object' ? config[preset.id] : {};
+  const timeoutMs = Number.isFinite(config.timeoutMs) && config.timeoutMs > 0 ? config.timeoutMs : 90_000;
+  const server = preset.build(preset.settings(settings), timeoutMs);
+  if (server.transport === 'http' && !safeString(server.url)) throw validation('This MCP server has no URL configured.');
+  if (server.transport === 'stdio' && !safeString(server.command)) throw validation('This MCP server has no command configured.');
+  return server;
 }
 
 function serverLabel(config) {
-  const preset = safeString(config.preset) || 'custom';
-  if (preset === 'github') return 'github';
-  const url = safeString(config.url);
-  if (url) { try { return new URL(url).hostname; } catch { return 'mcp'; } }
-  return safeString(config.command) || 'mcp';
+  return safeString(config.preset).toLowerCase() || 'mcp';
 }
 
 export function listPlugins(db) {
@@ -187,61 +224,37 @@ export function getPlugin(db, rawId) {
 
 export function createPlugin(db, body = {}) {
   const type = requiredString(body.type, 'Plugin type', { max: 40 }).toLowerCase();
-  if (!['mcp'].includes(type)) throw validation('Only MCP plugins are supported. The GitHub plugin is an MCP plugin.');
-  const preset = safeString(body.preset).toLowerCase();
-  if (preset && !['github', 'custom'].includes(preset)) throw validation('Preset must be "github" or "custom".');
-  const effectivePreset = preset || 'github';
-  const name = requiredString(body.name || (effectivePreset === 'github' ? 'GitHub' : 'MCP server'), 'Plugin name', { max: 80 });
+  if (type !== 'mcp') throw validation('Plugins are MCP servers.');
+  const requested = safeString(body.preset).toLowerCase();
+  const preset = requested ? presetFor({ preset: requested }) : MCP_PRESETS.github;
+  const name = requiredString(body.name || preset.name, 'Plugin name', { max: 80 });
   const id = randomUUID();
   const timestamp = now();
-  const config = {
-    preset: effectivePreset,
-    github: { mode: 'remote', toolsets: [...GITHUB_DEFAULT_TOOLSETS] }
-  };
+  const config = { preset: preset.id, [preset.id]: preset.settings({}) };
   db.prepare('INSERT INTO plugins (id, type, name, config, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(id, type, name, JSON.stringify(config), 0, timestamp, timestamp);
   return getPlugin(db, id);
 }
 
-// Applies a client-supplied server definition to the stored config. Secrets are only replaced
-// when a new value is sent, so re-saving a plugin never wipes an existing token.
+// Applies the user's settings for this preset. Secrets are only replaced when a new value is
+// sent, so re-saving a plugin never wipes an existing token. There is deliberately no way to
+// point a plugin at an arbitrary URL or command: only the shipped presets can be configured.
 export function configurePlugin(db, rawId, body = {}) {
   const row = pluginRow(db, rawId);
   const config = safeConfig(row.config);
-  const preset = safeString(body.preset).toLowerCase() || safeString(config.preset) || 'github';
-  if (!['github', 'custom'].includes(preset)) throw validation('Preset must be "github" or "custom".');
-  const previousGithub = config.github && typeof config.github === 'object' ? config.github : {};
-  const incomingGithub = body.github && typeof body.github === 'object' ? body.github : {};
-  const github = {
-    ...previousGithub,
-    mode: safeString(incomingGithub.mode) || safeString(previousGithub.mode) || 'remote',
-    token: incomingGithub.token === undefined ? safeString(previousGithub.token) : safeString(incomingGithub.token),
-    host: incomingGithub.host === undefined ? safeString(previousGithub.host) : safeString(incomingGithub.host),
-    binary: incomingGithub.binary === undefined ? safeString(previousGithub.binary) : safeString(incomingGithub.binary)
-  };
-  if (Array.isArray(incomingGithub.toolsets)) github.toolsets = stringList(incomingGithub.toolsets);
-  else if (github.toolsets === undefined) github.toolsets = [...GITHUB_DEFAULT_TOOLSETS];
-  if (typeof incomingGithub.readOnly === 'boolean') github.readOnly = incomingGithub.readOnly;
-  if (typeof incomingGithub.localClone === 'boolean') github.localClone = incomingGithub.localClone;
-
-  const next = {
-    ...config,
-    preset,
-    github,
-    transport: safeString(body.transport).toLowerCase() === 'stdio' ? 'stdio' : 'http',
-    url: body.url === undefined ? safeString(config.url) : safeString(body.url),
-    command: body.command === undefined ? safeString(config.command) : safeString(body.command),
-    args: body.args === undefined ? stringList(config.args) : stringList(body.args),
-    env: body.env === undefined ? stringMap(config.env) : stringMap(body.env)
-  };
-  if (body.headers && typeof body.headers === 'object' && !Array.isArray(body.headers)) {
-    next.headers = { ...stringMap(config.headers), ...stringMap(body.headers) };
+  const preset = presetFor({ preset: safeString(body.preset).toLowerCase() || safeString(config.preset) || 'github' });
+  const previous = config[preset.id] && typeof config[preset.id] === 'object' ? config[preset.id] : {};
+  const incoming = body[preset.id] && typeof body[preset.id] === 'object' ? body[preset.id] : {};
+  // Start from what is stored, then overlay only the keys the client actually sent.
+  const merged = { ...preset.settings(previous) };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === undefined) continue;
+    if (key === 'toolsets') merged.toolsets = Array.isArray(value) ? stringList(value) : merged.toolsets;
+    else if (key === 'readOnly' || key === 'localClone') merged[key] = value === true;
+    else if (typeof value === 'string' || typeof value === 'number') merged[key] = safeString(value);
   }
-  if (Array.isArray(body.toolAllowlist)) next.toolAllowlist = stringList(body.toolAllowlist);
-
+  const next = { ...config, preset: preset.id, [preset.id]: merged };
   const server = resolveServer(next);
-  if (server.transport === 'http' && !server.url) throw validation('A server URL is required for an HTTP MCP server.');
-  if (server.transport === 'stdio' && !server.command) throw validation('A command is required for a stdio MCP server.');
 
   // A changed server definition invalidates the previous connection and repo choice.
   const signature = JSON.stringify([server.transport, server.url || '', server.command || '', server.args || [], server.headers || {}, server.env || {}]);
@@ -312,7 +325,8 @@ export async function connectPlugin(db, rawId, body = null) {
       toolCount: tools.length,
       tools: storedTools
     };
-    if (safeString(config.preset) === 'github' && storedTools.some((tool) => tool.name === 'get_me')) {
+    const accountAware = MCP_PRESETS[safeString(config.preset).toLowerCase()]?.accountAware === true;
+    if (accountAware && storedTools.some((tool) => tool.name === 'get_me')) {
       try {
         const account = await accountFromClient(client);
         next = { ...next, ...account };
@@ -461,20 +475,25 @@ export function approvePluginWrites(db, rawId) {
   return getPlugin(db, row.id);
 }
 
-// The plugin a chat request should use, or null when it is not usable for this message.
-export function activeMcpPlugin(db, rawPluginId) {
-  if (!rawPluginId) return null;
-  const id = String(rawPluginId);
-  const row = db.prepare('SELECT * FROM plugins WHERE id = ?').get(id);
-  if (!row || row.type !== 'mcp' || !Number(row.enabled)) return null;
-  const config = safeConfig(row.config);
-  if (config.connected !== true) return null;
-  return { pluginId: id, config };
+// Every enabled plugin whose server answered the handshake takes part in a message, so adding a
+// second MCP server gives the model that server's tools alongside the first one's. The enable
+// switch in the chat picker is the only control; the client does not have to name a plugin.
+export function activeMcpPlugins(db) {
+  return db.prepare("SELECT * FROM plugins WHERE type = 'mcp' AND enabled = 1 ORDER BY created_at ASC").all()
+    .map((row) => {
+      const config = safeConfig(row.config);
+      const presetId = safeString(config.preset).toLowerCase();
+      return { pluginId: row.id, config, name: row.name, key: presetId || 'mcp' };
+    })
+    .filter((entry) => entry.config.connected === true);
 }
 
 // Builds the runtime MCP context for one chat request: a live session, the tool definitions the
 // model may call, and the write gate. The caller MUST call dispose() when the request ends.
-export async function createMcpToolContext(db, pluginId) {
+// `serverKey` namespaces this server's tool ids (mcp_<key>_<tool>). Callers that connect several
+// plugins at once pass a unique key per plugin so two plugins of the same preset — say GitHub
+// twice for two accounts — cannot overwrite each other's tools in the merged tool map.
+export async function createMcpToolContext(db, pluginId, { serverKey } = {}) {
   const row = pluginRow(db, pluginId);
   const config = safeConfig(row.config);
   const server = resolveServer(config);
@@ -487,19 +506,41 @@ export async function createMcpToolContext(db, pluginId) {
     await client.close();
     throw new AppError(502, 'MCP_TOOLS_FAILED', `Could not read the tools from the MCP server: ${error.message}`, { expose: true });
   }
-  const github = config.github && typeof config.github === 'object' ? config.github : {};
-  const toolset = buildMcpToolset(tools, { allowlist: stringList(config.toolAllowlist), readOnly: github.readOnly === true });
+  const settings = presetFor(config).settings(config[safeString(config.preset).toLowerCase()]);
+  const label = serverLabel(config);
+  const key = safeString(serverKey) || label;
+  const toolset = buildMcpToolset(tools, {
+    serverKey: key,
+    allowlist: stringList(config.toolAllowlist),
+    readOnly: settings.readOnly === true
+  });
+  const writesApproved = config.writesApproved === true;
+  const toolTimeoutMs = Number.isFinite(config.timeoutMs) && config.timeoutMs > 0 ? config.timeoutMs : 90_000;
+  // Each entry keeps its own session, approval, and label, so one merged map can serve tools
+  // from several servers without them interfering with each other.
+  for (const entry of toolset.byName.values()) {
+    entry.client = client;
+    entry.writesApproved = writesApproved;
+    entry.toolTimeoutMs = toolTimeoutMs;
+    entry.serverLabel = label;
+    entry.serverKey = key;
+    entry.pluginId = pluginId;
+  }
   return {
     pluginId,
+    name: row.name,
     config,
     client,
-    serverLabel: serverLabel(config),
-    serverName: safeString(client.serverInfo?.name) || serverLabel(config),
+    serverLabel: label,
+    serverKey: key,
+    serverName: safeString(client.serverInfo?.name) || label,
+    serverInstructions: safeString(client.instructions),
     byName: toolset.byName,
     definitions: toolset.definitions,
-    writesApproved: config.writesApproved === true,
+    writesApproved,
+    readOnly: settings.readOnly === true,
     selectedRepo: safeString(config.selectedRepo),
-    toolTimeoutMs: Number.isFinite(config.timeoutMs) && config.timeoutMs > 0 ? config.timeoutMs : 90_000,
+    toolTimeoutMs,
     async dispose() {
       await client.close();
     }

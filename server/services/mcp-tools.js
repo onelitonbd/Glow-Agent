@@ -8,13 +8,19 @@ import { mcpResultToText } from './mcp.js';
 // the model calls one, `executeMcpTool` forwards it to the server with `tools/call`.
 export const MCP_TOOL_PREFIX = 'mcp_';
 
+// Tool ids are namespaced per server (mcp_<server>_<tool>) so two connected servers that both
+// expose, say, a "search" tool cannot collide, and the model can tell which server a tool is on.
+export function mcpToolId(serverKey, toolName) {
+  const key = sanitizeToolName(serverKey).replace(/^mcp_/u, '') || 'server';
+  return `${MCP_TOOL_PREFIX}${key}_${sanitizeToolName(toolName).replace(/^mcp_/u, '')}`.slice(0, 64);
+}
+
 // Verbs that indicate a tool changes something. Used only as a fallback when the server does
 // not publish MCP tool annotations (`annotations.readOnlyHint`).
 const MUTATING_NAME = /(create|update|delete|remove|push|pull|merge|close|reopen|edit|set|add|assign|unassign|apply|revert|rename|move|fork|release|submit|request|enable|disable|start|stop|cancel|rerun|retry|dismiss|resolve|lock|unlock|write|put|post|patch|save|sync|generate|install|deploy|publish|comment|review|star|unstar|follow|subscribe|unsubscribe)/u;
 
 function sanitizeToolName(name) {
-  const cleaned = String(name).replace(/[^a-zA-Z0-9_-]+/gu, '_').replace(/_+/gu, '_').replace(/^_|_$/gu, '');
-  return `${MCP_TOOL_PREFIX}${cleaned}`.slice(0, 64);
+  return String(name).replace(/[^a-zA-Z0-9_-]+/gu, '_').replace(/_+/gu, '_').replace(/^_|_$/gu, '');
 }
 
 function clip(text, max) {
@@ -72,26 +78,26 @@ export function isMutatingTool(tool) {
 
 // Turns a server's tool list into { definitions, byName }. `definitions` are in the app's own
 // tool shape so the existing openAiToolDefinitions() path works unchanged.
-export function buildMcpToolset(tools, { allowlist = [], readOnly = false } = {}) {
+export function buildMcpToolset(tools, { serverKey = 'server', allowlist = [], readOnly = false } = {}) {
   const definitions = [];
   const byName = new Map();
   const allow = new Set(Array.isArray(allowlist) ? allowlist.filter((name) => typeof name === 'string') : []);
   for (const tool of Array.isArray(tools) ? tools : []) {
-    const serverName = typeof tool?.name === 'string' ? tool.name : '';
-    if (!serverName) continue;
+    const toolName = typeof tool?.name === 'string' ? tool.name : '';
+    if (!toolName) continue;
     const mutating = isMutatingTool(tool);
     // In read-only mode mutating tools are never offered to the model at all.
     if (readOnly && mutating) continue;
-    if (allow.size > 0 && !allow.has(serverName)) continue;
-    const id = uniqueId(sanitizeToolName(serverName), byName);
+    if (allow.size > 0 && !allow.has(toolName)) continue;
+    const id = uniqueId(mcpToolId(serverKey, toolName), byName);
     const definition = {
       id,
-      name: tool.title || serverName,
-      description: clip(typeof tool.description === 'string' && tool.description.trim() ? tool.description : `MCP tool "${serverName}".`, 1500),
+      name: tool.title || toolName,
+      description: clip(typeof tool.description === 'string' && tool.description.trim() ? tool.description : `MCP tool "${toolName}".`, 1500),
       parameters: sanitizeSchema(tool.inputSchema)
     };
     definitions.push(definition);
-    byName.set(id, { id, serverName, mutating, description: definition.description });
+    byName.set(id, { id, toolName, mutating, description: definition.description });
   }
   return { definitions, byName };
 }
@@ -114,8 +120,7 @@ function argumentObject(raw) {
   }
 }
 
-function summarize(serverLabel, entry, result) {
-  const label = `${serverLabel}:${entry.serverName}`;
+function summarize(label, result) {
   // A blocked call carries an explanatory `error` too, so the blocked case is checked first.
   if (result && result.blocked) return `${label} needs your approval`;
   if (result && result.error) return `${label} failed: ${String(result.error).slice(0, 160)}`;
@@ -129,29 +134,31 @@ function summarize(serverLabel, entry, result) {
 export async function executeMcpTool(call, ctx) {
   const id = typeof call?.function?.name === 'string' ? call.function.name : '';
   const entry = ctx?.byName?.get(id);
-  const serverLabel = ctx?.serverLabel || 'mcp';
   if (!entry) {
     return { toolId: id || 'unknown', result: { error: 'That MCP tool is not available.' }, summary: 'An unavailable MCP tool call was blocked.' };
   }
+  const label = `${entry.serverLabel || 'mcp'}:${entry.toolName}`;
   const args = argumentObject(call?.function?.arguments);
   if (args === null) {
     const result = { error: 'Tool arguments must be a JSON object.' };
-    return { toolId: id, result, summary: summarize(serverLabel, entry, result) };
+    return { toolId: id, result, summary: summarize(label, result) };
   }
-  if (entry.mutating && ctx?.writesApproved !== true) {
+  // The approval belongs to the plugin that owns this tool, so approving one server never
+  // silently unlocks another.
+  if (entry.mutating && entry.writesApproved !== true) {
     const result = {
       blocked: true,
-      error: `This tool changes data on the server and needs the user's approval. Ask the user to approve writes for this plugin, then call ${entry.serverName} again. Do not retry until they approve.`
+      error: `This tool changes data on the server and needs the user's approval. Ask the user to approve writes for this plugin, then call ${entry.toolName} again. Do not retry until they approve.`
     };
-    return { toolId: id, result, summary: summarize(serverLabel, entry, result) };
+    return { toolId: id, result, summary: summarize(label, result) };
   }
   let result;
   try {
-    const response = await ctx.client.callTool(entry.serverName, args, { timeoutMs: ctx.toolTimeoutMs });
+    const response = await entry.client.callTool(entry.toolName, args, { timeoutMs: entry.toolTimeoutMs });
     const text = mcpResultToText(response);
     result = response?.isError === true ? { ok: false, isError: true, error: text || 'The MCP tool reported an error.' } : { ok: true, text };
   } catch (error) {
     result = { error: error?.message || 'The MCP tool call failed.' };
   }
-  return { toolId: id, result, summary: summarize(serverLabel, entry, result) };
+  return { toolId: id, result, summary: summarize(label, result) };
 }

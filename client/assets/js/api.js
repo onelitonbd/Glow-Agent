@@ -113,6 +113,7 @@ export const api = {
   },
   plugins: {
     list: () => request('/plugins'),
+    presets: () => request('/plugins/presets'),
     get: (id) => request(`/plugins/${encodeURIComponent(id)}`),
     create: (values) => request('/plugins', { method: 'POST', body: values }),
     update: (id, values) => request(`/plugins/${encodeURIComponent(id)}`, { method: 'PUT', body: values }),

@@ -1,9 +1,16 @@
+#!/usr/bin/env node
 // A real MCP server used by the tests. It implements the JSON-RPC methods the client actually
 // speaks (initialize, notifications/initialized, tools/list with pagination, tools/call) so both
 // transports are exercised against a genuine server rather than a stub.
 //
 // Run directly as a stdio server:  node tests/fixtures/mcp-server.mjs
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 export const PROTOCOL_VERSION = '2025-06-18';
+
+// Creating this file makes mcp-server-exits.mjs die on startup, which is how a test reproduces
+// "the MCP server went away" after a plugin has already connected.
+export const DIED_MARKER = join(tmpdir(), 'glow-agent-fixture-mcp-gone');
 
 const TOOLS = [
   {

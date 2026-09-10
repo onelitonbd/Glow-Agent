@@ -279,28 +279,32 @@ function toolIcon(toolId) {
   return toolId === 'calculator' ? 'calculator' : 'clock';
 }
 
-// The plugin used for a message: an enabled MCP plugin whose server answered the handshake.
-function activeMcpPlugin() {
-  return state.plugins.find((plugin) => plugin.type === 'mcp' && plugin.enabled && plugin.config?.connected) || null;
+// Every enabled MCP plugin whose server answered the handshake contributes tools to the next
+// message. Nothing has to be chosen per message, so the request does not name a plugin.
+function activeMcpPlugins() {
+  return state.plugins.filter((plugin) => plugin.type === 'mcp' && plugin.enabled && plugin.config?.connected);
 }
 
-function setPluginTrigger(active) {
+function setPluginTrigger(count) {
   if (!pluginTrigger) return;
-  pluginTrigger.classList.toggle('selected', active);
-  pluginTrigger.setAttribute('aria-label', active ? 'An MCP plugin is enabled for this conversation.' : 'Plugins — connect MCP servers like GitHub');
-  pluginTrigger.title = active ? 'Plugin enabled' : 'Plugins';
+  pluginTrigger.classList.toggle('selected', count > 0);
+  pluginTrigger.setAttribute('aria-label', count > 0 ? `${count} MCP plugin${count === 1 ? '' : 's'} enabled for this conversation.` : 'Plugins — connect MCP servers like GitHub');
+  pluginTrigger.title = count > 0 ? `${count} plugin${count === 1 ? '' : 's'} enabled` : 'Plugins';
 }
 
 function renderPluginPicker() {
-  const active = activeMcpPlugin();
-  state.selectedPluginId = active?.id || null;
-  setPluginTrigger(Boolean(active));
+  const active = activeMcpPlugins();
+  state.selectedPluginId = active[0]?.id || null;
+  setPluginTrigger(active.length);
   chatPluginOptions.replaceChildren();
   if (state.plugins.length === 0) {
     chatPluginOptions.append(element('p', 'hint', 'No plugins yet. Add the GitHub MCP server from the Plugins page.'));
     return;
   }
-  chatPluginOptions.append(element('p', 'hint', 'Enable a connected MCP server to give the assistant its tools. For GitHub, also pick the repository to work on.'));
+  const toolTotal = active.reduce((total, plugin) => total + (plugin.config?.toolCount || 0), 0);
+  chatPluginOptions.append(element('p', 'hint', active.length > 1
+    ? `Every switch left on adds its tools to each message — currently ${toolTotal} tools from ${active.length} servers. For GitHub, also pick the repository to work on.`
+    : 'Leave a connected MCP server on to give the assistant its tools. For GitHub, also pick the repository to work on.'));
   state.plugins.forEach((plugin) => {
     const card = element('div', 'plugin-flow');
     const config = plugin.config || {};
@@ -530,8 +534,6 @@ composer.addEventListener('submit', async (event) => {
       modelId: state.selectedModelId,
       toolIds: state.tools.map((tool) => tool.id)
     };
-    const activePlugin = activeMcpPlugin();
-    if (activePlugin) requestBody.pluginId = activePlugin.id;
     const result = await api.conversations.streamRespond(conversation.id, requestBody, async (eventName, payload) => {
       if (eventName === 'thinking' || eventName === 'token' || eventName === 'tool_call' || eventName === 'tool_result') appendStreamDelta(eventName, payload);
     });

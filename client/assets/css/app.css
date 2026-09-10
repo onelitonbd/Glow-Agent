@@ -342,6 +342,12 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .repo-file-toggle { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 2px; background: var(--quiet); }
 .repo-file.dir .repo-file-toggle { border-radius: 0; background: var(--violet); }
 
+/* Curated MCP server catalog: one card per server Glow Agent ships */
+.preset-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 13px; margin-top: 10px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-soft); }
+.preset-body { min-width: 0; display: grid; gap: 4px; }
+.preset-name { margin: 0; color: var(--text); font-size: 13px; font-weight: 700; }
+.preset-card .button { flex: 0 0 auto; min-height: 32px; }
+
 .section-spaced { margin-top: 22px; }
 .action-hint { margin-top: 10px; }
 .button-spaced { margin-top: 12px; }

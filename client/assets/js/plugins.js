@@ -3,6 +3,7 @@ import { element, icon, showToast, setButtonBusy } from './ui.js';
 
 const state = {
   plugins: [],
+  presets: [],
   repos: [],
   reposPluginId: null,
   cloneStatus: {},
@@ -11,50 +12,31 @@ const state = {
 
 const pluginsState = document.getElementById('pluginsState');
 const pluginsCount = document.getElementById('pluginsCount');
+const presetState = document.getElementById('presetState');
 const dialog = document.getElementById('githubDialog');
 const form = document.getElementById('githubForm');
 const saveGithub = document.getElementById('saveGithub');
-const presetSelect = document.getElementById('preset');
 const modeSelect = document.getElementById('mode');
 const modeHint = document.getElementById('modeHint');
-const transportSelect = document.getElementById('transport');
-const githubFields = document.getElementById('githubFields');
-const customFields = document.getElementById('customFields');
-let dialogOpener = document.getElementById('openPluginDialog');
+const tokenInput = document.getElementById('token');
+let dialogOpener = null;
 let editingPluginId = null;
 
 const MODE_HINTS = {
-  remote: 'GitHub hosts the server at https://api.githubcopilot.com/mcp/. Nothing to install; a personal access token is sent as a bearer header.',
-  'local-docker': 'Runs ghcr.io/github/github-mcp-server in Docker and talks to it over stdio. Leave the token empty to use the image\'s own browser sign-in.',
+  remote: 'GitHub hosts the server at https://api.githubcopilot.com/mcp/. Nothing to install; the token is sent as a bearer header.',
+  'local-docker': 'Runs ghcr.io/github/github-mcp-server in Docker over stdio. Leave the token empty to use the image\'s own browser sign-in.',
   'local-binary': 'Runs a github-mcp-server binary on this machine with the stdio argument.'
 };
-
-function parseJsonField(value, fallback, label) {
-  const text = String(value || '').trim();
-  if (!text) return fallback;
-  try {
-    const parsed = JSON.parse(text);
-    if (parsed === null || typeof parsed !== 'object') throw new Error('not an object');
-    return parsed;
-  } catch {
-    throw new Error(`${label} must be valid JSON.`);
-  }
-}
 
 function splitList(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
 }
 
 function syncDialogFields() {
-  const preset = presetSelect.value;
-  githubFields.hidden = preset !== 'github';
-  customFields.hidden = preset !== 'custom';
   modeHint.textContent = MODE_HINTS[modeSelect.value] || '';
-  const http = transportSelect.value === 'http';
-  for (const id of ['url', 'headers']) document.getElementById(id).closest('.field').hidden = !http;
-  for (const id of ['command', 'args', 'env']) document.getElementById(id).closest('.field').hidden = http;
-  const binaryField = document.getElementById('binary').closest('.field');
-  binaryField.hidden = preset !== 'github' || modeSelect.value !== 'local-binary';
+  // The binary path only applies to the native-binary mode; the host applies to all three.
+  document.getElementById('binaryField').hidden = modeSelect.value !== 'local-binary';
+  document.getElementById('hostField').hidden = false;
 }
 
 function openDialog(opener, plugin = null) {
@@ -62,21 +44,16 @@ function openDialog(opener, plugin = null) {
   editingPluginId = plugin?.id || null;
   form.reset();
   const config = plugin?.config || {};
-  presetSelect.value = config.preset === 'custom' ? 'custom' : 'github';
   modeSelect.value = config.mode || 'remote';
-  transportSelect.value = config.transport === 'stdio' ? 'stdio' : 'http';
   document.getElementById('toolsets').value = (config.toolsets || []).join(',');
+  document.getElementById('host').value = config.host || '';
   document.getElementById('readOnly').checked = Boolean(config.readOnly);
   document.getElementById('localClone').checked = Boolean(config.localClone);
-  document.getElementById('binary').value = '';
-  document.getElementById('url').value = config.url || '';
-  document.getElementById('command').value = config.command || '';
-  document.getElementById('args').value = (config.args || []).length ? JSON.stringify(config.args) : '';
-  // Secrets are never sent back to the browser, so the token/header/env fields start empty.
-  document.getElementById('token').placeholder = config.hasToken ? 'Saved — enter a new value to replace it' : 'ghp_… or github_pat_…';
+  document.getElementById('binary').value = config.binary || '';
+  tokenInput.placeholder = config.hasToken ? 'Saved — enter a new value to replace it' : 'ghp_… or github_pat_…';
   syncDialogFields();
   dialog.showModal();
-  setTimeout(() => document.getElementById('token').focus(), 20);
+  setTimeout(() => tokenInput.focus(), 20);
 }
 
 function closeDialog() {
@@ -86,49 +63,33 @@ function closeDialog() {
 
 async function submitDialog(event) {
   event.preventDefault();
-  let values;
-  try {
-    if (presetSelect.value === 'github') {
-      const token = document.getElementById('token').value.trim();
-      values = {
-        preset: 'github',
-        github: {
-          mode: modeSelect.value,
-          toolsets: splitList(document.getElementById('toolsets').value),
-          readOnly: document.getElementById('readOnly').checked,
-          localClone: document.getElementById('localClone').checked,
-          ...(token ? { token } : {}),
-          ...(document.getElementById('binary').value.trim() ? { binary: document.getElementById('binary').value.trim() } : {})
-        }
-      };
-    } else {
-      values = {
-        preset: 'custom',
-        transport: transportSelect.value,
-        url: document.getElementById('url').value.trim(),
-        headers: parseJsonField(document.getElementById('headers').value, {}, 'Headers'),
-        command: document.getElementById('command').value.trim(),
-        args: Object.values(parseJsonField(document.getElementById('args').value, [], 'Arguments')),
-        env: parseJsonField(document.getElementById('env').value, {}, 'Environment')
-      };
+  const token = tokenInput.value.trim();
+  const values = {
+    preset: 'github',
+    github: {
+      mode: modeSelect.value,
+      toolsets: splitList(document.getElementById('toolsets').value),
+      readOnly: document.getElementById('readOnly').checked,
+      localClone: document.getElementById('localClone').checked,
+      host: document.getElementById('host').value.trim(),
+      binary: document.getElementById('binary').value.trim(),
+      // An empty token means "keep whatever is stored", so it is simply not sent.
+      ...(token ? { token } : {})
     }
-  } catch (error) {
-    showToast(error.message, 'danger');
-    return;
-  }
+  };
   setButtonBusy(saveGithub, true, 'Connecting…');
   try {
-    const pluginId = editingPluginId || (await api.plugins.create({ type: 'mcp', preset: values.preset })).id;
+    const pluginId = editingPluginId || (await api.plugins.create({ type: 'mcp', preset: 'github' })).id;
     await api.plugins.configure(pluginId, values);
     await api.plugins.connect(pluginId);
     closeDialog();
     await load();
-    showToast('MCP server connected.');
+    showToast('GitHub MCP server connected.');
   } catch (error) {
     showToast(error.message, 'danger');
     await load();
   } finally {
-    setButtonBusy(saveGithub, false, 'Connect server');
+    setButtonBusy(saveGithub, false, 'Connect');
   }
 }
 
@@ -160,7 +121,7 @@ function enableSwitch(plugin) {
       const index = state.plugins.findIndex((entry) => entry.id === plugin.id);
       if (index !== -1) state.plugins[index] = updated;
       render();
-      showToast(updated.enabled ? `${plugin.name} enabled.` : `${plugin.name} disabled.`);
+      showToast(updated.enabled ? `${plugin.name} enabled — the assistant now has its tools.` : `${plugin.name} disabled.`);
     } catch (error) {
       showToast(error.message, 'danger');
     } finally {
@@ -198,7 +159,6 @@ async function loadRepos(plugin) {
 
 function repoSection(plugin) {
   const shell = element('div', 'plugin-repo');
-  const config = plugin.config || {};
   const row = element('div', 'plugin-step-title');
   row.append(element('span', 'step-num', '2'), document.createTextNode('Repository'));
   const refresh = element('button', 'link-button', 'Reload');
@@ -207,6 +167,7 @@ function repoSection(plugin) {
   row.append(refresh);
   shell.append(row);
 
+  const config = plugin.config || {};
   if (!config.connected) {
     shell.append(element('p', 'hint', 'Connect the server first, then the repositories for your account appear here.'));
     return shell;
@@ -316,19 +277,24 @@ function localCloneSection(plugin) {
 
 function pluginCard(plugin) {
   const card = element('div', 'plugin-flow');
+  const config = plugin.config || {};
   const head = element('div', 'plugin-card-head');
   const titleRow = element('div', 'plugin-step-title');
   titleRow.append(element('span', 'step-num', '1'), document.createTextNode(plugin.name));
-  const badge = element('span', 'plugin-badge', plugin.config?.preset === 'github' ? 'GitHub MCP' : 'MCP');
-  titleRow.append(badge);
+  titleRow.append(element('span', 'plugin-badge', `${config.presetName || config.preset} · MCP`));
   head.append(titleRow, enableSwitch(plugin));
   card.append(head);
   card.append(statusLine(plugin));
+  if (config.writesApproved) {
+    const approved = element('div', 'plugin-status ok');
+    approved.append(icon('check'), element('span', '', 'Writes approved for your next message'));
+    card.append(approved);
+  }
 
   const actions = element('div', 'row-actions');
   const settings = element('button', 'button small secondary');
   settings.type = 'button';
-  settings.append(icon('settings'), document.createTextNode('Settings'));
+  settings.append(icon('settings'), document.createTextNode('Setup'));
   settings.addEventListener('click', () => openDialog(settings, plugin));
   const test = element('button', 'button small secondary');
   test.type = 'button';
@@ -347,11 +313,12 @@ function pluginCard(plugin) {
   const approve = element('button', 'button small');
   approve.type = 'button';
   approve.append(icon('check'), document.createTextNode('Approve writes'));
-  approve.title = 'Lets the assistant run one message worth of tools that change data.';
+  approve.title = 'Lets the assistant run one message worth of this server\'s tools that change data.';
   approve.addEventListener('click', async () => {
     setButtonBusy(approve, true, 'Approving…');
     try {
       await api.plugins.approveWrites(plugin.id);
+      await load();
       showToast('Writes approved for the next message.');
     } catch (error) {
       showToast(error.message, 'danger');
@@ -361,14 +328,14 @@ function pluginCard(plugin) {
   });
   const remove = element('button', 'button small danger');
   remove.type = 'button';
-  remove.append(icon('trash'), document.createTextNode('Delete'));
+  remove.append(icon('trash'), document.createTextNode('Remove'));
   remove.addEventListener('click', async () => {
-    if (!window.confirm(`Delete the plugin "${plugin.name}"?`)) return;
+    if (!window.confirm(`Remove the plugin "${plugin.name}"?`)) return;
     remove.disabled = true;
     try {
       await api.plugins.remove(plugin.id);
       await load();
-      showToast('Plugin deleted.');
+      showToast('Plugin removed.');
     } catch (error) {
       remove.disabled = false;
       showToast(error.message, 'danger');
@@ -377,14 +344,14 @@ function pluginCard(plugin) {
   actions.append(settings, test, approve, remove);
   card.append(actions);
 
-  if (plugin.config?.preset === 'github') {
+  if (config.accountAware) {
     card.append(repoSection(plugin));
-    if (plugin.config?.localClone) card.append(localCloneSection(plugin));
+    if (config.localClone) card.append(localCloneSection(plugin));
   }
 
-  const toolCount = plugin.config?.toolCount || 0;
+  const toolCount = config.toolCount || 0;
   if (toolCount > 0) {
-    const toggle = element('button', 'link-button', state.openTools.has(plugin.id) ? 'Hide tools' : `Show ${toolCount} tools`);
+    const toggle = element('button', 'link-button', state.openTools.has(plugin.id) ? 'Hide tools' : `Show the ${toolCount} tools the assistant gets`);
     toggle.type = 'button';
     toggle.addEventListener('click', () => {
       if (state.openTools.has(plugin.id)) state.openTools.delete(plugin.id);
@@ -397,41 +364,58 @@ function pluginCard(plugin) {
   return card;
 }
 
-function render() {
-  pluginsCount.textContent = state.plugins.length ? `${state.plugins.length} installed` : '';
-  pluginsState.replaceChildren();
-  if (state.plugins.length === 0) {
-    const empty = element('div', 'empty-state');
-    empty.append(element('h2', '', 'No plugins yet'));
-    empty.append(element('p', 'hint', 'Add the GitHub MCP server and the assistant can read and change your repositories.'));
-    const add = element('button', 'button');
-    add.type = 'button';
-    add.append(icon('plus'), document.createTextNode('Add GitHub MCP server'));
-    add.addEventListener('click', () => openDialog(add));
-    empty.append(add);
-    pluginsState.append(empty);
+// The catalog only ever shows the servers Glow Agent ships, and each one can be added once.
+function renderPresets() {
+  presetState.replaceChildren();
+  if (state.presets.length === 0) {
+    presetState.append(element('p', 'hint', 'No MCP servers are available.'));
     return;
   }
-  const add = element('button', 'button small secondary');
-  add.type = 'button';
-  add.append(icon('plus'), document.createTextNode('Add another MCP server'));
-  add.addEventListener('click', () => openDialog(add));
-  pluginsState.append(add);
-  for (const plugin of state.plugins) pluginsState.append(pluginCard(plugin));
+  for (const preset of state.presets) {
+    const card = element('div', 'preset-card');
+    const body = element('div', 'preset-body');
+    body.append(element('h3', 'preset-name', preset.name));
+    body.append(element('p', 'hint', preset.description));
+    card.append(body);
+    const installed = state.plugins.find((plugin) => plugin.config?.preset === preset.id);
+    const add = element('button', 'button small');
+    add.type = 'button';
+    if (installed) {
+      add.append(icon('check'), document.createTextNode('Added'));
+      add.disabled = true;
+      add.title = `${preset.name} is already set up.`;
+    } else {
+      add.append(icon('plus'), document.createTextNode(`Add ${preset.name}`));
+      add.addEventListener('click', () => openDialog(add));
+    }
+    card.append(add);
+    presetState.append(card);
+  }
+}
+
+function render() {
+  pluginsCount.textContent = state.plugins.length ? `${state.plugins.length} added` : '';
+  pluginsState.replaceChildren();
+  if (state.plugins.length === 0) {
+    pluginsState.append(element('p', 'hint', 'Nothing added yet. Pick a server below.'));
+  } else {
+    for (const plugin of state.plugins) pluginsState.append(pluginCard(plugin));
+  }
+  renderPresets();
 }
 
 async function load() {
   try {
-    state.plugins = await api.plugins.list();
+    const [plugins, presets] = await Promise.all([api.plugins.list(), api.plugins.presets()]);
+    state.plugins = plugins;
+    state.presets = presets;
     render();
   } catch (error) {
     pluginsState.replaceChildren(element('p', 'hint', error.message));
   }
 }
 
-presetSelect.addEventListener('change', syncDialogFields);
 modeSelect.addEventListener('change', syncDialogFields);
-transportSelect.addEventListener('change', syncDialogFields);
 form.addEventListener('submit', submitDialog);
 document.getElementById('closeGithubDialog').addEventListener('click', closeDialog);
 document.getElementById('cancelGithub').addEventListener('click', closeDialog);

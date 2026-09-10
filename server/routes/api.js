@@ -25,6 +25,7 @@ import {
   getPlugin,
   inspectPlugin,
   listPlugins,
+  listPresets,
   pluginAccount,
   pluginRepositories,
   pushGithub,
@@ -147,6 +148,9 @@ export function createApiRouter({ db, config }) {
   });
 
   // ---- Plugins ----
+  // The catalog of MCP servers Glow Agent ships. Declared before /plugins/:pluginId so the
+  // literal path is not swallowed by the parameter route.
+  router.get('/plugins/presets', (_request, response) => success(response, listPresets()));
   router.route('/plugins')
     .get((_request, response) => success(response, listPlugins(db)))
     .post((request, response, next) => {

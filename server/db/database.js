@@ -84,6 +84,27 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS plugins_type_idx ON plugins(type);
       CREATE INDEX IF NOT EXISTS plugins_enabled_idx ON plugins(enabled);
     `
+  },
+  {
+    // Plugins are now a curated catalog of MCP servers, so every row has to name one of the
+    // shipped presets. That leaves two kinds of stale row: the original GitHub OAuth plugin
+    // (type 'github', an OAuth token in config) and the first-cut MCP plugin that could point at
+    // an arbitrary URL or command (preset 'custom'). Neither shape can be connected any more, so
+    // both are rewritten as a fresh GitHub MCP plugin. The stored credential is deliberately not
+    // carried over: an OAuth token does not authenticate against the MCP endpoint, and a custom
+    // server's header/env secrets have no place in a preset config.
+    version: 7,
+    apply(db) {
+      for (const row of db.prepare('SELECT id, type, config FROM plugins').all()) {
+        let config = {};
+        try { config = JSON.parse(row.config) || {}; } catch { config = {}; }
+        const preset = String(config.preset || '').toLowerCase();
+        if (String(row.type).toLowerCase() === 'mcp' && preset && preset !== 'custom') continue;
+        const next = { preset: 'github', github: { mode: 'remote' } };
+        db.prepare('UPDATE plugins SET type = ?, config = ?, updated_at = ? WHERE id = ?')
+          .run('mcp', JSON.stringify(next), now(), row.id);
+      }
+    }
   }
 ];
 
