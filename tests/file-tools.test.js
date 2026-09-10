@@ -203,3 +203,40 @@ test('the new tools execute through the standard tool-call dispatcher', async (t
   const denied = await run('delete_file', { path: 'renamed.txt' }, ['calculator']);
   assert.equal(denied.summary, 'An unavailable tool call was blocked.');
 });
+
+// ---- assistant workspace sandbox ---------------------------------------------------------
+
+test('file tools stay inside the dedicated assistant workspace, never the app root', async (t) => {
+  const appRoot = await makeRoot();
+  const workspace = join(appRoot, 'data', 'workspace');
+  await mkdir(workspace, { recursive: true });
+  t.after(() => rm(appRoot, { recursive: true, force: true }));
+  // A sensitive "application" file that must stay untouchable through the dispatcher.
+  await fsWriteFile(join(appRoot, 'skill-instructions.txt'), 'system prompts live here');
+
+  const run = (name, args) => executeToolCall(
+    { function: { name, arguments: JSON.stringify(args) } },
+    new Set([name]),
+    { rootDirectory: appRoot, workspaceDirectory: workspace }
+  );
+
+  // Writes land in the workspace folder, not the app root.
+  const created = await run('create_file', { path: 'notes/hi.md', content: 'hello' });
+  assert.equal(created.result.created, true);
+  assert.equal(existsSync(join(workspace, 'notes', 'hi.md')), true);
+  assert.equal(existsSync(join(appRoot, 'notes')), false, 'nothing appears beside the app code');
+
+  // Escapes are refused, whether relative or absolute — the app file cannot even be read.
+  const relativeEscape = await run('read_file', { path: '../skill-instructions.txt' });
+  assert.match(relativeEscape.result.error, /outside/u);
+  const absoluteEscape = await run('read_file', { path: join(appRoot, 'skill-instructions.txt') });
+  assert.match(absoluteEscape.result.error, /outside/u);
+  const deleteEscape = await run('delete_file', { path: '../skill-instructions.txt' });
+  assert.match(deleteEscape.result.error, /outside/u);
+
+  // Rename and delete still work normally inside the sandbox.
+  const renamed = await run('rename_file', { from: 'notes/hi.md', to: 'notes/yo.md' });
+  assert.equal(renamed.result.renamed, true);
+  const deleted = await run('delete_file', { path: 'notes/yo.md' });
+  assert.equal(deleted.result.deleted, true);
+});

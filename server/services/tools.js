@@ -46,7 +46,7 @@ const toolCatalog = Object.freeze({
   list_files: Object.freeze({
     id: 'list_files',
     name: 'List files',
-    description: 'List files and folders inside the local workspace (the Glow Agent project directory). Use it to find files before reading them. Lists one directory by default; set recursive to true to walk the whole tree.',
+    description: 'List files and folders inside your workspace folder. Use it to find files before reading them. Lists one directory by default; set recursive to true to walk the whole tree.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -59,7 +59,7 @@ const toolCatalog = Object.freeze({
   read_file: Object.freeze({
     id: 'read_file',
     name: 'Read file',
-    description: 'Read a text file from the local workspace as UTF-8 text. Use a path relative to the workspace root. Large files are returned in pages: use offset and limit to continue reading.',
+    description: 'Read a text file from your workspace folder as UTF-8 text. Use a path relative to the workspace root. Large files are returned in pages: use offset and limit to continue reading.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -74,7 +74,7 @@ const toolCatalog = Object.freeze({
   write_file: Object.freeze({
     id: 'write_file',
     name: 'Write file',
-    description: 'Create or overwrite a text file in the local workspace. Parent folders are created automatically.',
+    description: 'Create or overwrite a text file in your workspace folder. Parent folders are created automatically.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -89,7 +89,7 @@ const toolCatalog = Object.freeze({
     id: 'edit_file',
     name: 'Edit file',
     group: 'fileManagement',
-    description: 'Make targeted search-and-replace edits to an existing text file in the workspace. Every search text must match exactly once unless replaceAll is true; the first failing edit stops the call so you know how far it got. Prefer this over write_file when changing part of a file.',
+    description: 'Make targeted search-and-replace edits to an existing text file in your workspace folder. Every search text must match exactly once unless replaceAll is true; the first failing edit stops the call so you know how far it got. Prefer this over write_file when changing part of a file.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -117,7 +117,7 @@ const toolCatalog = Object.freeze({
     id: 'create_folder',
     name: 'Create folder',
     group: 'fileManagement',
-    description: 'Create a new folder in the workspace, including any missing parent folders. Succeeds without changes if the folder already exists.',
+    description: 'Create a new folder in your workspace folder, including any missing parent folders. Succeeds without changes if the folder already exists.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -129,7 +129,7 @@ const toolCatalog = Object.freeze({
     id: 'create_file',
     name: 'Create file',
     group: 'fileManagement',
-    description: 'Create a new text file in the workspace. Fails if the file already exists: use edit_file to modify an existing file or write_file to replace it completely.',
+    description: 'Create a new text file in your workspace folder. Fails if the file already exists: use edit_file to modify an existing file or write_file to replace it completely.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -144,7 +144,7 @@ const toolCatalog = Object.freeze({
     id: 'delete_folder',
     name: 'Delete folder',
     group: 'fileManagement',
-    description: 'Permanently delete a folder from the workspace. Only empty folders are deleted unless recursive is true. The workspace root itself can never be deleted.',
+    description: 'Permanently delete a folder from your workspace folder. Only empty folders are deleted unless recursive is true. The workspace root itself can never be deleted.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -159,7 +159,7 @@ const toolCatalog = Object.freeze({
     id: 'delete_file',
     name: 'Delete file',
     group: 'fileManagement',
-    description: 'Permanently delete a single file from the workspace.',
+    description: 'Permanently delete a single file from your workspace folder.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -171,7 +171,7 @@ const toolCatalog = Object.freeze({
     id: 'rename_folder',
     name: 'Rename folder',
     group: 'fileManagement',
-    description: 'Rename or move a folder within the workspace. The destination must not already exist; missing destination parents are created.',
+    description: 'Rename or move a folder within your workspace folder. The destination must not already exist; missing destination parents are created.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -186,7 +186,7 @@ const toolCatalog = Object.freeze({
     id: 'rename_file',
     name: 'Rename file',
     group: 'fileManagement',
-    description: 'Rename or move a file within the workspace. The destination must not already exist; missing destination parents are created.',
+    description: 'Rename or move a file within your workspace folder. The destination must not already exist; missing destination parents are created.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -201,7 +201,7 @@ const toolCatalog = Object.freeze({
     id: 'run_shell',
     name: 'Shell command',
     group: 'shell',
-    description: 'Run a one-off shell command in the local workspace (unsandboxed, as the local user). Use non-interactive commands only; the process group is killed at the timeout. Pipe large output through head/tail — captured output is truncated at 16 KB per stream. Commands referencing *.sqlite database files are refused. Only available when the user enables shell access in settings.',
+    description: 'Run a one-off shell command from the app folder (outside your workspace folder; unsandboxed, as the local user). Use non-interactive commands only; the process group is killed at the timeout. Pipe large output through head/tail — captured output is truncated at 16 KB per stream. Commands referencing *.sqlite database files are refused. Only available when the user enables shell access in settings.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -397,7 +397,11 @@ function summary(tool, result) {
   return tool.name;
 }
 
-export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, plugin, mcp, developerTools = null } = {}) {
+export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, workspaceDirectory, plugin, mcp, developerTools = null } = {}) {
+  // File tools live in the assistant's own workspace folder: the app directory itself — code,
+  // skills, settings, the database — is unreachable through them. (Caller-side shortcuts that
+  // only pass rootDirectory simply confine the tools to that root instead.)
+  const workspaceRoot = workspaceDirectory || rootDirectory;
   const id = typeof call?.function?.name === 'string' ? call.function.name : '';
   // MCP tools come from the connected MCP server; the `mcp` context carries the live session
   // and the name map built from that server's tools/list response.
@@ -447,16 +451,16 @@ export async function executeToolCall(call, allowedToolIds, { getSkill, db, root
   let result;
   if (id === 'calculator') result = calculator(argumentsObject.expression);
   else if (id === 'current_time') result = currentTime(argumentsObject.timeZone);
-  else if (id === 'list_files') result = listFiles(rootDirectory, argumentsObject.path, { recursive: argumentsObject.recursive === true });
-  else if (id === 'read_file') result = readFile(rootDirectory, argumentsObject.path, { offset: argumentsObject.offset, limit: argumentsObject.limit });
-  else if (id === 'write_file') result = writeFile(rootDirectory, argumentsObject.path, argumentsObject.content);
-  else if (id === 'edit_file') result = editFile(rootDirectory, argumentsObject.path, argumentsObject.edits, { replaceAll: argumentsObject.replaceAll === true });
-  else if (id === 'create_file') result = createFile(rootDirectory, argumentsObject.path, argumentsObject.content);
-  else if (id === 'create_folder') result = createFolder(rootDirectory, argumentsObject.path);
-  else if (id === 'delete_file') result = deleteFile(rootDirectory, argumentsObject.path);
-  else if (id === 'delete_folder') result = deleteFolder(rootDirectory, argumentsObject.path, { recursive: argumentsObject.recursive === true });
-  else if (id === 'rename_file') result = renameFile(rootDirectory, argumentsObject.from, argumentsObject.to);
-  else if (id === 'rename_folder') result = renameFolder(rootDirectory, argumentsObject.from, argumentsObject.to);
+  else if (id === 'list_files') result = listFiles(workspaceRoot, argumentsObject.path, { recursive: argumentsObject.recursive === true });
+  else if (id === 'read_file') result = readFile(workspaceRoot, argumentsObject.path, { offset: argumentsObject.offset, limit: argumentsObject.limit });
+  else if (id === 'write_file') result = writeFile(workspaceRoot, argumentsObject.path, argumentsObject.content);
+  else if (id === 'edit_file') result = editFile(workspaceRoot, argumentsObject.path, argumentsObject.edits, { replaceAll: argumentsObject.replaceAll === true });
+  else if (id === 'create_file') result = createFile(workspaceRoot, argumentsObject.path, argumentsObject.content);
+  else if (id === 'create_folder') result = createFolder(workspaceRoot, argumentsObject.path);
+  else if (id === 'delete_file') result = deleteFile(workspaceRoot, argumentsObject.path);
+  else if (id === 'delete_folder') result = deleteFolder(workspaceRoot, argumentsObject.path, { recursive: argumentsObject.recursive === true });
+  else if (id === 'rename_file') result = renameFile(workspaceRoot, argumentsObject.from, argumentsObject.to);
+  else if (id === 'rename_folder') result = renameFolder(workspaceRoot, argumentsObject.from, argumentsObject.to);
   else if (id === 'run_shell') result = await runShell(rootDirectory, argumentsObject.command, { timeoutMs: argumentsObject.timeoutMs });
   else if (id === 'sql_query') result = sqlQuery(db, argumentsObject.sql);
   else if (id === 'web_search') result = await webSearch(argumentsObject.query, argumentsObject.maxResults);

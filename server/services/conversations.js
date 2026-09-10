@@ -118,10 +118,10 @@ function systemMessage(skills, { plugin = null, mcp = null, customPrompt = '', d
     ...(developerTools && (developerTools.fileManagement !== false || developerTools.shell === true) ? [
       [
         developerTools.fileManagement !== false
-          ? 'File-management tools are available: create_file and create_folder make new things (create_file refuses to overwrite), edit_file makes targeted search/replace changes (prefer it for existing files), rename_file and rename_folder move things, and delete_file / delete_folder remove them permanently. Reads of large files page through read_file offset and limit. Protected paths (.git, .env, and database files) refuse every tool operation.'
+          ? 'File tools work only inside your own workspace folder (the app\'s data/workspace directory): every path you give list_files, read_file, write_file, edit_file, create_file, create_folder, rename_file, rename_folder, delete_file, or delete_folder is relative to it, and anything outside it — application code, skills, settings, the database — is unreachable and refused. Use create_file and create_folder for new things (create_file refuses to overwrite), edit_file for targeted search/replace changes (prefer it for existing files), rename_file and rename_folder to move things, and delete_file / delete_folder to remove them permanently. Reads of large files page through read_file offset and limit.'
           : '',
         developerTools.shell === true
-          ? 'A run_shell tool runs one-off shell commands from the workspace root: unsandboxed, non-interactive (no editors or TUIs), killed at its timeout, with output truncated at 16 KB per stream, and refused when it references database files. Long-running servers do not survive the timeout; keep commands short-lived and inspect the exit code and stderr before declaring success.'
+          ? 'A run_shell tool runs one-off shell commands from the app folder (not your workspace folder): unsandboxed, non-interactive (no editors or TUIs), killed at its timeout, with output truncated at 16 KB per stream, and refused when it references database files. Long-running servers do not survive the timeout; keep commands short-lived and inspect the exit code and stderr before declaring success.'
           : '',
         developerTools.shell === true && developerTools.confirmShell === true
           ? 'Every command you propose through run_shell is shown to the user for approval before it runs. Propose small, self-explanatory commands; a denied command did not run, and you must not retry it or a lightly rewritten version of it — ask the user how to proceed.'
@@ -173,12 +173,12 @@ function compactCommand(command) {
 // approval card. Only the live stream can collect a decision, so on the plain JSON endpoint a
 // gated call is refused with a clear tool result instead of hanging the request. The model is
 // never told the approval id and can never settle it — only the /approvals route can.
-async function executeWithApproval(context, db, call, emit, { rootDirectory, fetchTimeoutMs }) {
+async function executeWithApproval(context, db, call, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs }) {
   const toolId = typeof call.function?.name === 'string' ? call.function.name : '';
   const toolArgs = [
     call,
     new Set(context.tools.map((tool) => tool.id)),
-    { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp, developerTools: context.developerTools }
+    { getSkill: skillResolver(db), db, rootDirectory, workspaceDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp, developerTools: context.developerTools }
   ];
   if (!needsApproval(context, toolId)) return executeToolCall(...toolArgs);
   if (!emit) {
@@ -849,7 +849,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
       context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
       for (const call of toolCalls) {
         timeline.push({ type: 'tool_call', name: typeof call.function?.name === 'string' ? call.function.name : '' });
-        const execution = await executeWithApproval(context, db, call, null, { rootDirectory, fetchTimeoutMs });
+        const execution = await executeWithApproval(context, db, call, null, { rootDirectory, workspaceDirectory, fetchTimeoutMs });
         toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
         timeline.push({ type: 'tool_result', toolId: execution.toolId, summary: execution.summary });
         context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: serializeToolResult(execution.result) });
@@ -900,7 +900,7 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
       if (result.toolCalls.length === 0) break;
       context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
       for (const call of result.toolCalls) {
-        const execution = await executeWithApproval(context, db, call, emit, { rootDirectory, fetchTimeoutMs });
+        const execution = await executeWithApproval(context, db, call, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs });
         toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
         timelineEmit('tool_result', { toolId: execution.toolId, summary: execution.summary });
         context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: serializeToolResult(execution.result) });

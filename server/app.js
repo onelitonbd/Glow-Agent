@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createDatabase } from './db/database.js';
 import { AppError } from './lib/errors.js';
@@ -7,6 +8,16 @@ import { createApiRouter } from './routes/api.js';
 import { createAutoTestScheduler } from './services/auto-tests.js';
 
 export function createApp(config) {
+  // Hand-rolled configs (e.g. in tests) get the same default as server/lib/config.js, so the
+  // rest of the app can rely on the value always being present.
+  config = {
+    ...config,
+    workspaceDirectory: config.workspaceDirectory || join(config.rootDirectory, 'data', 'workspace')
+  };
+  // The assistant's file-tool sandbox. Created up front so the folder is present even before
+  // the first tool call (plugin clones also live under it), and so the app fails loudly at
+  // boot rather than mid-turn if the location is unusable.
+  mkdirSync(config.workspaceDirectory, { recursive: true });
   const db = createDatabase(config.databasePath);
   const app = express();
   app.disable('x-powered-by');
