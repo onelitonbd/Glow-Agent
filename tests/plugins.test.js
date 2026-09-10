@@ -104,9 +104,11 @@ test('MCP plugins are created, configured, connected, and discovered without lea
 test('only the shipped MCP servers can be added, and no generic server can be smuggled in', async () => {
   const { db, directory } = await tempDatabase();
   try {
-    // The catalog is what the Plugins page renders: today that is GitHub alone.
-    assert.deepEqual(listPresets().map((preset) => preset.id), ['github']);
+    // The catalog is what the Plugins page renders, and every entry is a server Glow Agent ships.
+    assert.deepEqual(listPresets().map((preset) => preset.id), ['github', 'memory', 'sequential-thinking', 'filesystem']);
     assert.equal(listPresets()[0].accountAware, true);
+    assert.equal(listPresets().find((preset) => preset.id === 'github').accountAware, true);
+    assert.equal(listPresets().find((preset) => preset.id === 'memory').accountAware, false);
 
     assert.throws(() => createPlugin(db, { type: 'mcp', preset: 'custom', name: 'Anything' }), (error) => {
       assert.match(error.message, /Unknown MCP server/u);
@@ -162,8 +164,12 @@ test('every declared setup field is a real setting of that server', () => {
     const secrets = preset.setup.filter((field) => field.secret).map((field) => field.key);
     const accepted = [...Object.keys(resolveSettings(preset.id)), ...secrets];
     assert.deepEqual([...declared].sort(), [...accepted].sort(), `${preset.id} form and settings agree`);
-    // A password field is the only kind that is never sent back to the browser.
-    assert.deepEqual(preset.setup.filter((field) => field.secret).map((field) => field.key), ['token']);
+    // Only GitHub needs a credential; a secret field is always rendered as a password.
+    for (const field of preset.setup.filter((entry) => entry.secret)) {
+      assert.equal(field.type, 'password');
+      assert.equal(field.key, 'token');
+    }
+    assert.deepEqual(preset.setup.filter((field) => field.secret).map((field) => field.key), preset.id === 'github' ? ['token'] : []);
     for (const field of preset.setup) {
       assert.ok(field.label, `${preset.id}.${field.key} has a label`);
       assert.ok(['select', 'text', 'password', 'list', 'check'].includes(field.type), `${preset.id}.${field.key} has a known type`);
@@ -189,6 +195,23 @@ test('a server that cannot start records the failure instead of marking the plug
     db.close();
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('the no-credential presets expand to the documented reference server commands', () => {
+  const memory = resolveServer({ preset: 'memory', memory: {} });
+  assert.deepEqual(memory, { transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'], env: {}, fetchTimeoutMs: 90_000 });
+
+  const withFile = resolveServer({ preset: 'memory', memory: { memoryFile: '/data/memory.jsonl' } });
+  assert.equal(withFile.env.MEMORY_FILE_PATH, '/data/memory.jsonl');
+
+  assert.deepEqual(resolveServer({ preset: 'sequential-thinking' }).args, ['-y', '@modelcontextprotocol/server-sequential-thinking']);
+
+  // The folder is the user's choice, never the model's, and it is required.
+  assert.deepEqual(resolveServer({ preset: 'filesystem', filesystem: { directory: '/srv/docs' } }).args, ['-y', '@modelcontextprotocol/server-filesystem', '/srv/docs']);
+  assert.throws(() => resolveServer({ preset: 'filesystem', filesystem: {} }), (error) => {
+    assert.equal(error.code, 'VALIDATION_ERROR');
+    return true;
+  });
 });
 
 test('the GitHub preset expands to the documented remote and local MCP server definitions', () => {

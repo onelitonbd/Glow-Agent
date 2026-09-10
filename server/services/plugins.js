@@ -213,8 +213,69 @@ const MCP_PRESETS = Object.freeze({
       const url = host ? `https://copilot-api.${host}/mcp/` : GITHUB_REMOTE_URL;
       return { transport: 'http', url, headers, fetchTimeoutMs: timeoutMs };
     }
+  }),
+
+  // The reference servers maintained by the MCP steering group. They need no credential and no
+  // configuration, so adding one is a single tap.
+  memory: Object.freeze({
+    id: 'memory',
+    name: 'Memory',
+    description: 'A persistent knowledge graph the assistant can store entities, observations, and relations in, so facts survive across conversations.',
+    setup: [
+      {
+        key: 'memoryFile',
+        label: 'Memory file path',
+        type: 'text',
+        placeholder: 'leave empty for the server default',
+        hint: 'A JSONL file the server reads and writes. Leave it empty to use the server\u2019s own default location.'
+      }
+    ],
+    settings: (memory = {}) => ({ memoryFile: safeString(memory.memoryFile) }),
+    build(memory = {}, timeoutMs) {
+      const memoryFile = safeString(memory.memoryFile);
+      return npxServer('@modelcontextprotocol/server-memory', {
+        env: memoryFile ? { MEMORY_FILE_PATH: memoryFile } : {},
+        timeoutMs
+      });
+    }
+  }),
+
+  'sequential-thinking': Object.freeze({
+    id: 'sequential-thinking',
+    name: 'Sequential Thinking',
+    description: 'A structured scratchpad for step-by-step reasoning: the assistant records each thought, revises it, and branches when a plan fails.',
+    setup: [],
+    settings: () => ({}),
+    build: (_settings, timeoutMs) => npxServer('@modelcontextprotocol/server-sequential-thinking', { timeoutMs })
+  }),
+
+  filesystem: Object.freeze({
+    id: 'filesystem',
+    name: 'Filesystem',
+    description: 'Reads, searches, and edits files in one folder you choose, so the assistant can work on a project that lives outside this workspace.',
+    setup: [
+      {
+        key: 'directory',
+        label: 'Folder to share',
+        type: 'text',
+        placeholder: '/home/you/projects',
+        hint: 'The assistant can read and change files inside this folder and nowhere else. The server refuses anything outside it.'
+      }
+    ],
+    settings: (filesystem = {}) => ({ directory: safeString(filesystem.directory) }),
+    build(filesystem = {}, timeoutMs) {
+      const directory = safeString(filesystem.directory);
+      if (!directory) throw validation('Choose the folder this server may access.');
+      return npxServer('@modelcontextprotocol/server-filesystem', { extraArgs: [directory], timeoutMs });
+    }
   })
 });
+
+// The official reference servers ship on npm, so they run through npx with a pinned package. The
+// user never types a command or a package name: each preset states its own, and nothing else.
+function npxServer(packageName, { extraArgs = [], env = {}, timeoutMs } = {}) {
+  return { transport: 'stdio', command: 'npx', args: ['-y', packageName, ...extraArgs], env, fetchTimeoutMs: timeoutMs };
+}
 
 // Metadata the Plugins page renders. Secrets are never part of a preset definition.
 export function listPresets() {
@@ -223,7 +284,7 @@ export function listPresets() {
     name: preset.name,
     description: preset.description,
     accountAware: preset.accountAware === true,
-    defaultToolsets: [...preset.defaultToolsets],
+    ...(preset.defaultToolsets ? { defaultToolsets: [...preset.defaultToolsets] } : {}),
     setup: preset.setup.map(({ key, label, type, placeholder, hint, options, showWhen, secret, default: fallback }) => ({
       key, label, type,
       ...(fallback ? { default: [...fallback] } : {}),

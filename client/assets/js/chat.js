@@ -302,9 +302,10 @@ function renderPluginPicker() {
     return;
   }
   const toolTotal = active.reduce((total, plugin) => total + (plugin.config?.toolCount || 0), 0);
+  const repoNote = state.plugins.some((plugin) => plugin.config?.accountAware) ? ' Servers that act on your account also need a repository picked below.' : '';
   chatPluginOptions.append(element('p', 'hint', active.length > 1
-    ? `Every switch left on adds its tools to each message — currently ${toolTotal} tools from ${active.length} servers. For GitHub, also pick the repository to work on.`
-    : 'Leave a connected MCP server on to give the assistant its tools. For GitHub, also pick the repository to work on.'));
+    ? `Every switch left on adds its tools to each message — currently ${toolTotal} tools from ${active.length} servers.${repoNote}`
+    : `Leave a connected MCP server on to give the assistant its tools.${repoNote}`));
   state.plugins.forEach((plugin) => {
     const card = element('div', 'plugin-flow');
     const config = plugin.config || {};

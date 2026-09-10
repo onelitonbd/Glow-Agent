@@ -161,7 +161,9 @@ function openDialog(opener, preset, plugin = null) {
   const config = plugin?.config || {};
   dialogTitle.textContent = editingPluginId ? preset.name : `Add ${preset.name}`;
   dialogKicker.textContent = 'MCP SERVER · SETUP';
-  dialogDescription.textContent = preset.description;
+  dialogDescription.textContent = preset.setup?.length
+    ? preset.description
+    : `${preset.description} There is nothing to configure — connect it and its tools are available.`;
   renderFields(preset, config);
   dialog.showModal();
   const first = form.querySelector('select, input');
@@ -487,7 +489,9 @@ function renderPresets() {
     const body = element('div', 'preset-body');
     body.append(element('h3', 'preset-name', preset.name));
     body.append(element('p', 'hint', preset.description));
-    body.append(element('p', 'preset-fields', `${preset.setup.length} setup question${preset.setup.length === 1 ? '' : 's'}`));
+    body.append(element('p', 'preset-fields', preset.setup.length === 0
+      ? 'No setup needed'
+      : `${preset.setup.length} setup question${preset.setup.length === 1 ? '' : 's'}`));
     card.append(body);
     const installed = state.plugins.find((plugin) => plugin.config?.preset === preset.id);
     const add = element('button', 'button small');
@@ -497,7 +501,7 @@ function renderPresets() {
       add.disabled = true;
       add.title = `${preset.name} is already set up.`;
     } else {
-      add.append(icon('plus'), document.createTextNode(`Add ${preset.name}`));
+      add.append(icon('plus'), document.createTextNode(preset.setup.length === 0 ? `Add ${preset.name}` : `Set up ${preset.name}`));
       add.addEventListener('click', () => openDialog(add, preset));
     }
     card.append(add);

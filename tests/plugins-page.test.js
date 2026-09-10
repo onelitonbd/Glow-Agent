@@ -56,7 +56,8 @@ test('the setup form is built from the chosen server\'s own fields, not a shared
   const catalog = byId.get('presetState');
 
   // The catalog is the curated list the server sent, with one Add button per server.
-  assert.deepEqual(catalog.querySelectorAll('button').map((button) => button.textContent), ['Add GitHub']);
+  // One card per shipped server, and only GitHub asks for a credential.
+  assert.deepEqual(catalog.querySelectorAll('button').map((button) => button.textContent), ['Set up GitHub', 'Set up Memory', 'Add Sequential Thinking', 'Set up Filesystem']);
   const add = catalog.querySelector('button');
   add.dispatchEvent('click');
 
@@ -110,6 +111,23 @@ test('saving sends only that server\'s settings and keeps a stored credential un
   assert.equal('token' in configure.body.github, false, 'an untouched secret is not sent, so the stored one survives');
   assert.equal('url' in configure.body.github, false, 'no generic server field is posted');
   assert.ok(requests.some((request) => request.path.endsWith('/connect')), 'saving connects the server');
+});
+
+test('a server with no settings opens a dialog that only has to be connected', async () => {
+  const { byId, requests } = await loadPage();
+  const thinking = byId.get('presetState').querySelectorAll('button').find((button) => button.textContent === 'Add Sequential Thinking');
+  thinking.dispatchEvent('click');
+
+  assert.equal(byId.get('presetDialogTitle').textContent, 'Add Sequential Thinking');
+  assert.equal(controls(byId.get('presetForm')).length, 0, 'no credential and no other field is asked for');
+  assert.match(byId.get('presetDialogDescription').textContent, /nothing to configure/u);
+
+  byId.get('presetForm').dispatchEvent('submit');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const configure = requests.find((request) => request.path.endsWith('/config'));
+  assert.deepEqual(configure.body, { preset: 'sequential-thinking', 'sequential-thinking': {} });
+  assert.ok(requests.some((request) => request.path.endsWith('/connect')));
 });
 
 test('a server already added cannot be added twice', async () => {
