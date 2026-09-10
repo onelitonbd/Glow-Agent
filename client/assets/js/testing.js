@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { element, showToast } from './ui.js';
 
-const state = { models: [], report: null, running: false, status: new Map() };
+const state = { models: [], report: null, running: false, status: new Map(), auto: null, poll: null };
 
 const modelList = document.getElementById('testModelList');
 const modelCount = document.getElementById('testModelCount');
@@ -10,6 +10,9 @@ const runLabel = document.getElementById('runTestsLabel');
 const progress = document.getElementById('testProgress');
 const ranking = document.getElementById('rankingReport');
 const rankingUpdated = document.getElementById('rankingUpdated');
+const autoToggle = document.getElementById('autoTestToggle');
+const autoState = document.getElementById('autoTestState');
+const autoProgress = document.getElementById('autoTestProgress');
 
 const CAPABILITIES = [
   { key: 'vision', label: 'Images' },
@@ -184,6 +187,10 @@ function renderReport() {
 
 runButton.addEventListener('click', async () => {
   if (state.running) return;
+  if (state.auto?.running) {
+    showToast('The automatic test is running. It will finish in a moment.', 'danger');
+    return;
+  }
   const keys = selectedKeys();
   if (keys.length === 0) {
     showToast('Pick at least one model to test.', 'danger');
@@ -254,8 +261,105 @@ async function loadReport() {
   }
 }
 
+// ---- Automatic testing ----
+// The same probes run by themselves when a model is added. This section only reports that and
+// lets it be turned off; it never starts a run of its own.
+
+function describeAuto(auto) {
+  if (!auto) return '';
+  if (!auto.enabled) return 'Off';
+  if (auto.current) return `Testing ${auto.current.modelId}`;
+  if (auto.untested?.length) return `${auto.untested.length} waiting`;
+  return 'Everything is tested';
+}
+
+function renderAutoProgress(auto) {
+  if (!autoProgress) return;
+  const current = auto?.current;
+  if (!current) {
+    autoProgress.hidden = true;
+    autoProgress.replaceChildren();
+    return;
+  }
+  autoProgress.hidden = false;
+  autoProgress.className = 'test-progress';
+  autoProgress.replaceChildren();
+  const dot = element('span', 'stream-status-dot');
+  dot.setAttribute('aria-hidden', 'true');
+  autoProgress.append(dot);
+  const lines = element('span', 'test-progress-copy');
+  lines.append(element('b', 'test-progress-title', `Testing ${current.modelId} automatically — ${current.label}`));
+  const detail = [];
+  if (current.stepTotal) detail.push(`step ${current.stepIndex} of ${current.stepTotal}`);
+  if (auto.queued) detail.push(`${auto.queued} more waiting`);
+  if (detail.length) lines.append(element('span', 'test-progress-detail', detail.join(' · ')));
+  autoProgress.append(lines);
+  if (current.stepTotal) {
+    const bar = element('span', 'test-progress-bar');
+    const fill = element('span', 'test-progress-fill');
+    fill.style.width = `${Math.round((current.stepIndex / current.stepTotal) * 100)}%`;
+    bar.append(fill);
+    autoProgress.append(bar);
+  }
+}
+
+// Marks the rows the automatic runner has not reached yet, so the list and the ranking agree.
+function renderAutoMarkers(auto) {
+  const waiting = new Set((auto?.untested || []).map((entry) => entry.key));
+  for (const [key, entry] of state.status) {
+    if (entry.phase !== 'ready' && entry.phase !== 'queued') continue;
+    if (auto?.current?.key === key) setRowStatus(key, 'testing', auto.current.label || 'Testing…');
+    else if (waiting.has(key)) setRowStatus(key, 'queued', auto?.enabled === false ? 'Not tested' : 'Queued');
+    else setRowStatus(key, 'ready', 'Ready');
+  }
+}
+
+function scheduleAutoPoll(auto) {
+  if (state.poll) clearTimeout(state.poll);
+  state.poll = null;
+  const active = Boolean(auto?.running || auto?.current || auto?.untested?.length);
+  if (!active || auto?.enabled === false) return;
+  state.poll = setTimeout(pollAuto, 1_500);
+}
+
+async function pollAuto() {
+  const wasRunning = Boolean(state.auto?.running || state.auto?.current);
+  try {
+    state.auto = await api.tests.auto();
+  } catch {
+    return;
+  }
+  if (autoToggle) autoToggle.checked = state.auto.enabled === true;
+  if (autoState) autoState.textContent = describeAuto(state.auto);
+  renderAutoProgress(state.auto);
+  renderAutoMarkers(state.auto);
+  // A run just finished: the ranking below is now stale, and the models list may have gained a
+  // result it did not have a second ago.
+  const finished = wasRunning && !state.auto.running && !state.auto.current;
+  if (finished) await loadReport();
+  scheduleAutoPoll(state.auto);
+}
+
+autoToggle?.addEventListener('change', async () => {
+  const enabled = autoToggle.checked;
+  try {
+    await api.settings.update({ autoTesting: { enabled } });
+    showToast(enabled ? 'Automatic testing is on.' : 'Automatic testing is off. New models will wait for a manual run.');
+  } catch (error) {
+    autoToggle.checked = !enabled;
+    showToast(error.message, 'danger');
+    return;
+  }
+  state.auto = await api.tests.auto();
+  if (autoState) autoState.textContent = describeAuto(state.auto);
+  renderAutoProgress(state.auto);
+  renderAutoMarkers(state.auto);
+  scheduleAutoPoll(state.auto);
+});
+
 async function load() {
   await Promise.all([loadModels(), loadReport()]);
+  await pollAuto();
 }
 
 load();

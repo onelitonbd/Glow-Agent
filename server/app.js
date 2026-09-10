@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { createDatabase } from './db/database.js';
 import { AppError } from './lib/errors.js';
 import { createApiRouter } from './routes/api.js';
+import { createAutoTestScheduler } from './services/auto-tests.js';
 
 export function createApp(config) {
   const db = createDatabase(config.databasePath);
@@ -26,8 +27,18 @@ export function createApp(config) {
     });
     next();
   });
+  // Attachments ride along inside the JSON body as base64 data URLs, so the chat endpoints get a
+  // much larger ceiling than everything else. The limit is per request, and the attachment count
+  // and per-file size are checked again in the service, so a big body still cannot smuggle in an
+  // unlimited number of files.
+  app.use('/api/v1/conversations', express.json({ limit: '24mb', type: 'application/json' }));
   app.use(express.json({ limit: '64kb', type: 'application/json' }));
-  app.use('/api/v1', createApiRouter({ db, config }));
+  const autoTests = createAutoTestScheduler({
+    db,
+    timeoutMs: Math.min(config.providerFetchTimeoutMs + 5_000, 30_000),
+    intervalMs: config.autoTestIntervalMs
+  });
+  app.use('/api/v1', createApiRouter({ db, config, autoTests }));
   app.use(express.static(join(config.rootDirectory, 'client'), {
     extensions: ['html'],
     index: 'index.html',
@@ -48,5 +59,13 @@ export function createApp(config) {
     if (status >= 500) console.error(JSON.stringify({ event: 'error', requestId, code, name: error?.name, message: error?.message }));
     response.status(status).json({ error: { code, message, requestId } });
   });
-  return { app, db, close: () => db.close() };
+  return {
+    app,
+    db,
+    autoTests,
+    close: () => {
+      autoTests.stop();
+      db.close();
+    }
+  };
 }

@@ -168,6 +168,12 @@ export class DomNode {
 
   focus() {}
 
+  // A real input.click() opens the file dialog; here it just fires the click, which is enough for
+  // a page that triggers a hidden picker from a button.
+  click() {
+    this.dispatchEvent('click');
+  }
+
   showModal() {
     this.open = true;
   }
@@ -240,9 +246,16 @@ export function createDom(html) {
   const byId = new Map();
   // Seed the ids the real page declares, so a missing id is a test failure rather than a silent
   // no-op in the page script.
-  for (const [, id] of html.matchAll(/id="([\w-]+)"/gu)) {
-    const node = new DomNode('div');
+  // Walk the open tags, not just the ids: the tag name and the `hidden` attribute are both real
+  // things a page depends on, and matching an id without its own tag pairs the wrong elements.
+  for (const tag of html.matchAll(/<(\w+)\b([^>]*)>/gu)) {
+    const id = /\sid="([\w-]+)"/u.exec(tag[2])?.[1];
+    if (!id) continue;
+    const node = new DomNode(tag[1]);
     node.id = id;
+    // `hidden` is a property the page reads and writes, so seed it from the markup: a page that
+    // assumes a panel starts hidden would otherwise pass here and fail in the browser.
+    node.hidden = /\shidden(\s|=|$)/u.test(tag[2]);
     byId.set(id, node);
     root.append(node);
   }

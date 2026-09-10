@@ -65,6 +65,9 @@ export function loadConfig({ env = process.env, loadEnv = true } = {}) {
     maxToolRounds: positiveIntegerSetting(env.MAX_TOOL_ROUNDS, 500, 'MAX_TOOL_ROUNDS'),
     // How many times to retry a provider request after a failure (network, 5xx, timeout, or a
     // mid-stream interruption), resuming from any partial content. Configure with MAX_PROVIDER_RETRIES.
-    maxProviderRetries: positiveIntegerSetting(env.MAX_PROVIDER_RETRIES, 20, 'MAX_PROVIDER_RETRIES')
+    maxProviderRetries: positiveIntegerSetting(env.MAX_PROVIDER_RETRIES, 20, 'MAX_PROVIDER_RETRIES'),
+    // How often the automatic capability runner sweeps for models that have never been probed.
+    // Adding a model also triggers a run immediately; this only catches anything missed.
+    autoTestIntervalMs: positiveIntegerSetting(env.AUTO_TEST_INTERVAL_MS, 30_000, 'AUTO_TEST_INTERVAL_MS')
   });
 }

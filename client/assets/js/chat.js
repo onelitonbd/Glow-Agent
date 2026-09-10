@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { renderMarkdown } from './markdown.js';
-import { element, icon, showToast } from './ui.js';
+import { element, icon, iconButton, showToast } from './ui.js';
 
 const state = {
   conversations: [],
@@ -21,7 +21,12 @@ const state = {
   modelPickFor: null,
   // Capability results from the Testing page, and the thinking level for the next message.
   testReport: null,
-  thinkingLevel: null
+  thinkingLevel: null,
+  // One entry per selected model: proven thinking levels plus whether it takes images or files.
+  capabilities: [],
+  // Files waiting to go with the next message, and the automatic runner's live status.
+  attachments: [],
+  autoTest: null
 };
 const chatLog = document.getElementById('chatLog');
 const title = document.getElementById('conversationTitle');
@@ -41,6 +46,14 @@ const toolsDialog = document.getElementById('toolsDialog');
 const chatToolOptions = document.getElementById('chatToolOptions');
 const chatSkillOptions = document.getElementById('chatSkillOptions');
 const chatPluginOptions = document.getElementById('chatPluginOptions');
+const attachButton = document.getElementById('attachButton');
+const attachDialog = document.getElementById('attachDialog');
+const attachOptions = document.getElementById('attachOptions');
+const attachHint = document.getElementById('attachHint');
+const attachTray = document.getElementById('attachTray');
+const composerStatus = document.getElementById('composerStatus');
+const imagePicker = document.getElementById('imagePicker');
+const filePicker = document.getElementById('filePicker');
 const thinkingTrigger = document.getElementById('openThinking');
 const thinkingDialog = document.getElementById('thinkingDialog');
 const thinkingOptions = document.getElementById('thinkingOptions');
@@ -184,7 +197,18 @@ function renderToolEvents(toolEvents) {
   return wrap;
 }
 
-// What the Testing page proved about the model that is currently selected.
+// What the capability probe proved about one selected model. `null` means the workspace has not
+// measured it yet — which is a temporary state now that testing runs by itself.
+function capabilityFor(providerId, modelId) {
+  return state.capabilities.find((entry) => entry.providerId === providerId && entry.modelId === modelId) || null;
+}
+
+function currentCapability() {
+  if (!state.selectedProviderId || !state.selectedModelId) return null;
+  return capabilityFor(state.selectedProviderId, state.selectedModelId);
+}
+
+// Kept for the ranking view: the full stored report, when there is one.
 function currentModelTest() {
   if (!state.testReport || !state.selectedProviderId || !state.selectedModelId) return null;
   return state.testReport.entries.find((entry) => entry.providerId === state.selectedProviderId && entry.modelId === state.selectedModelId) || null;
@@ -198,26 +222,44 @@ const THINKING_STATUS = {
   unknown: { label: 'Untested', tone: 'unknown' }
 };
 
+// One row of the composer's capability readout: what the probe found, in words a person can act on.
+function verdictLabel(verdict) {
+  if (!verdict) return { label: 'Untested', tone: 'unknown' };
+  if (verdict.status === 'works') return { label: 'Yes', tone: 'ok' };
+  if (verdict.status === 'accepted') return { label: 'Accepted', tone: 'maybe' };
+  if (verdict.status === 'rejected') return { label: 'Not supported', tone: 'no' };
+  if (verdict.status === 'skipped') return { label: 'Skipped', tone: 'no' };
+  return { label: 'Untested', tone: 'unknown' };
+}
+
 function syncThinkingTrigger() {
   if (!thinkingTrigger) return;
+  const capability = currentCapability();
   const level = state.thinkingLevel;
   thinkingTrigger.classList.toggle('selected', Boolean(level));
-  const label = level ? (state.testReport?.levels || []).find((entry) => entry.id === level)?.label || level : null;
-  thinkingTrigger.title = label ? `Thinking level: ${label}` : 'Thinking level';
+  const label = level ? (capability?.levels || []).find((entry) => entry.id === level)?.label || level : null;
+  const queued = capability && !capability.tested;
+  thinkingTrigger.title = label
+    ? `Thinking level: ${label}`
+    : queued
+      ? `Thinking level — ${capability.modelId} is being tested`
+      : 'Thinking level';
   thinkingTrigger.setAttribute('aria-label', thinkingTrigger.title);
 }
 
-// The levels offered depend on what the probe found for this model: proven first, then merely
+// The levels offered are exactly what the probe found for this model: proven first, then merely
 // accepted, with unsupported ones last and clearly marked.
 function renderThinkingPicker() {
-  const levels = state.testReport?.levels || [];
-  const test = currentModelTest();
+  const capability = currentCapability();
+  const levels = capability?.levels || [];
   thinkingOptions.replaceChildren();
   thinkingHint.textContent = !state.selectedModelId
     ? 'Choose a model first.'
-    : test
-      ? `Tested ${new Date(test.testedAt).toLocaleString()}. “Works” means the probe saw reasoning come back; “Accepted” means the parameter went through but no reasoning was returned.`
-      : 'This model has not been tested yet, so every level is offered. Run the Testing page to see which ones it really supports.';
+    : capability?.tested
+      ? `Tested ${new Date(capability.testedAt).toLocaleString()}. “Works” means the probe saw reasoning come back; “Accepted” means the parameter went through but no reasoning was returned.`
+      : state.autoTest?.enabled === false
+        ? 'This model has not been tested, so every level is offered. Turn automatic testing on, or run it from the Testing page.'
+        : 'This model has not been tested yet. It is queued for the automatic test — every level is offered until the result is in.';
 
   const off = element('button', `model-option${state.thinkingLevel ? '' : ' selected'}`);
   off.type = 'button';
@@ -231,7 +273,7 @@ function renderThinkingPicker() {
 
   const rank = (status) => (status === 'works' ? 0 : status === 'accepted' ? 1 : status === 'unknown' ? 2 : 3);
   levels
-    .map((level) => ({ level, status: test?.results?.thinking?.[level.id]?.status || 'unknown', reason: test?.results?.thinking?.[level.id]?.reason || '' }))
+    .map((level) => ({ level, status: level.status || 'unknown', reason: level.reason || '' }))
     .sort((a, b) => rank(a.status) - rank(b.status))
     .forEach(({ level, status, reason }) => {
       const info = THINKING_STATUS[status] || THINKING_STATUS.unknown;
@@ -245,6 +287,166 @@ function renderThinkingPicker() {
       option.addEventListener('click', () => chooseThinkingLevel(level.id));
       thinkingOptions.append(option);
     });
+}
+
+// ---- Attachments ----
+// The composer offers an image or a document only for a model the probe saw accept one. That is
+// the whole point of the report: the button is not a guess, and it says why when it says no.
+
+const MAX_ATTACHMENTS = 4;
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+function attachmentVerdict(kind) {
+  const capability = currentCapability();
+  if (!capability) return { allowed: false, reason: 'Choose a model first.', verdict: null, tested: false };
+  const verdict = kind === 'image' ? capability.images : capability.files;
+  // Untested is not a rejection: the automatic runner has not got to it yet, so the file is
+  // allowed and the hint says the result is pending.
+  if (!capability.tested) {
+    return { allowed: true, reason: `${capability.modelId} has not been tested yet, so this may still be refused.`, verdict: null, tested: false };
+  }
+  if (!verdict?.usable) {
+    return {
+      allowed: false,
+      reason: verdict?.reason || `${capability.modelId} refused ${kind === 'image' ? 'image input' : 'file attachments'} in testing.`,
+      verdict,
+      tested: true
+    };
+  }
+  return {
+    allowed: true,
+    reason: verdict.proved ? `Proved in testing — ${verdict.reason}`.slice(0, 160) : 'The provider accepted this in testing, though the model gave nothing back.',
+    verdict,
+    tested: true
+  };
+}
+
+function syncAttachTrigger() {
+  if (!attachButton) return;
+  const images = attachmentVerdict('image');
+  const files = attachmentVerdict('file');
+  const anyAllowed = images.allowed || files.allowed;
+  attachButton.disabled = !anyAllowed;
+  attachButton.classList.toggle('selected', state.attachments.length > 0);
+  const title = !state.selectedModelId
+    ? 'Add an image or a file — choose a model first'
+    : anyAllowed
+      ? `Add ${[images.allowed ? 'an image' : null, files.allowed ? 'a file' : null].filter(Boolean).join(' or ')}`
+      : 'This model accepts neither images nor files';
+  attachButton.title = title;
+  attachButton.setAttribute('aria-label', title);
+}
+
+function renderAttachPicker() {
+  const capability = currentCapability();
+  attachOptions.replaceChildren();
+  const rows = [
+    { kind: 'image', name: 'Image', subtitle: 'PNG, JPG, GIF or WebP', iconName: 'spark' },
+    { kind: 'file', name: 'Document', subtitle: 'PDF or a text file', iconName: 'paperclip' }
+  ];
+  rows.forEach((row) => {
+    const gate = attachmentVerdict(row.kind);
+    const info = verdictLabel(gate.verdict);
+    const option = element('button', `model-option${gate.allowed ? '' : ' disabled'}`);
+    option.type = 'button';
+    option.dataset.kind = row.kind;
+    option.disabled = !gate.allowed;
+    const badge = element('span', 'data-icon violet'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon(row.iconName));
+    const copy = element('span', 'copy');
+    copy.append(element('b', 'data-name', row.name), element('span', 'data-subtitle', gate.allowed ? row.subtitle : gate.reason));
+    option.append(badge, copy, chip(info.label, info.tone));
+    option.addEventListener('click', () => {
+      if (!gate.allowed) return;
+      attachDialog.close();
+      (row.kind === 'image' ? imagePicker : filePicker)?.click();
+    });
+    attachOptions.append(option);
+  });
+  attachHint.textContent = !capability
+    ? 'Choose a model first — what can be attached depends on what that model was proved to accept.'
+    : capability.tested
+      ? `Decided by the capability test run on ${new Date(capability.testedAt).toLocaleString()}. Up to ${MAX_ATTACHMENTS} files, ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB each.`
+      : `Waiting on the automatic test for ${capability.modelId}. You can attach now; the result may still rule it out.`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error(`${file.name} could not be read.`));
+    reader.readAsDataURL(file);
+  });
+}
+
+function humanSize(bytes) {
+  return bytes >= 1024 * 1024 ? `${Math.round((bytes / 1024 / 1024) * 10) / 10} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+async function addAttachment(kind, file) {
+  if (!file) return;
+  if (state.attachments.length >= MAX_ATTACHMENTS) {
+    showToast(`At most ${MAX_ATTACHMENTS} attachments per message.`, 'danger');
+    return;
+  }
+  const gate = attachmentVerdict(kind);
+  if (!gate.allowed) {
+    showToast(gate.reason, 'danger');
+    return;
+  }
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    showToast(`${file.name} is ${humanSize(file.size)}. The limit is ${humanSize(MAX_ATTACHMENT_BYTES)}.`, 'danger');
+    return;
+  }
+  let dataUrl;
+  try {
+    dataUrl = await readFileAsDataUrl(file);
+  } catch (error) {
+    showToast(error.message, 'danger');
+    return;
+  }
+  // The kind comes from the file, not from which button opened the picker: a PDF picked from the
+  // image button is still a document.
+  const mimeType = String(file.type || (kind === 'image' ? 'image/png' : 'application/octet-stream'));
+  state.attachments.push({
+    kind: mimeType.startsWith('image/') ? 'image' : 'file',
+    name: file.name || 'attachment',
+    mimeType,
+    size: file.size,
+    dataUrl
+  });
+  renderAttachTray();
+  syncAttachTrigger();
+  showToast(`${file.name} attached.`);
+}
+
+// The picked files sit above the textarea until they are sent, each one removable.
+function renderAttachTray() {
+  if (!attachTray) return;
+  attachTray.replaceChildren();
+  attachTray.hidden = state.attachments.length === 0;
+  state.attachments.forEach((attachment, index) => {
+    const pill = element('span', 'attach-pill');
+    if (attachment.kind === 'image') {
+      const thumb = element('img', 'attach-thumb');
+      thumb.src = attachment.dataUrl;
+      thumb.alt = attachment.name;
+      pill.append(thumb);
+    } else {
+      const mark = element('span', 'attach-icon'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon('paperclip'));
+      pill.append(mark);
+    }
+    const copy = element('span', 'attach-copy');
+    copy.append(element('b', '', attachment.name), element('span', '', humanSize(attachment.size)));
+    pill.append(copy);
+    const remove = iconButton('close', `Remove ${attachment.name}`);
+    remove.addEventListener('click', () => {
+      state.attachments.splice(index, 1);
+      renderAttachTray();
+      syncAttachTrigger();
+    });
+    pill.append(remove);
+    attachTray.append(pill);
+  });
 }
 
 function chip(text, tone) {
@@ -489,8 +691,10 @@ function renderLog() {
       }
     } else if (editing) {
       bubble.append(renderEditor(message));
-    } else if (message.content) {
-      bubble.append(document.createTextNode(message.content));
+    } else {
+      if (message.content) bubble.append(document.createTextNode(message.content));
+      const attached = renderAttachments(message.attachments);
+      if (attached) bubble.append(attached);
     }
     if (message.isStreaming && message.status) bubble.append(renderStreamStatus(message.status, message.statusTone));
     chatLog.append(bubble);
@@ -505,6 +709,27 @@ function renderLog() {
     table.scrollLeft = tableOffsets[index] || 0;
   });
   if (followLatest) chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+// What travelled with a question. Images are shown; anything else is named, because a PDF has no
+// thumbnail worth drawing at this size.
+function renderAttachments(attachments) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return null;
+  const wrap = element('div', 'message-attachments');
+  attachments.forEach((attachment) => {
+    if (attachment.kind === 'image') {
+      const image = element('img', 'message-image');
+      image.src = attachment.dataUrl;
+      image.alt = attachment.name || 'Attached image';
+      wrap.append(image);
+      return;
+    }
+    const pill = element('span', 'message-file');
+    const mark = element('span', 'attach-icon'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon('paperclip'));
+    pill.append(mark, element('span', '', `${attachment.name}${attachment.size ? ` · ${humanSize(attachment.size)}` : ''}`));
+    wrap.append(pill);
+  });
+  return wrap;
 }
 
 function renderConversationList() {
@@ -549,12 +774,17 @@ function renderModelPicker() {
     : 'The highlighted selection is used for your next message.';
   state.availableModels.forEach((entry) => {
     const isSelected = entry.providerId === state.selectedProviderId && entry.modelId === state.selectedModelId;
+    const capability = capabilityFor(entry.providerId, entry.modelId);
     const option = element('button', `model-option${isSelected ? ' selected' : ''}`);
     option.type = 'button';
     option.dataset.modelId = entry.modelId;
     const badge = element('span', 'data-icon violet'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon('database'));
-    const copy = element('span', 'copy'); copy.append(element('b', 'data-name', entry.modelId), element('span', 'data-subtitle', entry.providerName));
+    const copy = element('span', 'copy');
+    copy.append(element('b', 'data-name', entry.modelId), element('span', 'data-subtitle', capabilitySummary(entry, capability)));
     option.append(badge, copy);
+    // The proven headline capabilities, right in the list, so the choice does not need a detour
+    // to the Testing page.
+    capabilityChips(capability).forEach((node) => option.append(node));
     if (isSelected) option.append(icon('check'));
     option.addEventListener('click', () => {
       const messageId = state.modelPickFor;
@@ -568,6 +798,32 @@ function renderModelPicker() {
   });
 }
 
+// One line under a model's name in the picker: what the report says it can do, or where it is in
+// the automatic queue.
+function capabilitySummary(entry, capability) {
+  if (!capability || !capability.tested) {
+    return state.autoTest?.enabled === false
+      ? `${entry.providerName} · not tested yet`
+      : `${entry.providerName} · testing automatically`;
+  }
+  const thinking = capability.thinking.usable.length
+    ? `thinks to ${capability.levels.find((level) => level.id === capability.thinking.best)?.label || capability.thinking.best}`
+    : 'no thinking levels';
+  const extras = [capability.images.usable ? 'images' : null, capability.files.usable ? 'files' : null].filter(Boolean);
+  return `${entry.providerName} · ${thinking}${extras.length ? ` · ${extras.join(' + ')}` : ''}`;
+}
+
+function capabilityChips(capability) {
+  if (!capability) return [chip('Untested', 'unknown')];
+  if (!capability.tested) return [chip('Queued', 'unknown')];
+  const nodes = [];
+  const best = capability.levels.find((level) => level.id === capability.thinking.best);
+  nodes.push(chip(best ? best.label : 'No thinking', best ? 'ok' : 'no'));
+  nodes.push(chip('Images', verdictLabel(capability.images).tone));
+  nodes.push(chip('Files', verdictLabel(capability.files).tone));
+  return nodes;
+}
+
 function selectModel(entry) {
   const changed = entry.providerId !== state.selectedProviderId || entry.modelId !== state.selectedModelId;
   state.selectedProviderId = entry.providerId;
@@ -575,7 +831,18 @@ function selectModel(entry) {
   // A level tested on the old model says nothing about the new one.
   if (changed) {
     state.thinkingLevel = null;
+    // Attachments are addressed to a specific model: a file this one cannot take must not ride
+    // along silently and be refused by the provider.
+    if (state.attachments.length > 0) {
+      const blocked = state.attachments.filter((attachment) => !attachmentVerdict(attachment.kind).allowed);
+      if (blocked.length > 0) {
+        state.attachments = [];
+        renderAttachTray();
+        showToast(`${entry.modelId} does not take ${blocked.map((attachment) => attachment.name).join(', ')}, so they were removed.`, 'danger');
+      }
+    }
     syncThinkingTrigger();
+    syncAttachTrigger();
   }
   modelTrigger.classList.add('selected');
   modelTrigger.setAttribute('aria-label', `Selected model: ${entry.modelId}. Choose provider and model.`);
@@ -778,6 +1045,77 @@ async function loadPluginRepos() {
   }
 }
 
+// Capabilities and the automatic runner's status are read on their own: a chat must still work
+// when the report is missing, and a missing report must not blank the conversation list.
+async function loadCapabilities() {
+  try {
+    const report = await api.tests.capabilities();
+    state.capabilities = report.models || [];
+  } catch {
+    state.capabilities = [];
+  }
+  syncThinkingTrigger();
+  syncAttachTrigger();
+  renderModelPicker();
+}
+
+// The live line above the textarea. It says which model the automatic test is on and which
+// capability it is asking about, so a model that is mid-probe does not look broken.
+function renderComposerStatus() {
+  if (!composerStatus) return;
+  const auto = state.autoTest;
+  const current = auto?.current;
+  const queued = auto?.queued || 0;
+  if (current) {
+    composerStatus.hidden = false;
+    composerStatus.replaceChildren();
+    const dot = element('span', 'stream-status-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    composerStatus.append(dot, element('span', '', `Testing ${current.modelId} — ${current.label}${current.stepTotal ? ` (${current.stepIndex}/${current.stepTotal})` : ''}`));
+    return;
+  }
+  if (auto?.running || queued > 0) {
+    composerStatus.hidden = false;
+    composerStatus.replaceChildren();
+    const dot = element('span', 'stream-status-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    composerStatus.append(dot, element('span', '', queued > 0 ? `Automatic testing — ${queued} model${queued === 1 ? '' : 's'} waiting.` : 'Automatic testing is finishing up.'));
+    return;
+  }
+  composerStatus.hidden = true;
+  composerStatus.replaceChildren();
+}
+
+let autoPollTimer = null;
+
+// Polls only while the automatic runner has something to do, then stops: an idle chat should not
+// keep asking the server whether it is busy.
+function watchAutoTests() {
+  if (autoPollTimer) clearTimeout(autoPollTimer);
+  autoPollTimer = null;
+  const active = Boolean(state.autoTest?.running || state.autoTest?.queued || state.autoTest?.untested?.length);
+  if (!active || state.autoTest?.enabled === false) return;
+  autoPollTimer = setTimeout(async () => {
+    const before = state.autoTest?.current?.key || '';
+    await loadAutoStatus();
+    // A model finished: its capabilities are now real, so re-read them.
+    if (before && before !== (state.autoTest?.current?.key || '')) await loadCapabilities();
+    watchAutoTests();
+  }, 1_500);
+}
+
+async function loadAutoStatus() {
+  try {
+    state.autoTest = await api.tests.auto();
+  } catch {
+    return;
+  }
+  renderComposerStatus();
+  renderModelPicker();
+  syncThinkingTrigger();
+  watchAutoTests();
+}
+
 async function loadWorkspace() {
   try {
     const [conversations, skills, tools, plugins, testReport] = await Promise.all([
@@ -798,6 +1136,10 @@ async function loadWorkspace() {
   } catch (error) {
     showToast(error.message, 'danger');
   }
+  // Read separately on purpose: the chat works without a report, and the report must not cost the
+  // user their conversation list when it fails.
+  await loadCapabilities();
+  await loadAutoStatus();
 }
 
 function startNewConversation() {
@@ -886,18 +1228,30 @@ async function runStream(start) {
 composer.addEventListener('submit', (event) => {
   event.preventDefault();
   const message = messageInput.value.trim();
-  if (!message) return;
+  // A file on its own is a complete question — "what is this?" is often just the picture.
+  if (!message && state.attachments.length === 0) return;
   if (!selectedModel()) {
     showToast('Choose a configured model before sending a message.', 'danger');
     modelDialog.showModal();
     return;
   }
+  // Checked again at send time: the capability report may have landed since the file was picked.
+  const blocked = state.attachments.filter((attachment) => !attachmentVerdict(attachment.kind).allowed);
+  if (blocked.length > 0) {
+    showToast(attachmentVerdict(blocked[0].kind).reason, 'danger');
+    return;
+  }
+  const attachments = state.attachments;
+  state.attachments = [];
+  renderAttachTray();
+  syncAttachTrigger();
   runStream(async (onEvent) => {
     const conversation = await ensureConversation();
     const pendingUserMessage = {
       id: `pending-${Date.now()}`,
       role: 'user',
       content: message,
+      attachments,
       createdAt: new Date().toISOString()
     };
     state.conversation = {
@@ -912,7 +1266,8 @@ composer.addEventListener('submit', (event) => {
       providerId: state.selectedProviderId,
       modelId: state.selectedModelId,
       toolIds: state.tools.map((tool) => tool.id),
-      ...(state.thinkingLevel ? { thinkingLevel: state.thinkingLevel } : {})
+      ...(state.thinkingLevel ? { thinkingLevel: state.thinkingLevel } : {}),
+      ...(attachments.length ? { attachments } : {})
     }, onEvent);
   });
 });
@@ -927,7 +1282,9 @@ document.getElementById('openSkills').addEventListener('click', () => { renderSk
 document.getElementById('openTools').addEventListener('click', () => { renderToolPicker(); toolsDialog.showModal(); });
 document.getElementById('openPlugins')?.addEventListener('click', () => { renderPluginPicker(); document.getElementById('pluginsDialog').showModal(); });
 thinkingTrigger?.addEventListener('click', () => { renderThinkingPicker(); thinkingDialog.showModal(); });
-document.getElementById('attachButton').addEventListener('click', () => showToast('Attachments are the next capability phase.'));
+attachButton?.addEventListener('click', () => { renderAttachPicker(); attachDialog.showModal(); });
+imagePicker?.addEventListener('change', () => { addAttachment('image', imagePicker.files?.[0]); imagePicker.value = ''; });
+filePicker?.addEventListener('change', () => { addAttachment('file', filePicker.files?.[0]); filePicker.value = ''; });
 themeToggle?.addEventListener('click', () => { window.GlowTheme?.toggle?.(); });
 document.addEventListener('glow-theme-change', syncThemeToggle);
 document.getElementById('openHistory').addEventListener('click', () => { renderConversationList(); historyDrawer.showModal(); });

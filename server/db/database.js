@@ -135,6 +135,13 @@ const migrations = [
       );
       CREATE INDEX IF NOT EXISTS model_tests_provider_id_idx ON model_tests(provider_id);
     `
+  },
+  {
+    // Attachments sent with a question: a small JSON array of {kind, name, mimeType, size, dataUrl}.
+    // Kept on the message so a chat you reopen still shows what you sent, and so a regenerate can
+    // hand the same file back to the model.
+    version: 10,
+    sql: `ALTER TABLE messages ADD COLUMN attachments TEXT;`
   }
 ];
 

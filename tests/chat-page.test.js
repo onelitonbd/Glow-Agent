@@ -30,6 +30,9 @@ function sseResponse(events) {
 
 // Loads the real chat page script against a seeded DOM and an in-memory conversation, then returns
 // the handles needed to drive it: the log, the model dialog, the requests it made, the clipboard.
+// Overridable per test so a run can be shown as in flight, then finished.
+let autoStatus = { enabled: true, started: true, running: false, busy: false, current: null, queued: 0, untested: [], lastFinishedAt: null, lastError: null, completedCount: 1, steps: 9 };
+
 async function loadChat() {
   const { document, byId } = createDom(PAGE_HTML);
   const requests = [];
@@ -68,6 +71,11 @@ async function loadChat() {
 
   globalThis.document = document;
   globalThis.window = { confirm: () => true, location: { origin: 'http://localhost' } };
+  globalThis.FileReader = class {
+    readAsDataURL(file) {
+      setTimeout(() => { this.result = file.dataUrl; this.onload?.(); }, 0);
+    }
+  };
   Object.defineProperty(globalThis, 'navigator', {
     configurable: true,
     writable: true,
@@ -128,6 +136,47 @@ async function loadChat() {
         })
       };
     }
+    // The composer's capability view: alpha thinks at three levels and reads images but refuses
+    // files; beta has not been probed yet.
+    if (method === 'GET' && path === '/api/v1/tests/capabilities') {
+      const levels = [
+        ['low', 'Low', 'works'], ['medium', 'Medium', 'works'], ['high', 'High', 'works'],
+        ['xhigh', 'Extra High', 'rejected'], ['max', 'Max', 'rejected']
+      ].map(([id, label, status]) => ({ id, label, value: id, status, reason: `probe: ${status}` }));
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          data: {
+            testedAt: '2026-09-10T08:00:00.000Z',
+            levels: levels.map(({ id, label, value }) => ({ id, label, value })),
+            models: [
+              {
+                providerId: 'prov-1', providerName: 'Local', modelId: 'alpha', key: 'prov-1:alpha',
+                queued: false, tested: true, testedAt: '2026-09-10T08:00:00.000Z', score: 44,
+                levels,
+                thinking: { usable: ['low', 'medium', 'high'], best: 'high' },
+                images: { status: 'works', usable: true, proved: true, reason: 'The model answered the image: RED' },
+                files: { status: 'rejected', usable: false, proved: false, reason: 'file parts are not supported' },
+                tools: { status: 'works', usable: true, proved: true, reason: 'The model called ping.' }
+              },
+              {
+                providerId: 'prov-1', providerName: 'Local', modelId: 'beta', key: 'prov-1:beta',
+                queued: true, tested: false, testedAt: null, score: null,
+                levels: levels.map(({ id, label, value }) => ({ id, label, value, status: 'unknown', reason: '' })),
+                thinking: { usable: ['low', 'medium', 'high', 'xhigh', 'max'], best: null },
+                images: { status: 'unknown', usable: false, proved: false, reason: '' },
+                files: { status: 'unknown', usable: false, proved: false, reason: '' },
+                tools: { status: 'unknown', usable: false, proved: false, reason: '' }
+              }
+            ]
+          }
+        })
+      };
+    }
+    if (method === 'GET' && path === '/api/v1/tests/auto') {
+      return { status: 200, ok: true, json: async () => ({ data: autoStatus }) };
+    }
     if (method === 'DELETE' && messagePath) {
       const target = conversation.messages.find((entry) => entry.id === messagePath[1]);
       const index = conversation.messages.indexOf(target);
@@ -139,6 +188,25 @@ async function loadChat() {
       target.content = body.content;
       conversation.messages.splice(conversation.messages.indexOf(target) + 1);
       return { status: 200, ok: true, json: async () => ({ data: clone() }) };
+    }
+    if (method === 'POST' && path === '/api/v1/conversations/conv-1/respond/stream') {
+      // Mirror the server: the question is stored with the attachments that travelled with it.
+      conversation.messages.push({
+        id: `msg-user-${conversation.messages.length}`,
+        role: 'user',
+        content: body.message,
+        reasoning: '',
+        toolEvents: [],
+        timeline: null,
+        attachments: body.attachments || [],
+        createdAt: new Date().toISOString()
+      });
+      const updated = answer(conversation.messages.at(-1).id, body.modelId);
+      return sseResponse([
+        ['started', { conversationId: 'conv-1' }],
+        ['token', { text: `Answer from ${body.modelId}.` }],
+        ['completed', { conversation: updated }]
+      ]);
     }
     if (method === 'POST' && regeneratePath) {
       const updated = answer(regeneratePath[1], body.modelId);
@@ -306,4 +374,134 @@ test('Edit replaces the bubble with a field and re-sends the corrected message',
   const regenerate = requests.find((request) => request.path.endsWith('/regenerate/stream'));
   assert.equal(regenerate.path, '/api/v1/conversations/conv-1/messages/msg-user/regenerate/stream');
   assert.ok(requests.indexOf(edit) < requests.indexOf(regenerate), 'the correction is saved before it is answered again');
+});
+
+// ---- The composer follows the capability report ----
+
+function stubFile(name, type, dataUrl, size = 1024) {
+  return { name, type, dataUrl, size };
+}
+
+test('the attach button offers what the model was proved to take, and refuses the rest with a reason', async () => {
+  const { byId } = await loadChat();
+  await openConversation(byId);
+
+  byId.get('attachButton').dispatchEvent('click');
+  assert.equal(byId.get('attachDialog').open, true);
+  const rows = [...byId.get('attachOptions').querySelectorAll('.model-option')];
+  assert.deepEqual(rows.map((row) => row.dataset.kind), ['image', 'file']);
+
+  // alpha reads images but refused file parts in testing.
+  const image = rows.find((row) => row.dataset.kind === 'image');
+  const file = rows.find((row) => row.dataset.kind === 'file');
+  assert.equal(image.disabled, false);
+  assert.equal(file.disabled, true, 'a proved rejection closes the option');
+  assert.match(file.querySelector('.data-subtitle').textContent, /file parts are not supported/u, 'and says why');
+  assert.equal(file.querySelector('.chip').textContent, 'Not supported');
+  assert.equal(image.querySelector('.chip').textContent, 'Yes');
+  assert.match(byId.get('attachHint').textContent, /capability test/u);
+});
+
+test('an attached image is sent with the message and shown in the conversation', async () => {
+  const { byId, requests } = await loadChat();
+  await openConversation(byId);
+
+  byId.get('attachButton').dispatchEvent('click');
+  [...byId.get('attachOptions').querySelectorAll('.model-option')]
+    .find((row) => row.dataset.kind === 'image').dispatchEvent('click');
+
+  const picker = byId.get('imagePicker');
+  picker.files = [stubFile('red.png', 'image/png', 'data:image/png;base64,QUJD', 2048)];
+  picker.dispatchEvent('change');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  await waitFor(() => byId.get('attachTray').querySelectorAll('.attach-pill').length === 1);
+
+  const pill = byId.get('attachTray').querySelector('.attach-pill');
+  assert.equal(pill.querySelector('b').textContent, 'red.png');
+  assert.equal(pill.querySelector('.attach-thumb').src, 'data:image/png;base64,QUJD');
+  assert.equal(byId.get('attachButton').classList.contains('selected'), true);
+
+  byId.get('messageInput').value = 'What colour is this?';
+  byId.get('composer').dispatchEvent('submit');
+  await waitFor(() => requests.some((request) => request.path.endsWith('/respond/stream')));
+
+  const sent = requests.find((request) => request.path.endsWith('/respond/stream'));
+  assert.equal(sent.body.attachments.length, 1);
+  assert.deepEqual(sent.body.attachments[0], {
+    kind: 'image', name: 'red.png', mimeType: 'image/png', size: 2048, dataUrl: 'data:image/png;base64,QUJD'
+  });
+  assert.equal(byId.get('attachTray').hidden, true, 'the tray clears once the message is away');
+
+  await waitFor(() => byId.get('chatLog').querySelectorAll('.message-image').length > 0);
+  assert.equal(byId.get('chatLog').querySelector('.message-image').src, 'data:image/png;base64,QUJD');
+});
+
+test('a file that is too big is refused before it is attached', async () => {
+  const { byId, requests } = await loadChat();
+  await openConversation(byId);
+
+  byId.get('attachButton').dispatchEvent('click');
+  [...byId.get('attachOptions').querySelectorAll('.model-option')]
+    .find((row) => row.dataset.kind === 'image').dispatchEvent('click');
+
+  const picker = byId.get('imagePicker');
+  picker.files = [stubFile('huge.png', 'image/png', 'data:image/png;base64,QUJD', 9 * 1024 * 1024)];
+  picker.dispatchEvent('change');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(byId.get('attachTray').children.length, 0, 'nothing was attached');
+  // The toast is created on demand and hung on the body, not seeded from the page markup.
+  const toast = [...document.body.children].find((node) => node.id === 'toast');
+  assert.match(toast.textContent, /9 MB/u);
+  assert.equal(requests.filter((request) => request.path.endsWith('/respond/stream')).length, 0);
+});
+
+test('the model picker labels each model with what the report proved', async () => {
+  const { byId } = await loadChat();
+  await waitFor(() => byId.get('modelOptions').querySelectorAll('.model-option').length === 2);
+  byId.get('openModelPicker').dispatchEvent('click');
+  const options = [...byId.get('modelOptions').querySelectorAll('.model-option')];
+  assert.deepEqual(options.map((option) => option.dataset.modelId), ['alpha', 'beta']);
+
+  const alpha = options[0];
+  assert.match(alpha.querySelector('.data-subtitle').textContent, /thinks to High/u);
+  assert.match(alpha.querySelector('.data-subtitle').textContent, /images/u);
+  assert.deepEqual([...alpha.querySelectorAll('.chip')].map((node) => `${node.textContent}:${node.className}`), [
+    'High:chip ok', 'Images:chip ok', 'Files:chip no'
+  ]);
+
+  // beta has not been probed yet, so it says so instead of claiming it can do nothing.
+  const beta = options[1];
+  assert.match(beta.querySelector('.data-subtitle').textContent, /testing automatically/u);
+  assert.deepEqual([...beta.querySelectorAll('.chip')].map((node) => node.textContent), ['Queued']);
+});
+
+test('the composer says which model is being tested and picks up the result when it lands', async () => {
+  autoStatus = {
+    enabled: true, started: true, running: true, busy: true,
+    current: { key: 'prov-1:beta', providerName: 'Local', modelId: 'beta', label: 'Image input', stepIndex: 7, stepTotal: 9 },
+    queued: 0, untested: [{ key: 'prov-1:beta', providerName: 'Local', modelId: 'beta' }],
+    lastFinishedAt: null, lastError: null, completedCount: 0, steps: 9
+  };
+  try {
+    const { byId, requests } = await loadChat();
+    const status = byId.get('composerStatus');
+    // The status is read after the conversation list, so wait for that request to land.
+    await waitFor(() => requests.some((request) => request.path === '/api/v1/tests/auto'));
+    await waitFor(() => status.hidden === false);
+    assert.equal(status.hidden, false);
+    assert.match(status.textContent, /Testing beta — Image input \(7\/9\)/u);
+    assert.equal(status.querySelectorAll('.stream-status-dot').length, 1, 'it is marked as live');
+
+    // A model that has not been probed yet offers every level, and says why.
+    [...byId.get('modelOptions').querySelectorAll('.model-option')]
+      .find((option) => option.dataset.modelId === 'beta')?.dispatchEvent('click');
+    byId.get('openModelPicker').dispatchEvent('click');
+    [...byId.get('modelOptions').querySelectorAll('.model-option')]
+      .find((option) => option.dataset.modelId === 'beta').dispatchEvent('click');
+    byId.get('openThinking').dispatchEvent('click');
+    assert.match(byId.get('thinkingHint').textContent, /queued for the automatic test/u);
+  } finally {
+    autoStatus = { enabled: true, started: true, running: false, busy: false, current: null, queued: 0, untested: [], lastFinishedAt: null, lastError: null, completedCount: 1, steps: 9 };
+  }
 });

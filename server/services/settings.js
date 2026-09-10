@@ -6,6 +6,7 @@ import { now } from '../db/database.js';
 // them from the app and expects them to survive a restart.
 const TITLE_KEY = 'titleGeneration';
 const PROMPT_KEY = 'systemPrompt';
+const AUTO_TEST_KEY = 'autoTesting';
 
 // Long enough for detailed standing instructions, short enough that it cannot crowd out the
 // conversation itself in the context window.
@@ -13,6 +14,12 @@ export const SYSTEM_PROMPT_MAX = 8_000;
 
 export function defaultTitleSettings() {
   return { enabled: false, providerId: null, modelId: null };
+}
+
+// Automatic capability testing is on by default: the whole point is that a newly added model
+// learns what it can do without the user having to open the Testing page and press a button.
+export function defaultAutoTestSettings() {
+  return { enabled: true };
 }
 
 function readSetting(db, key) {
@@ -37,6 +44,7 @@ function writeSetting(db, key, value) {
 export function getSettings(db) {
   const title = readSetting(db, TITLE_KEY);
   const prompt = readSetting(db, PROMPT_KEY);
+  const autoTest = readSetting(db, AUTO_TEST_KEY);
   return {
     titleGeneration: {
       enabled: title?.enabled === true,
@@ -44,7 +52,9 @@ export function getSettings(db) {
       modelId: typeof title?.modelId === 'string' && title.modelId ? title.modelId : null
     },
     // An empty prompt means "no extra instructions", which is the default.
-    systemPrompt: { text: typeof prompt?.text === 'string' ? prompt.text : '' }
+    systemPrompt: { text: typeof prompt?.text === 'string' ? prompt.text : '' },
+    // Missing means "never changed", which still means on.
+    autoTesting: { enabled: autoTest?.enabled !== false }
   };
 }
 
@@ -53,7 +63,14 @@ export function updateSettings(db, body = {}) {
   const patch = body && typeof body === 'object' ? body : {};
   const hasTitle = patch.titleGeneration !== undefined;
   const hasPrompt = patch.systemPrompt !== undefined;
-  if (!hasTitle && !hasPrompt) throw validation('Nothing to save. Send the settings you want to change.');
+  const hasAutoTest = patch.autoTesting !== undefined;
+  if (!hasTitle && !hasPrompt && !hasAutoTest) throw validation('Nothing to save. Send the settings you want to change.');
+
+  if (hasAutoTest) {
+    const next = patch.autoTesting;
+    if (!next || typeof next !== 'object') throw validation('Automatic testing settings are required.');
+    writeSetting(db, AUTO_TEST_KEY, { enabled: next.enabled !== false });
+  }
 
   if (hasTitle) {
     const next = patch.titleGeneration;

@@ -32,6 +32,15 @@ const PING_TOOL = {
   }
 };
 
+function toTestableModel(row) {
+  return {
+    providerId: row.provider_id,
+    providerName: row.provider_name,
+    modelId: row.model_id,
+    key: `${row.provider_id}:${row.model_id}`
+  };
+}
+
 // Every selected model of every provider, which is what the Testing page runs against.
 export function listTestableModels(db) {
   return db.prepare(`
@@ -39,12 +48,54 @@ export function listTestableModels(db) {
     FROM providers p
     JOIN provider_models pm ON pm.provider_id = p.id
     ORDER BY p.name COLLATE NOCASE, pm.model_id COLLATE NOCASE
-  `).all().map((row) => ({
-    providerId: row.provider_id,
-    providerName: row.provider_name,
-    modelId: row.model_id,
-    key: `${row.provider_id}:${row.model_id}`
-  }));
+  `).all().map(toTestableModel);
+}
+
+// Selected models that have never been probed. This is the work list for the automatic runner:
+// adding a model (or changing a provider, which forgets its results) puts it back on this list.
+export function untestedModels(db) {
+  return db.prepare(`
+    SELECT p.id AS provider_id, p.name AS provider_name, pm.model_id AS model_id
+    FROM providers p
+    JOIN provider_models pm ON pm.provider_id = p.id
+    LEFT JOIN model_tests mt ON mt.provider_id = p.id AND mt.model_id = pm.model_id
+    WHERE mt.id IS NULL
+    ORDER BY p.name COLLATE NOCASE, pm.model_id COLLATE NOCASE
+  `).all().map(toTestableModel);
+}
+
+// Dropping a selected model takes its results with it, so re-adding it means testing it again
+// instead of trusting a report that may belong to a different API key.
+export function forgetModelTest(db, rawProviderId, rawModelId) {
+  const providerId = identifier(rawProviderId, 'Provider ID');
+  const model = validateModelId(rawModelId);
+  db.prepare('DELETE FROM model_tests WHERE provider_id = ? AND model_id = ?').run(providerId, model);
+}
+
+// Changing a provider's URL or key invalidates everything measured against the old one.
+export function forgetProviderTests(db, rawProviderId) {
+  const providerId = identifier(rawProviderId, 'Provider ID');
+  const result = db.prepare('DELETE FROM model_tests WHERE provider_id = ?').run(providerId);
+  return Number(result.changes);
+}
+
+// Probing a provider is slow and costs real requests, so only one run may be in flight at a time.
+// The manual "Run tests" button and the automatic runner both go through here, which is what stops
+// them from doubling up on the same model.
+let lockTail = Promise.resolve();
+let lockBusy = false;
+
+export function withTestLock(run) {
+  const started = lockTail.then(() => {
+    lockBusy = true;
+    return run();
+  });
+  lockTail = started.then(() => { lockBusy = false; }, () => { lockBusy = false; });
+  return started;
+}
+
+export function isTestLockBusy() {
+  return lockBusy;
 }
 
 function shortReason(text) {
@@ -286,6 +337,73 @@ export function supportedThinkingLevels(db, rawProviderId, rawModelId) {
     testedAt: row.tested_at,
     levels: THINKING_LEVELS.map((level) => ({ ...level, status: results.thinking?.[level.id]?.status || 'unknown', reason: results.thinking?.[level.id]?.reason || '' }))
   };
+}
+
+// `works` and `accepted` both mean the provider took the request; only `works` is proof the model
+// used it. The composer offers a capability for either, and hides it for a proved rejection.
+const USABLE = new Set(['works', 'accepted']);
+
+function capabilityVerdict(result) {
+  const status = result?.status || 'unknown';
+  return {
+    status,
+    usable: USABLE.has(status),
+    proved: status === 'works',
+    reason: result?.reason || ''
+  };
+}
+
+// One row of the composer's capability view: what this model was proved to do, and when. An
+// untested model reports `tested: false` rather than a wall of "no", because absence of evidence
+// is not evidence of absence — and the automatic runner is about to fill it in.
+export function modelCapabilities(db, rawProviderId, rawModelId) {
+  const providerId = identifier(rawProviderId, 'Provider ID');
+  const model = validateModelId(rawModelId);
+  const row = db.prepare('SELECT results, score, tested_at FROM model_tests WHERE provider_id = ? AND model_id = ?').get(providerId, model);
+  if (!row) {
+    return {
+      tested: false, testedAt: null, score: null,
+      levels: THINKING_LEVELS.map((level) => ({ ...level, status: 'unknown' })),
+      thinking: { usable: THINKING_LEVELS.map((level) => level.id), best: null },
+      images: capabilityVerdict(null),
+      files: capabilityVerdict(null),
+      tools: capabilityVerdict(null)
+    };
+  }
+  const results = parseResults(row.results);
+  const levels = THINKING_LEVELS.map((level) => ({
+    ...level,
+    status: results.thinking?.[level.id]?.status || 'unknown',
+    reason: results.thinking?.[level.id]?.reason || ''
+  }));
+  const usable = levels.filter((level) => USABLE.has(level.status)).map((level) => level.id);
+  return {
+    tested: true,
+    testedAt: row.tested_at,
+    score: Number(row.score),
+    levels,
+    thinking: {
+      usable,
+      // The strongest rung with actual evidence behind it, which is what the composer preselects.
+      best: levels.filter((level) => level.status === 'works').at(-1)?.id || usable.at(-1) || null
+    },
+    images: capabilityVerdict(results.vision),
+    files: capabilityVerdict(results.files),
+    tools: capabilityVerdict(results.tools)
+  };
+}
+
+// Every selected model with its capabilities in one response, so the composer can label the model
+// picker and gate the attach button without a request per model.
+export function capabilityReport(db) {
+  const pending = new Set(untestedModels(db).map((model) => model.key));
+  const models = listTestableModels(db).map((model) => ({
+    ...model,
+    queued: pending.has(model.key),
+    ...modelCapabilities(db, model.providerId, model.modelId)
+  }));
+  const newest = db.prepare('SELECT MAX(tested_at) AS tested_at FROM model_tests').get();
+  return { models, levels: THINKING_LEVELS, testedAt: newest?.tested_at || null };
 }
 
 export async function runModelTests(db, { timeoutMs = 20_000, emit, only = null } = {}) {

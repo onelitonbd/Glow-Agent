@@ -44,6 +44,12 @@ function report() {
 }
 
 // Loads the real Testing page against a seeded DOM and a stubbed API.
+// Overridable per test so a background run can be shown in flight.
+let autoStatus = {
+  enabled: true, started: true, running: false, busy: false, current: null, queued: 0,
+  untested: [], lastFinishedAt: '2026-09-10T08:00:00.000Z', lastError: null, completedCount: 2, steps: 9
+};
+
 async function loadPage() {
   const { document, byId } = createDom(PAGE_HTML);
   const requests = [];
@@ -80,6 +86,11 @@ async function loadPage() {
       };
     }
     if (method === 'GET' && path === '/api/v1/tests/report') return { status: 200, ok: true, json: async () => ({ data: report() }) };
+    if (method === 'GET' && path === '/api/v1/tests/auto') return { status: 200, ok: true, json: async () => ({ data: autoStatus }) };
+    if (method === 'PUT' && path === '/api/v1/settings') {
+      autoStatus = { ...autoStatus, enabled: body.autoTesting?.enabled !== false };
+      return { status: 200, ok: true, json: async () => ({ data: { autoTesting: { enabled: autoStatus.enabled } } }) };
+    }
     if (method === 'POST' && path === '/api/v1/tests/run/stream') {
       return {
         ok: true,
@@ -181,4 +192,47 @@ test('running the tests names the model and the capability while it works, on th
   assert.deepEqual(run.body, { models: ['p1:capable'] }, 'only the ticked model is tested');
   assert.equal([...byId.get('testModelList').querySelectorAll('input')].every((box) => box.disabled === false), true);
   assert.equal(byId.get('rankingReport').querySelectorAll('.rank-card').length, 2);
+});
+
+test('the automatic-testing card reports a background run and can be switched off', async () => {
+  autoStatus = {
+    enabled: true, started: true, running: true, busy: true,
+    current: { key: 'p1:capable', providerName: 'Local', modelId: 'capable', label: 'Image input', stepIndex: 7, stepTotal: 9 },
+    queued: 1,
+    untested: [{ key: 'p1:plain', providerName: 'Local', modelId: 'plain' }],
+    lastFinishedAt: null, lastError: null, completedCount: 0, steps: 9
+  };
+  try {
+    const { byId, requests } = await loadPage();
+    await waitFor(() => byId.get('autoTestState').textContent.length > 0);
+
+    assert.equal(byId.get('autoTestToggle').checked, true, 'the switch reflects the stored setting');
+    assert.equal(byId.get('autoTestState').textContent, 'Testing capable');
+
+    // The live line names the model and the capability, the same way a manual run does.
+    const progress = byId.get('autoTestProgress');
+    assert.equal(progress.hidden, false);
+    assert.match(progress.querySelector('.test-progress-title').textContent, /Testing capable automatically — Image input/u);
+    assert.match(progress.querySelector('.test-progress-detail').textContent, /step 7 of 9/u);
+    assert.match(progress.querySelector('.test-progress-detail').textContent, /1 more waiting/u);
+    assert.equal(progress.querySelector('.test-progress-fill').style.width, '78%');
+
+    // The queued model is marked in the list rather than looking ready.
+    await waitFor(() => [...byId.get('testModelList').querySelectorAll('.test-row-state')].some((node) => node.textContent === 'Queued'));
+    const rows = [...byId.get('testModelList').querySelectorAll('.test-row')];
+    assert.equal(rows[0].querySelector('.test-row-state').textContent, 'Image input', 'the model being probed shows the capability');
+    assert.equal(rows[1].querySelector('.test-row-state').textContent, 'Queued');
+
+    // The manual run stands down instead of doubling up on the same provider.
+    byId.get('runTests').dispatchEvent('click');
+    assert.equal(requests.filter((request) => request.path === '/api/v1/tests/run/stream').length, 0);
+
+    byId.get('autoTestToggle').checked = false;
+    byId.get('autoTestToggle').dispatchEvent('change');
+    await waitFor(() => requests.some((request) => request.method === 'PUT' && request.path === '/api/v1/settings'));
+    const saved = requests.find((request) => request.method === 'PUT' && request.path === '/api/v1/settings');
+    assert.deepEqual(saved.body, { autoTesting: { enabled: false } });
+  } finally {
+    autoStatus = { enabled: true, started: true, running: false, busy: false, current: null, queued: 0, untested: [], lastFinishedAt: '2026-09-10T08:00:00.000Z', lastError: null, completedCount: 2, steps: 9 };
+  }
 });

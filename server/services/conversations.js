@@ -8,7 +8,7 @@ import { listSkills } from './skills.js';
 import { githubToolDefinitions } from './github-tools.js';
 import { activeMcpPlugins, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
 import { getSettings } from './settings.js';
-import { THINKING_LEVELS } from './model-tests.js';
+import { THINKING_LEVELS, modelCapabilities } from './model-tests.js';
 
 function toConversation(row) {
   return {
@@ -39,6 +39,7 @@ function toMessage(row) {
     reasoning: row.reasoning || '',
     toolEvents: parseJsonArray(row.tool_events, []),
     timeline: parseJsonArray(row.timeline, null),
+    attachments: parseJsonArray(row.attachments, []),
     createdAt: row.created_at
   };
 }
@@ -138,22 +139,39 @@ function normalizeAssistantContent(content) {
   return '';
 }
 
+// A question that carried an attachment has to go back to the provider as content parts, exactly
+// as it was first sent — a plain string would drop the image the model was asked about.
+function toProviderContent(row) {
+  const attachments = parseJsonArray(row.attachments, []);
+  if (attachments.length === 0) return row.content;
+  return [
+    ...(row.content ? [{ type: 'text', text: row.content }] : []),
+    ...attachments.map(attachmentPart)
+  ];
+}
+
+function attachmentPart(attachment) {
+  return attachment.kind === 'image'
+    ? { type: 'image_url', image_url: { url: attachment.dataUrl } }
+    : { type: 'file', file: { filename: attachment.name, file_data: attachment.dataUrl } };
+}
+
 function conversationMessages(db, conversationId) {
   return db.prepare(`
-    SELECT role, content FROM messages
+    SELECT role, content, attachments FROM messages
     WHERE conversation_id = ?
     ORDER BY created_at DESC
     LIMIT 30
-  `).all(conversationId).reverse();
+  `).all(conversationId).reverse().map((row) => ({ role: row.role, content: toProviderContent(row) }));
 }
 
-function persistMessage(db, { conversationId, role, content, providerId = null, selectedModelId = null, reasoning = '', toolEvents = [], timeline = null }) {
+function persistMessage(db, { conversationId, role, content, providerId = null, selectedModelId = null, reasoning = '', toolEvents = [], timeline = null, attachments = [] }) {
   const id = randomUUID();
   const createdAt = now();
-  db.prepare(`INSERT INTO messages (id, conversation_id, role, content, provider_id, model_id, created_at, tool_events, reasoning, timeline)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, conversationId, role, content, providerId, selectedModelId, createdAt, toolEvents.length ? JSON.stringify(toolEvents) : null, reasoning || null, timeline && timeline.length ? JSON.stringify(timeline) : null);
-  return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, timeline: timeline || null, createdAt };
+  db.prepare(`INSERT INTO messages (id, conversation_id, role, content, provider_id, model_id, created_at, tool_events, reasoning, timeline, attachments)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, conversationId, role, content, providerId, selectedModelId, createdAt, toolEvents.length ? JSON.stringify(toolEvents) : null, reasoning || null, timeline && timeline.length ? JSON.stringify(timeline) : null, attachments.length ? JSON.stringify(attachments) : null);
+  return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, timeline: timeline || null, attachments, createdAt };
 }
 
 // The rows behind a conversation in display order. `rowid` breaks ties when two messages land in
@@ -212,6 +230,62 @@ export function editMessage(db, rawConversationId, rawMessageId, body = {}) {
   return getConversation(db, conversation.id);
 }
 
+// ---- Attachments ----
+// The composer offers an image or a document only when the capability probe says this model takes
+// one, so the check here is a backstop for a hand-built request rather than the main gate. An
+// untested model is allowed through: no evidence yet is not a rejection.
+export const MAX_ATTACHMENTS = 4;
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+const DATA_URL = /^data:([a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+);base64,([A-Za-z0-9+/=\s]+)$/iu;
+
+function parseDataUrl(value) {
+  const match = typeof value === 'string' ? DATA_URL.exec(value.trim()) : null;
+  if (!match) return null;
+  const base64 = match[2].replace(/\s+/gu, '');
+  const bytes = Math.floor((base64.length * 3) / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+  return { mimeType: match[1].toLowerCase(), base64, bytes, dataUrl: `data:${match[1].toLowerCase()};base64,${base64}` };
+}
+
+function attachmentKind(mimeType) {
+  return mimeType.startsWith('image/') ? 'image' : 'file';
+}
+
+export function parseAttachments(db, body, { providerId, selectedModelId }) {
+  const raw = body.attachments;
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) throw validation('Attachments must be a list.');
+  if (raw.length === 0) return [];
+  if (raw.length > MAX_ATTACHMENTS) throw validation(`At most ${MAX_ATTACHMENTS} attachments per message.`);
+  const capabilities = modelCapabilities(db, providerId, selectedModelId);
+  const counts = { image: 0, file: 0 };
+  return raw.map((entry, index) => {
+    if (!entry || typeof entry !== 'object') throw validation(`Attachment ${index + 1} is not readable.`);
+    const parsed = parseDataUrl(entry.dataUrl);
+    if (!parsed) throw validation(`Attachment ${index + 1} must be a base64 data URL.`);
+    if (parsed.bytes === 0) throw validation(`Attachment ${index + 1} is empty.`);
+    if (parsed.bytes > MAX_ATTACHMENT_BYTES) {
+      throw validation(`Attachment ${index + 1} is ${Math.round(parsed.bytes / 1024 / 1024)} MB. The limit is ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB.`);
+    }
+    const kind = attachmentKind(parsed.mimeType);
+    counts[kind] += 1;
+    // A proved rejection is the only thing that blocks: `works` and `accepted` both mean the
+    // provider took this part before, and an untested model has not been given the chance.
+    const verdict = kind === 'image' ? capabilities.images : capabilities.files;
+    if (capabilities.tested && !verdict.usable) {
+      throw validation(`${selectedModelId} does not accept ${kind === 'image' ? 'images' : 'file attachments'} — the capability test was refused. Pick another model or send it as text.`);
+    }
+    const name = String(entry.name ?? '').trim().slice(0, 180) || (kind === 'image' ? `image-${index + 1}` : `file-${index + 1}`);
+    return {
+      kind,
+      name,
+      mimeType: parsed.mimeType,
+      size: parsed.bytes,
+      dataUrl: parsed.dataUrl
+    };
+  });
+}
+
 async function prepareResponse(db, rawConversationId, body, { workspaceDirectory, existingUserMessage = null } = {}) {
   const conversation = existingConversation(db, rawConversationId);
   const content = requiredString(body.message, 'Message', { max: 16_000 });
@@ -226,6 +300,11 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
     : String(body.thinkingLevel);
   const thinkingRung = thinkingLevel ? THINKING_LEVELS.find((level) => level.id === thinkingLevel) : null;
   if (thinkingLevel && !thinkingRung) throw validation('That thinking level is not one this workspace offers.');
+  // Attachments travel with the question. A regenerate re-sends the stored question, so it keeps
+  // the files that were already saved with it instead of taking new ones from the body.
+  const attachments = existingUserMessage
+    ? parseJsonArray(existingUserMessage.attachments, [])
+    : parseAttachments(db, body, { providerId, selectedModelId });
   const skills = listSkills(db);
   // Every available built-in tool is always offered to the model; no selection is needed.
   // read_skill is added only when skills exist so the model can load instructions on demand.
@@ -255,8 +334,8 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
       timeline: null,
       createdAt: existingUserMessage.created_at
     }
-    : persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
-  const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
+    : persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId, attachments });
+  const messages = conversationMessages(db, conversation.id);
   const system = systemMessage(skills, { plugin, mcp, customPrompt: getSettings(db).systemPrompt.text });
   if (system) messages.unshift({ role: 'system', content: system });
   // Only the first question of a chat names it. Counting the other questions (rather than the
@@ -265,6 +344,8 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
     .get(conversation.id, userMessage.id).count;
   return {
     conversation, content, providerId, selectedModelId, tools, plugin, mcp, userMessage, messages,
+    attachments,
+    capabilities: modelCapabilities(db, providerId, selectedModelId),
     isFirstExchange: otherQuestions === 0,
     reasoningEffort: thinkingRung ? thinkingRung.value : null,
     thinkingLabel: thinkingRung ? thinkingRung.label : null

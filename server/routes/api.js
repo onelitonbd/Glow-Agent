@@ -24,7 +24,20 @@ import {
 } from '../services/conversations.js';
 import { listTools } from '../services/tools.js';
 import { getSettings, updateSettings } from '../services/settings.js';
-import { listTestableModels, modelTestReport, runModelTests, supportedThinkingLevels, THINKING_LEVELS } from '../services/model-tests.js';
+import {
+  capabilityReport,
+  forgetModelTest,
+  forgetProviderTests,
+  isTestLockBusy,
+  listTestableModels,
+  modelCapabilities,
+  modelTestReport,
+  runModelTests,
+  supportedThinkingLevels,
+  THINKING_LEVELS,
+  untestedModels,
+  withTestLock
+} from '../services/model-tests.js';
 import {
   approvePluginWrites,
   cloneGithubRepo,
@@ -97,7 +110,7 @@ function rateLimit({ windowMs, max, code }) {
   };
 }
 
-export function createApiRouter({ db, config }) {
+export function createApiRouter({ db, config, autoTests = null }) {
   const router = Router();
   router.get('/health', (_request, response) => success(response, {
     status: 'ok', service: 'glow-agent', time: new Date().toISOString()
@@ -108,7 +121,10 @@ export function createApiRouter({ db, config }) {
     .get((_request, response) => success(response, listProviders(db)))
     .post((request, response, next) => {
       try {
-        success(response, createProvider(db, request.body ?? {}), 201);
+        const provider = createProvider(db, request.body ?? {});
+        // A brand-new provider has no models yet, but it may gain them in the same breath.
+        autoTests?.notify();
+        success(response, provider, 201);
       } catch (error) { next(error); }
     });
   router.route('/providers/:providerId')
@@ -116,10 +132,21 @@ export function createApiRouter({ db, config }) {
       try { success(response, getProvider(db, request.params.providerId)); } catch (error) { next(error); }
     })
     .put((request, response, next) => {
-      try { success(response, updateProvider(db, request.params.providerId, request.body ?? {})); } catch (error) { next(error); }
+      try {
+        const provider = updateProvider(db, request.params.providerId, request.body ?? {});
+        // A new URL or key means every measurement taken against the old one is a guess, so the
+        // report is dropped and the automatic runner measures these models again.
+        forgetProviderTests(db, provider.id);
+        autoTests?.notify();
+        success(response, provider);
+      } catch (error) { next(error); }
     })
     .delete((request, response, next) => {
-      try { deleteProvider(db, request.params.providerId); response.status(204).end(); } catch (error) { next(error); }
+      try {
+        deleteProvider(db, request.params.providerId);
+        autoTests?.notify();
+        response.status(204).end();
+      } catch (error) { next(error); }
     });
   router.post('/providers/:providerId/fetch-models', rateLimit({ windowMs: 60_000, max: 12, code: 'MODEL_FETCH_RATE_LIMITED' }), asyncRoute(async (request, response) => {
     success(response, await fetchProviderModels(db, request.params.providerId, config.providerFetchTimeoutMs));
@@ -129,10 +156,21 @@ export function createApiRouter({ db, config }) {
       try { success(response, listSelectedModels(db, request.params.providerId)); } catch (error) { next(error); }
     })
     .post((request, response, next) => {
-      try { success(response, addSelectedModel(db, request.params.providerId, request.body ?? {}), 201); } catch (error) { next(error); }
+      try {
+        const selected = addSelectedModel(db, request.params.providerId, request.body ?? {});
+        // This is the moment a model becomes usable in chat, so it is tested right away rather
+        // than waiting for the next sweep. The chat picks the capability up from the report.
+        autoTests?.notify([`${request.params.providerId}:${selected.modelId}`]);
+        success(response, selected, 201);
+      } catch (error) { next(error); }
     });
   router.delete('/providers/:providerId/models/:modelId', (request, response, next) => {
-    try { deleteSelectedModel(db, request.params.providerId, request.params.modelId); response.status(204).end(); } catch (error) { next(error); }
+    try {
+      const removed = deleteSelectedModel(db, request.params.providerId, request.params.modelId);
+      forgetModelTest(db, removed.providerId, removed.modelId);
+      autoTests?.notify();
+      response.status(204).end();
+    } catch (error) { next(error); }
   });
 
   router.route('/skills')
@@ -159,7 +197,12 @@ export function createApiRouter({ db, config }) {
   // Workspace preferences. Declared before /conversations so the literal path is unambiguous.
   router.get('/settings', (_request, response) => success(response, getSettings(db)));
   router.put('/settings', (request, response, next) => {
-    try { success(response, updateSettings(db, request.body ?? {})); } catch (error) { next(error); }
+    try {
+      const settings = updateSettings(db, request.body ?? {});
+      // Switching automatic testing on should test the backlog now, not at the next sweep.
+      if (request.body?.autoTesting) autoTests?.notify();
+      success(response, settings);
+    } catch (error) { next(error); }
   });
 
   // ---- Model capability testing ----
@@ -167,12 +210,36 @@ export function createApiRouter({ db, config }) {
   router.get('/tests/models', (_request, response) => success(response, listTestableModels(db)));
   router.get('/tests/levels', (_request, response) => success(response, THINKING_LEVELS));
   router.get('/tests/report', (_request, response) => success(response, modelTestReport(db)));
+  // What the composer needs: every selected model, its proven thinking levels, and whether it
+  // takes images or files. One request instead of one per model.
+  router.get('/tests/capabilities', (_request, response) => success(response, capabilityReport(db)));
+  router.get('/tests/capabilities/:providerId/:modelId', (request, response, next) => {
+    try { success(response, modelCapabilities(db, request.params.providerId, request.params.modelId)); } catch (error) { next(error); }
+  });
+  // Is the automatic runner working right now, and on what? The chat and the Testing page poll
+  // this so a model that is being probed says so instead of looking untested.
+  router.get('/tests/auto', (_request, response) => {
+    success(response, autoTests ? autoTests.status() : {
+      enabled: getSettings(db).autoTesting.enabled,
+      started: false, running: isTestLockBusy(), busy: isTestLockBusy(), current: null, queued: 0,
+      untested: untestedModels(db).map(({ key, providerName, modelId }) => ({ key, providerName, modelId })),
+      lastFinishedAt: null, lastError: null, completedCount: 0, steps: 9
+    });
+  });
+  // Tests everything that has never been tested, without waiting for the sweep.
+  router.post('/tests/auto/run', rateLimit({ windowMs: 60_000, max: 6, code: 'MODEL_TEST_RATE_LIMITED' }), asyncRoute(async (_request, response) => {
+    if (!autoTests) throw new AppError(409, 'AUTO_TEST_UNAVAILABLE', 'Automatic testing is not running in this process.', { expose: true });
+    autoTests.notify();
+    success(response, autoTests.status());
+  }));
   router.get('/tests/levels/:providerId/:modelId', (request, response, next) => {
     try { success(response, supportedThinkingLevels(db, request.params.providerId, request.params.modelId)); } catch (error) { next(error); }
   });
   router.post('/tests/run/stream', rateLimit({ windowMs: 60_000, max: 6, code: 'MODEL_TEST_RATE_LIMITED' }), sseRoute(async (request, emit) => {
     const only = Array.isArray(request.body?.models) ? request.body.models.map((key) => String(key)).slice(0, 200) : null;
-    await runModelTests(db, { timeoutMs: Math.min(config.providerFetchTimeoutMs + 5_000, 30_000), emit, only });
+    // The same lock the automatic runner holds: two runs against one provider would only double
+    // the cost and could interleave their results.
+    await withTestLock(() => runModelTests(db, { timeoutMs: Math.min(config.providerFetchTimeoutMs + 5_000, 30_000), emit, only }));
   }));
 
   router.get('/conversations/:conversationId', (request, response, next) => {

@@ -109,6 +109,12 @@ export const api = {
     levels: () => request('/tests/levels'),
     report: () => request('/tests/report'),
     levelsFor: (providerId, modelId) => request(`/tests/levels/${encodeURIComponent(providerId)}/${encodeURIComponent(modelId)}`),
+    // Everything the composer needs in one call: every selected model with its proven thinking
+    // levels and whether it takes images or files.
+    capabilities: () => request('/tests/capabilities'),
+    capabilitiesFor: (providerId, modelId) => request(`/tests/capabilities/${encodeURIComponent(providerId)}/${encodeURIComponent(modelId)}`),
+    auto: () => request('/tests/auto'),
+    runAuto: () => request('/tests/auto/run', { method: 'POST' }),
     streamRun: (models, onEvent) => stream('/tests/run/stream', models ? { models } : {}, onEvent)
   },
   settings: {

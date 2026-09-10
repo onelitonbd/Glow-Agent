@@ -77,7 +77,12 @@ test('settings default to off and are validated before they are stored', async (
 
   const defaults = await json(`${base}/settings`);
   assert.equal(defaults.response.status, 200);
-  assert.deepEqual(defaults.payload.data, { titleGeneration: { enabled: false, providerId: null, modelId: null }, systemPrompt: { text: '' } });
+  assert.deepEqual(defaults.payload.data, {
+    titleGeneration: { enabled: false, providerId: null, modelId: null },
+    systemPrompt: { text: '' },
+    // Automatic capability testing is on unless the user turns it off.
+    autoTesting: { enabled: true }
+  });
 
   const missing = await json(`${base}/settings`, { method: 'PUT', body: {} });
   assert.equal(missing.response.status, 400);
