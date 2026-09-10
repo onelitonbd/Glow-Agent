@@ -34,11 +34,12 @@ async function request(path, options = {}) {
   return payload.data;
 }
 
-async function stream(path, body, onEvent) {
+async function stream(path, body, onEvent, { signal } = {}) {
   const response = await fetch(`${API_ROOT}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal
   });
   if (!response.ok) {
     let payload;
@@ -129,10 +130,10 @@ export const api = {
     create: (title) => request('/conversations', { method: 'POST', body: title ? { title } : {} }),
     get: (id) => request(`/conversations/${encodeURIComponent(id)}`),
     respond: (id, values) => request(`/conversations/${encodeURIComponent(id)}/respond`, { method: 'POST', body: values }),
-    streamRespond: (id, values, onEvent) => stream(`/conversations/${encodeURIComponent(id)}/respond/stream`, values, onEvent),
+    streamRespond: (id, values, onEvent, options) => stream(`/conversations/${encodeURIComponent(id)}/respond/stream`, values, onEvent, options),
     deleteMessage: (id, messageId, withQuestion = true) => request(`/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE', body: { withQuestion } }),
     editMessage: (id, messageId, content) => request(`/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}`, { method: 'PUT', body: { content } }),
-    streamRegenerate: (id, messageId, values, onEvent) => stream(`/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/regenerate/stream`, values, onEvent)
+    streamRegenerate: (id, messageId, values, onEvent, options) => stream(`/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/regenerate/stream`, values, onEvent, options)
   },
   plugins: {
     list: () => request('/plugins'),

@@ -219,6 +219,9 @@ function renderTimeline(message) {
     } else if (entry.type === 'confirmation') {
       fragment.append(renderApprovalCard(entry));
       index += 1;
+    } else if (entry.type === 'stopped') {
+      fragment.append(renderStoppedMarker());
+      index += 1;
     } else {
       index += 1;
     }
@@ -231,6 +234,14 @@ function renderStreamStatus(text, tone) {
   const dot = element('span', 'stream-status-dot');
   dot.setAttribute('aria-hidden', 'true');
   row.append(dot, element('span', '', text));
+  return row;
+}
+
+// Persisted on stopped replies so history shows the answer was ended early, on purpose.
+function renderStoppedMarker() {
+  const row = element('div', 'message-stopped');
+  row.setAttribute('role', 'note');
+  row.append(icon('square'), element('span', '', 'Stopped'));
   return row;
 }
 
@@ -712,12 +723,12 @@ async function regenerate(messageId, model = {}) {
   }
   state.conversation = { ...conversation, messages: messages.slice(0, index + 1) };
   renderLog();
-  await runStream((onEvent) => api.conversations.streamRegenerate(conversation.id, questionId, {
+  await runStream((onEvent, signal) => api.conversations.streamRegenerate(conversation.id, questionId, {
     providerId,
     modelId,
     toolIds: state.tools.map((tool) => tool.id),
     ...(state.thinkingLevel ? { thinkingLevel: state.thinkingLevel } : {})
-  }, onEvent));
+  }, onEvent, { signal }));
 }
 
 function renderLog() {
@@ -1326,33 +1337,101 @@ function appendStreamDelta(event, payload) {
 
 const STREAM_EVENTS = new Set(['started', 'status', 'thinking', 'token', 'tool_call', 'tool_result', 'confirmation_required', 'confirmation_resolved']);
 
+// While a reply streams, the send button is red and becomes the Stop button: it aborts the
+// fetch (the server sees the disconnect, keeps the partial answer, and marks it stopped).
+const STOP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 8.5h7v7h-7z"/></svg>';
+
+function setStopState(on) {
+  if (!sendButton.dataset.defaultIcon) sendButton.dataset.defaultIcon = sendButton.innerHTML;
+  sendButton.classList.toggle('is-stop', on);
+  sendButton.setAttribute('aria-label', on ? 'Stop response' : 'Send message');
+  sendButton.title = on ? 'Stop response' : 'Send message';
+  sendButton.innerHTML = on ? STOP_ICON : sendButton.dataset.defaultIcon;
+}
+
 // Every way of getting an answer — a new message, a regenerate, a different model — streams
 // through here, so the live status line and the error recovery behave the same everywhere.
 async function runStream(start) {
   state.busy = true;
-  sendButton.disabled = true;
+  state.streamController = new AbortController();
+  setStopState(true);
   renderLog();
   try {
     const result = await start((eventName, payload) => {
       if (STREAM_EVENTS.has(eventName)) appendStreamDelta(eventName, payload);
-    });
+    }, state.streamController.signal);
     state.conversation = result.conversation;
     await loadWorkspace();
     renderLog();
   } catch (error) {
-    showToast(error.message, 'danger');
-    if (state.conversation) {
-      try { state.conversation = await api.conversations.get(state.conversation.id); renderLog(); } catch { /* Preserve the current UI after an upstream failure. */ }
+    if (error?.name === 'AbortError') {
+      // The user hit Stop: show the marker immediately, then trade the live copy for the
+      // server's persisted partial reply once it lands.
+      markLiveStreamStopped();
+    } else {
+      showToast(error.message, 'danger');
+      if (state.conversation) {
+        try { state.conversation = await api.conversations.get(state.conversation.id); renderLog(); } catch { /* Preserve the current UI after an upstream failure. */ }
+      }
     }
   } finally {
     state.busy = false;
-    sendButton.disabled = false;
+    const stopped = state.streamController?.signal.aborted === true;
+    state.streamController = null;
+    setStopState(false);
     renderLog();
+    if (stopped) await refreshAfterStop();
   }
+}
+
+function stopResponse() {
+  if (!state.streamController || state.streamController.signal.aborted) return;
+  state.streamController.abort();
+  markLiveStreamStopped();
+}
+
+// Draw the stopped marker on the in-flight bubble the very moment of the tap — the server-side
+// copy of the same marker replaces it when the refresh lands.
+function markLiveStreamStopped() {
+  const assistant = state.conversation?.messages?.find((message) => message.id === 'streaming-assistant');
+  if (!assistant) return;
+  assistant.status = '';
+  const timeline = assistant.timeline || (assistant.timeline = []);
+  if (!timeline.some((entry) => entry.type === 'stopped')) timeline.push({ type: 'stopped' });
+  renderLog();
+}
+
+// The server persists the partial answer (with its stopped marker) as soon as it notices the
+// disconnect; poll briefly until it is visible, falling back to the live copy if it never lands.
+async function refreshAfterStop() {
+  if (!state.conversation?.id) return;
+  const hasStoppedMarker = (conversation) => {
+    const last = conversation.messages?.at(-1);
+    return last?.role === 'assistant' && Array.isArray(last.timeline) && last.timeline.some((entry) => entry?.type === 'stopped');
+  };
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 60 : 160));
+    try {
+      const updated = await api.conversations.get(state.conversation.id);
+      if (hasStoppedMarker(updated)) {
+        state.conversation = updated;
+        await loadWorkspace();
+        renderLog();
+        return;
+      }
+    } catch { /* Keep polling a little longer. */ }
+  }
+  markLiveStreamStopped();
 }
 
 composer.addEventListener('submit', (event) => {
   event.preventDefault();
+  if (state.busy) {
+    // While a reply streams only an explicit button tap means "stop" — a stray Enter key must
+    // not surprise-abort the answer.
+    if (event.submitter === sendButton) stopResponse();
+    return;
+  }
   const message = messageInput.value.trim();
   // A file on its own is a complete question — "what is this?" is often just the picture.
   if (!message && state.attachments.length === 0) return;
@@ -1371,7 +1450,7 @@ composer.addEventListener('submit', (event) => {
   state.attachments = [];
   renderAttachTray();
   syncAttachTrigger();
-  runStream(async (onEvent) => {
+  runStream(async (onEvent, signal) => {
     const conversation = await ensureConversation();
     const pendingUserMessage = {
       id: `pending-${Date.now()}`,
@@ -1394,7 +1473,7 @@ composer.addEventListener('submit', (event) => {
       toolIds: state.tools.map((tool) => tool.id),
       ...(state.thinkingLevel ? { thinkingLevel: state.thinkingLevel } : {}),
       ...(attachments.length ? { attachments } : {})
-    }, onEvent);
+    }, onEvent, { signal });
   });
 });
 
@@ -1417,6 +1496,14 @@ document.getElementById('openHistory').addEventListener('click', () => { renderC
 document.getElementById('closeHistory').addEventListener('click', () => historyDrawer.close());
 document.getElementById('newConversation').addEventListener('click', startNewConversation);
 document.getElementById('copyChatLink').addEventListener('click', copyChatLink);
+// In a real browser this click is followed by the form's own submit (guarded there too; the
+// second abort is a no-op). A direct listener keeps the button dependable everywhere.
+sendButton.addEventListener('click', (event) => {
+  if (state.busy) {
+    event.preventDefault();
+    stopResponse();
+  }
+});
 
 // Back/forward between chats: the URL is the source of truth, so follow where it points.
 window.addEventListener?.('popstate', async () => {

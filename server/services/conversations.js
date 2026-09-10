@@ -173,13 +173,21 @@ function compactCommand(command) {
 // approval card. Only the live stream can collect a decision, so on the plain JSON endpoint a
 // gated call is refused with a clear tool result instead of hanging the request. The model is
 // never told the approval id and can never settle it — only the /approvals route can.
-async function executeWithApproval(context, db, call, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs }) {
+async function executeWithApproval(context, db, call, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, stopSignal = null, isStopped = null } = {}) {
   const toolId = typeof call.function?.name === 'string' ? call.function.name : '';
   const toolArgs = [
     call,
     new Set(context.tools.map((tool) => tool.id)),
-    { getSkill: skillResolver(db), db, rootDirectory, workspaceDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp, developerTools: context.developerTools }
+    { getSkill: skillResolver(db), db, rootDirectory, workspaceDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp, developerTools: context.developerTools, stopSignal }
   ];
+  // Never start a tool the user has already told us to abandon.
+  if (isStopped?.()) {
+    return {
+      toolId,
+      result: { error: 'The user stopped the response before this tool ran.' },
+      summary: 'Tool not run — response stopped'
+    };
+  }
   if (!needsApproval(context, toolId)) return executeToolCall(...toolArgs);
   if (!emit) {
     return {
@@ -622,8 +630,8 @@ async function generateConversationTitle(db, context, assistantContent, { emit, 
   }
 }
 
-async function finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline = null, { emit, fetchTimeoutMs } = {}) {
-  if (!assistantContent) {
+async function finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline = null, { emit, fetchTimeoutMs, allowEmpty = false } = {}) {
+  if (!assistantContent && !allowEmpty) {
     throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider did not return a final chat response after tool use.', { expose: true });
   }
   const assistantMessage = persistMessage(db, {
@@ -698,6 +706,27 @@ function failureError(code, message) {
   return new AppError(502, code, message, { expose: true });
 }
 
+// A user stop: the chat stream routes flag this when the client disconnects (tapping Stop closes
+// the fetch). The flag is checked between tokens, rounds, and tool calls, and the signal
+// immediately aborts any upstream provider fetch or shell child that is mid-flight.
+export function createStreamStop() {
+  const controller = new AbortController();
+  return {
+    stopped: false,
+    signal: controller.signal,
+    stop() {
+      if (!this.stopped) {
+        this.stopped = true;
+        controller.abort();
+      }
+    }
+  };
+}
+
+// A stopped round keeps the text already produced and reports no tool calls: half-collected
+// tool call definitions arriving mid-stop must never be executed.
+const stoppedResult = (content, reasoning) => ({ content, reasoning, toolCalls: [], stopped: true });
+
 // Throws an AppError while carrying any content produced so far so a mid-stream interruption
 // can be resumed instead of being thrown away and treated as a brand-new request.
 function streamFailure(shift, code, message) {
@@ -709,13 +738,15 @@ function streamFailure(shift, code, message) {
 // A provider round is allowed to be retried. On a retry after a partial stream, the partial
 // assistant text is pushed back into the conversation so the model continues from where it
 // stopped instead of restarting. Incomplete tool calls are not resumed (they are regenerated).
-async function streamProviderRoundWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, maxRetries, reasoningEffort = null }) {
+async function streamProviderRoundWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, maxRetries, reasoningEffort = null, stop = null }) {
   let attempt = 0;
   while (attempt <= maxRetries) {
     emit('status', { tone: 'info', text: attempt === 0 ? 'Waiting for the model…' : `Waiting for the model — attempt ${attempt + 1}…` });
     try {
-      return await streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, reasoningEffort });
+      return await streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, reasoningEffort, stop });
     } catch (error) {
+      // Never queue a retry behind a user stop, even when it landed mid-failure.
+      if (stop?.stopped) return stoppedResult(error.partial?.content || '', error.partial?.reasoning || '');
       if (attempt >= maxRetries) throw error;
       const partial = error.partial;
       if (partial?.content) {
@@ -724,15 +755,18 @@ async function streamProviderRoundWithRetry({ provider, credentials, selectedMod
       }
       emit('status', { tone: 'warn', text: `The model failed (${shortStatus(error)}). Retrying ${attempt + 1} of ${maxRetries}…` });
       await new Promise((resolve) => setTimeout(resolve, Math.min(400 * (attempt + 1), 2_500)));
+      if (stop?.stopped) return stoppedResult('', '');
       attempt += 1;
     }
   }
   throw failureError('PROVIDER_RETRY_EXHAUSTED', 'The provider could not be reached after repeated attempts.');
 }
 
-async function streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, reasoningEffort = null }) {
+async function streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, reasoningEffort = null, stop = null }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  // Stop must cut even a silent provider fetch, not just the token loop.
+  const fetchSignal = stop ? AbortSignal.any([controller.signal, stop.signal]) : controller.signal;
   let content = '';
   let reasoning = '';
   const toolCalls = [];
@@ -744,7 +778,7 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
       response = await providerFetch(upstreamUrl(provider.baseUrl, '/chat/completions'), credentials, {
         method: 'POST',
         timeoutMs,
-        signal: controller.signal,
+        signal: fetchSignal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModelId,
@@ -755,21 +789,26 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
         })
       });
     } catch (error) {
-      if (controller.signal.aborted) throw timedOut();
+      if (stop?.stopped) return stoppedResult(content, reasoning);
+      if (fetchSignal.aborted) throw timedOut();
       throw streamFailure(shift, 'PROVIDER_UNAVAILABLE', error.message);
     }
     if (!response?.ok) {
       const status = response?.status ? ` (HTTP ${response.status})` : '';
+      if (stop?.stopped) return stoppedResult(content, reasoning);
       throw streamFailure(shift, 'PROVIDER_RESPONSE_ERROR', `The provider could not complete this request${status}.`);
     }
+    if (stop?.stopped) return stoppedResult(content, reasoning);
     if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream')) {
       let payload;
       try {
         payload = await response.json();
       } catch {
-        if (controller.signal.aborted) throw timedOut();
+        if (stop?.stopped) return stoppedResult(content, reasoning);
+        if (fetchSignal.aborted) throw timedOut();
         throw streamFailure(shift, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.');
       }
+      if (stop?.stopped) return stoppedResult(content, reasoning);
       const message = payload?.choices?.[0]?.message;
       const finalContent = normalizeAssistantContent(message?.content);
       if (finalContent) {
@@ -781,6 +820,7 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
     const emittedToolCalls = new Set();
     try {
       for await (const data of upstreamSsePayloads(response)) {
+        if (stop?.stopped) break;
         if (data === '[DONE]') break;
         let payload;
         try {
@@ -808,9 +848,11 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
         });
       }
     } catch (error) {
-      if (controller.signal.aborted) throw timedOut();
+      if (stop?.stopped) return stoppedResult(content, reasoning);
+      if (fetchSignal.aborted) throw timedOut();
       throw streamFailure(shift, 'PROVIDER_STREAM_INTERRUPTED', 'The provider streaming response was interrupted.');
     }
+    if (stop?.stopped) return stoppedResult(content, reasoning);
     return { content, reasoning, toolCalls: toolCalls.filter((call) => call.function.name) };
   } finally {
     clearTimeout(timeout);
@@ -863,7 +905,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
 
 // Shared by "answer my new message" and "answer this stored message again": everything from the
 // live status line through the tool rounds to persisting the reply.
-async function streamConversation(db, context, timeoutMs, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
+async function streamConversation(db, context, timeoutMs, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20, stop = null } = {}) {
   const { provider, credentials } = providerCredentials(db, context.providerId);
   for (const server of context.mcp?.servers || []) {
     emit('status', { tone: 'info', text: `MCP connected — ${server.pluginName || server.name}: ${server.toolCount} tools.` });
@@ -885,6 +927,7 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
     else if (event === 'tool_result') timeline.push({ type: 'tool_result', toolId: data.toolId, summary: data.summary });
   };
   try {
+    let wasStopped = false;
     for (let round = 0; round < maxToolRounds; round += 1) {
       const result = await streamProviderRoundWithRetry({
         provider,
@@ -895,21 +938,33 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
         timeoutMs,
         emit: timelineEmit,
         maxRetries: maxProviderRetries,
-        reasoningEffort: context.reasoningEffort
+        reasoningEffort: context.reasoningEffort,
+        stop
       });
+      if (result.stopped || stop?.stopped) { wasStopped = true; break; }
       if (result.toolCalls.length === 0) break;
       context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
       for (const call of result.toolCalls) {
-        const execution = await executeWithApproval(context, db, call, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs });
+        if (stop?.stopped) { wasStopped = true; break; }
+        const execution = await executeWithApproval(context, db, call, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, stopSignal: stop?.signal, isStopped: () => stop?.stopped === true });
         toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
         timelineEmit('tool_result', { toolId: execution.toolId, summary: execution.summary });
         context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: serializeToolResult(execution.result) });
+        if (stop?.stopped) { wasStopped = true; break; }
       }
+      if (wasStopped) break;
     }
     // Derive the persisted content/reasoning from the emitted timeline so a resumed stream keeps
     // the partial text that was already shown live, rather than only the last retry's segment.
     const assistantContent = timeline.filter((entry) => entry.type === 'content').map((entry) => entry.text).join('');
     const reasoning = timeline.filter((entry) => entry.type === 'thinking').map((entry) => entry.text).join('');
+    if (wasStopped) {
+      // A stopped reply saves exactly what the user saw, marked, instead of pretending it finished.
+      timeline.push({ type: 'stopped' });
+      const result = await finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline, { emit, fetchTimeoutMs, allowEmpty: true });
+      emit('aborted', result);
+      return result;
+    }
     const result = await finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline, { emit, fetchTimeoutMs });
     emit('completed', result);
     return result;

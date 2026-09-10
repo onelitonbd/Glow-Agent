@@ -267,7 +267,7 @@ function shellEnvironment() {
 // settings gate remains the real control.
 const DATABASE_COMMAND_PATTERN = /\.sqlite3?/iu;
 
-export async function runShell(rootDirectory, command, { timeoutMs } = {}) {
+export async function runShell(rootDirectory, command, { timeoutMs, killSignal = null } = {}) {
   const text = typeof command === 'string' ? command.trim() : '';
   if (!text) return { error: 'A shell command is required.' };
   if (text.length > SHELL_COMMAND_LIMIT) return { error: `The command is too long (${text.length} characters).` };
@@ -313,25 +313,41 @@ export async function runShell(rootDirectory, command, { timeoutMs } = {}) {
         stderrChunks.push(chunk.subarray(0, chunk.length - (stderrBytes - SHELL_OUTPUT_LIMIT)));
       } else stderrChunks.push(chunk);
     });
-    const timer = setTimeout(() => {
-      timedOut = true;
+    const killChild = () => {
       try {
         process.kill(-child.pid, 'SIGKILL');
       } catch {
         try { child.kill('SIGKILL'); } catch { /* already gone */ }
       }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killChild();
     }, timeout);
+    // A user stop kills the child the same way a timeout would — the whole process group, so a
+    // pipeline does not linger past the stop tap.
+    let killedByStop = false;
+    const onStop = () => {
+      killedByStop = true;
+      clearTimeout(timer);
+      killChild();
+    };
+    if (killSignal && !killSignal.aborted) killSignal.addEventListener('abort', onStop, { once: true });
+    else if (killSignal) onStop();
     child.on('error', () => {
       clearTimeout(timer);
+      if (killSignal) killSignal.removeEventListener('abort', onStop);
       resolvePromise({ error: 'The shell command could not be started.' });
     });
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      if (killSignal) killSignal.removeEventListener('abort', onStop);
       resolvePromise({
         command: text,
         exitCode: typeof code === 'number' ? code : null,
         signal: signal || null,
         timedOut,
+        killedByStop,
         durationMs: Date.now() - startedAt,
         stdout: Buffer.concat(stdoutChunks).toString('utf8'),
         stderr: Buffer.concat(stderrChunks).toString('utf8'),

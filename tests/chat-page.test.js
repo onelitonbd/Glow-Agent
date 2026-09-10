@@ -33,11 +33,14 @@ function sseResponse(events) {
 // Overridable per test so a run can be shown as in flight, then finished.
 let autoStatus = { enabled: true, started: true, running: false, busy: false, current: null, queued: 0, untested: [], lastFinishedAt: null, lastError: null, completedCount: 1, steps: 9 };
 
-async function loadChat({ pathname = '/' } = {}) {
+async function loadChat({ pathname = '/', holdStream = false } = {}) {
   const { document, byId } = createDom(PAGE_HTML);
   const requests = [];
   const copied = [];
   const historyCalls = [];
+  // Stop-button flow: the held stream never finishes; the signal the page passes lets it die.
+  let lastStreamSignal = null;
+  let serverPersistedStop = false;
   const windowRef = {
     confirm: () => true,
     location: { origin: 'http://localhost', pathname },
@@ -99,7 +102,14 @@ async function loadChat({ pathname = '/' } = {}) {
     const messagePath = path.match(/^\/api\/v1\/conversations\/conv-1\/messages\/([\w-]+)$/u);
     const regeneratePath = path.match(/^\/api\/v1\/conversations\/conv-1\/messages\/([\w-]+)\/regenerate\/stream$/u);
     if (method === 'GET' && path === '/api/v1/conversations') return { status: 200, ok: true, json: async () => ({ data: [{ id: 'conv-1', title: 'Haiku chat', messageCount: 2 }] }) };
-    if (method === 'GET' && path === '/api/v1/conversations/conv-1') return { status: 200, ok: true, json: async () => ({ data: clone() }) };
+    if (method === 'GET' && path === '/api/v1/conversations/conv-1') {
+      const copy = clone();
+      // What the real server does on a disconnect: save the partial reply with a stopped marker.
+      if (serverPersistedStop) {
+        copy.messages.push({ id: 'msg-stopped', role: 'assistant', content: 'Partial answer.', providerId: 'prov-1', modelId: 'alpha', reasoning: '', toolEvents: [], timeline: [{ type: 'content', text: 'Partial answer.' }, { type: 'stopped' }], createdAt: '2026-09-10T10:00:03.000Z' });
+      }
+      return { status: 200, ok: true, json: async () => ({ data: copy }) };
+    }
     // First sends go through this create step; reusing conv-1 keeps the respond/stream stub aligned.
     if (method === 'POST' && path === '/api/v1/conversations') {
       return { status: 201, ok: true, json: async () => ({ data: { id: 'conv-1', title: 'New conversation', createdAt: '2026-09-10T10:00:00.000Z', updatedAt: '2026-09-10T10:00:00.000Z', messageCount: 0 } }) };
@@ -204,6 +214,36 @@ async function loadChat({ pathname = '/' } = {}) {
       return { status: 200, ok: true, json: async () => ({ data: clone() }) };
     }
     if (method === 'POST' && path === '/api/v1/conversations/conv-1/respond/stream') {
+      lastStreamSignal = options.signal || null;
+      if (holdStream) {
+        // First block arrives, then silence until the page aborts the fetch (the Stop tap).
+        const startedBytes = new TextEncoder().encode(`event: started\ndata: ${JSON.stringify({ conversationId: 'conv-1' })}\n\n`);
+        let emittedStart = false;
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            getReader: () => ({
+              read: () => {
+                if (!emittedStart) {
+                  emittedStart = true;
+                  return Promise.resolve({ done: false, value: startedBytes });
+                }
+                return new Promise((_resolve, reject) => {
+                  const fail = () => {
+                    serverPersistedStop = true;
+                    reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+                  };
+                  // The Stop tap can beat this read to it: an already-dead signal never fires again.
+                  if (options.signal?.aborted) { fail(); return; }
+                  options.signal?.addEventListener('abort', fail, { once: true });
+                });
+              },
+              releaseLock() {}
+            })
+          }
+        };
+      }
       // Mirror the server: the question is stored with the attachments that travelled with it.
       conversation.messages.push({
         id: `msg-user-${conversation.messages.length}`,
@@ -236,7 +276,7 @@ async function loadChat({ pathname = '/' } = {}) {
 
   await import(`../client/assets/js/chat.js?load=${Date.now()}-${Math.random()}`);
   await waitFor(() => byId.get('conversationList').children.length > 0);
-  return { byId, requests, copied, conversation, historyCalls, windowRef, document };
+  return { byId, requests, copied, conversation, historyCalls, windowRef, document, streamSignal: () => lastStreamSignal };
 }
 
 async function waitFor(condition, ms = 2_000) {
@@ -571,4 +611,49 @@ test('the header link button copies the saved chat’s absolute URL', async () =
   byId.get('copyChatLink').dispatchEvent('click');
   await waitFor(() => copied.length === 1);
   assert.deepEqual(copied, ['http://localhost/chat/conv-1']);
+});
+
+// ---- Stop button: the send button turns red and ends the reply mid-stream --------------------
+
+async function sendHeldMessage(byId) {
+  await waitFor(() => byId.get('openModelPicker').classList.contains('selected'));
+  byId.get('messageInput').value = 'Write something long.';
+  byId.get('composer').dispatchEvent('submit');
+  await waitFor(() => byId.get('sendMessage').classList.contains('is-stop'));
+}
+
+test('while a reply streams, the send button becomes a red Stop button', async () => {
+  const { byId } = await loadChat({ holdStream: true });
+  await openConversation(byId);
+  await sendHeldMessage(byId);
+  const send = byId.get('sendMessage');
+  assert.equal(send.classList.contains('is-stop'), true);
+  assert.equal(send.getAttribute('aria-label'), 'Stop response');
+  assert.equal(send.title, 'Stop response');
+  assert.equal(send.disabled, false, 'the Stop button must stay tappable during the reply');
+});
+
+test('tapping Stop aborts the request, restores the button, and shows the stopped marker', async () => {
+  const { byId, streamSignal } = await loadChat({ holdStream: true });
+  await openConversation(byId);
+  await sendHeldMessage(byId);
+  assert.equal(streamSignal().aborted, false);
+
+  byId.get('sendMessage').dispatchEvent('click');
+  await waitFor(() => streamSignal().aborted === true);
+  await waitFor(() => byId.get('sendMessage').getAttribute('aria-label') === 'Send message');
+  assert.equal(byId.get('sendMessage').classList.contains('is-stop'), false, 'the button turns back into Send after stopping');
+  await waitFor(() => byId.get('chatLog').querySelectorAll('.message-stopped').length > 0);
+  assert.match(byId.get('chatLog').querySelector('.message-stopped').textContent, /Stopped/u);
+  // The server-saved partial message settled into history: a regular assistant bubble exists.
+  await waitFor(() => byId.get('chatLog').textContent.includes('Partial answer.'));
+});
+
+test('a stray Enter submit while a reply streams does not stop it', async () => {
+  const { byId, streamSignal } = await loadChat({ holdStream: true });
+  await openConversation(byId);
+  await sendHeldMessage(byId);
+  byId.get('composer').dispatchEvent('submit');
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(streamSignal().aborted, false, 'only the button itself stops the reply');
 });

@@ -388,6 +388,7 @@ function summary(tool, result) {
   if (tool.id === 'run_shell') {
     const firstLine = String(result.command || '').split('\n')[0];
     const compact = firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+    if (result.killedByStop) return `Shell command killed when the response was stopped: ${compact}`;
     if (result.timedOut) return `Shell command timed out and was killed: ${compact}`;
     return `Shell command exited ${result.exitCode}: ${compact}`;
   }
@@ -397,7 +398,7 @@ function summary(tool, result) {
   return tool.name;
 }
 
-export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, workspaceDirectory, plugin, mcp, developerTools = null } = {}) {
+export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, workspaceDirectory, plugin, mcp, developerTools = null, stopSignal = null } = {}) {
   // File tools live in the assistant's own workspace folder: the app directory itself — code,
   // skills, settings, the database — is unreachable through them. (Caller-side shortcuts that
   // only pass rootDirectory simply confine the tools to that root instead.)
@@ -461,7 +462,7 @@ export async function executeToolCall(call, allowedToolIds, { getSkill, db, root
   else if (id === 'delete_folder') result = deleteFolder(workspaceRoot, argumentsObject.path, { recursive: argumentsObject.recursive === true });
   else if (id === 'rename_file') result = renameFile(workspaceRoot, argumentsObject.from, argumentsObject.to);
   else if (id === 'rename_folder') result = renameFolder(workspaceRoot, argumentsObject.from, argumentsObject.to);
-  else if (id === 'run_shell') result = await runShell(rootDirectory, argumentsObject.command, { timeoutMs: argumentsObject.timeoutMs });
+  else if (id === 'run_shell') result = await runShell(rootDirectory, argumentsObject.command, { timeoutMs: argumentsObject.timeoutMs, killSignal: stopSignal });
   else if (id === 'sql_query') result = sqlQuery(db, argumentsObject.sql);
   else if (id === 'web_search') result = await webSearch(argumentsObject.query, argumentsObject.maxResults);
   else if (id === 'fetch_url') result = await fetchUrl(argumentsObject.url, argumentsObject.maxChars);
