@@ -1,6 +1,7 @@
 import { validation } from '../lib/errors.js';
 import { fetchUrl, listFiles, readFile, sqlQuery, webSearch, writeFile } from './workspace-tools.js';
 import { executeGithubTool } from './github-tools.js';
+import { MCP_TOOL_PREFIX, executeMcpTool } from './mcp-tools.js';
 
 const toolCatalog = Object.freeze({
   calculator: Object.freeze({
@@ -225,8 +226,13 @@ function summary(tool, result) {
   return tool.name;
 }
 
-export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, plugin } = {}) {
+export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, plugin, mcp } = {}) {
   const id = typeof call?.function?.name === 'string' ? call.function.name : '';
+  // MCP tools come from the connected MCP server; the `mcp` context carries the live session
+  // and the name map built from that server's tools/list response.
+  if (mcp && id.startsWith(MCP_TOOL_PREFIX) && allowedToolIds.has(id)) {
+    return executeMcpTool(call, mcp);
+  }
   if (plugin && id.startsWith('github_') && allowedToolIds.has(id)) {
     return executeGithubTool(call, { db, pluginId: plugin.pluginId, workspaceDirectory: plugin.workspaceDirectory });
   }

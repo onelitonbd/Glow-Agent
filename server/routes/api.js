@@ -15,23 +15,25 @@ import { createSkill, deleteSkill, getSkill, listSkills, updateSkill } from '../
 import { createConversation, getConversation, listConversations, respondToConversation, respondToConversationStream } from '../services/conversations.js';
 import { listTools } from '../services/tools.js';
 import {
-  approveGithubPush,
+  approvePluginWrites,
   cloneGithubRepo,
   commitGithub,
-  connectGithub,
+  configurePlugin,
+  connectPlugin,
   createPlugin,
   deletePlugin,
   getPlugin,
-  githubListRepos,
-  githubMe,
+  inspectPlugin,
   listPlugins,
+  pluginAccount,
+  pluginRepositories,
   pushGithub,
   repoDeleteFile,
   repoListFiles,
   repoReadFile,
   repoRenameFile,
   repoWriteFile,
-  selectGithubRepo,
+  selectPluginRepo,
   updatePlugin
 } from '../services/plugins.js';
 
@@ -161,33 +163,45 @@ export function createApiRouter({ db, config }) {
       try { deletePlugin(db, request.params.pluginId); response.status(204).end(); } catch (error) { next(error); }
     });
 
-  // ---- GitHub plugin operations ----
-  router.post('/plugins/:pluginId/github/connect', rateLimit({ windowMs: 60_000, max: 20, code: 'GITHUB_CONNECT_RATE_LIMITED' }), asyncRoute(async (request, response) => {
-    success(response, await connectGithub(db, request.params.pluginId, request.body ?? {}));
+  // ---- MCP server definition + connection ----
+  // Saves the server definition (preset, transport, URL/headers or command/args/env, toolsets).
+  router.post('/plugins/:pluginId/config', (request, response, next) => {
+    try { success(response, configurePlugin(db, request.params.pluginId, request.body ?? {})); } catch (error) { next(error); }
+  });
+  // Runs the MCP handshake and tools/list, persists the result, and resolves the GitHub account.
+  router.post('/plugins/:pluginId/connect', rateLimit({ windowMs: 60_000, max: 20, code: 'MCP_CONNECT_RATE_LIMITED' }), asyncRoute(async (request, response) => {
+    success(response, await connectPlugin(db, request.params.pluginId, request.body && Object.keys(request.body).length ? request.body : null));
   }));
+  // Live handshake + tool discovery without changing the stored config.
+  router.post('/plugins/:pluginId/inspect', asyncRoute(async (request, response) => {
+    success(response, await inspectPlugin(db, request.params.pluginId));
+  }));
+  // Approves the next batch of mutating MCP tool calls (the "ask before writing" gate).
+  router.post('/plugins/:pluginId/writes/approve', asyncRoute(async (request, response) => {
+    success(response, approvePluginWrites(db, request.params.pluginId));
+  }));
+
+  // ---- GitHub preset (account + repositories, via the server's own MCP tools) ----
   router.post('/plugins/:pluginId/github/me', asyncRoute(async (request, response) => {
-    success(response, await githubMe(db, request.params.pluginId));
+    success(response, await pluginAccount(db, request.params.pluginId));
   }));
   router.post('/plugins/:pluginId/github/repos', asyncRoute(async (request, response) => {
-    success(response, await githubListRepos(db, request.params.pluginId));
+    success(response, await pluginRepositories(db, request.params.pluginId, { query: request.body?.query }));
   }));
   router.post('/plugins/:pluginId/github/select', asyncRoute(async (request, response) => {
-    success(response, await selectGithubRepo(db, request.params.pluginId, request.body ?? {}));
+    success(response, selectPluginRepo(db, request.params.pluginId, request.body ?? {}));
   }));
+
+  // ---- Optional local clone of the selected repository ----
   router.post('/plugins/:pluginId/github/clone', asyncRoute(async (request, response) => {
     success(response, await cloneGithubRepo(db, request.params.pluginId, config.workspaceDirectory));
   }));
   router.post('/plugins/:pluginId/github/commit', asyncRoute(async (request, response) => {
     success(response, await commitGithub(db, request.params.pluginId, config.workspaceDirectory, request.body ?? {}));
   }));
-  router.post('/plugins/:pluginId/github/push/approve', asyncRoute(async (request, response) => {
-    success(response, approveGithubPush(db, request.params.pluginId));
-  }));
   router.post('/plugins/:pluginId/github/push', asyncRoute(async (request, response) => {
     success(response, await pushGithub(db, request.params.pluginId, config.workspaceDirectory));
   }));
-
-  // ---- GitHub plugin repository files (used by the AI and the plugins page) ----
   router.post('/plugins/:pluginId/repo/list', asyncRoute(async (request, response) => {
     success(response, repoListFiles(db, request.params.pluginId, config.workspaceDirectory, request.body?.path ?? ''));
   }));

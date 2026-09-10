@@ -117,12 +117,14 @@ export const api = {
     create: (values) => request('/plugins', { method: 'POST', body: values }),
     update: (id, values) => request(`/plugins/${encodeURIComponent(id)}`, { method: 'PUT', body: values }),
     remove: (id) => request(`/plugins/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-    connectGithub: (id, values) => request(`/plugins/${encodeURIComponent(id)}/github/connect`, { method: 'POST', body: values }),
+    configure: (id, values) => request(`/plugins/${encodeURIComponent(id)}/config`, { method: 'POST', body: values }),
+    connect: (id, values = {}) => request(`/plugins/${encodeURIComponent(id)}/connect`, { method: 'POST', body: values }),
+    inspect: (id) => request(`/plugins/${encodeURIComponent(id)}/inspect`, { method: 'POST' }),
+    approveWrites: (id) => request(`/plugins/${encodeURIComponent(id)}/writes/approve`, { method: 'POST' }),
     githubMe: (id) => request(`/plugins/${encodeURIComponent(id)}/github/me`, { method: 'POST' }),
-    githubRepos: (id) => request(`/plugins/${encodeURIComponent(id)}/github/repos`, { method: 'POST' }),
+    githubRepos: (id, query = '') => request(`/plugins/${encodeURIComponent(id)}/github/repos`, { method: 'POST', body: { query } }),
     selectRepo: (id, values) => request(`/plugins/${encodeURIComponent(id)}/github/select`, { method: 'POST', body: values }),
     clone: (id) => request(`/plugins/${encodeURIComponent(id)}/github/clone`, { method: 'POST' }),
-    repoList: (id, path = '') => request(`/plugins/${encodeURIComponent(id)}/repo/list`, { method: 'POST', body: { path } }),
-    approvePush: (id) => request(`/plugins/${encodeURIComponent(id)}/github/push/approve`, { method: 'POST' })
+    repoList: (id, path = '') => request(`/plugins/${encodeURIComponent(id)}/repo/list`, { method: 'POST', body: { path } })
   }
 };

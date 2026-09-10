@@ -319,6 +319,22 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .switch[aria-checked="true"] { border-color: rgba(198,255,107,.42); background: var(--accent); }
 .switch[aria-checked="true"]::after { transform: translateX(16px); background: var(--accent-ink); }
 .switch[aria-disabled="true"] { opacity: .5; }
+
+/* MCP plugin surfaces: server badge, discovered tool list, and inline actions */
+.plugin-status svg { width: 13px; height: 13px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.plugin-status.warn { color: #e8b34b; }
+.plugin-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.plugin-badge { flex: 0 0 auto; padding: 2px 7px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); font: 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.link-button { padding: 0; border: 0; background: none; color: var(--accent); font: 11px var(--mono); text-decoration: underline; cursor: pointer; }
+.check-row { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.check-row input { margin-top: 3px; }
+.tool-grid { display: grid; gap: 5px; max-height: 240px; margin-top: 8px; overflow: auto; }
+.tool-chip { display: grid; gap: 3px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+.tool-chip strong { color: var(--text-soft); font: 11.5px var(--mono); }
+.tool-chip-desc { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.tool-chip-flag { justify-self: start; padding: 1px 6px; border-radius: 99px; background: var(--danger-wash); color: var(--danger); font: 9px var(--mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; }
+.tool-chip.write { border-color: rgba(255,107,107,.28); }
 .repo-browser { display: grid; gap: 3px; max-height: 168px; padding: 7px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
 .repo-file { display: flex; min-width: 0; align-items: center; gap: 7px; padding: 5px 7px; border-radius: 7px; color: var(--muted); font: 11.5px var(--mono); text-align: left; }
 .repo-file:hover { background: var(--surface-raised); color: var(--text-soft); }

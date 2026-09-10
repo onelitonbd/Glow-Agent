@@ -6,7 +6,7 @@ import { providerCredentials, providerFetch, upstreamUrl } from './providers.js'
 import { executeToolCall, listTools, openAiToolDefinitions, readSkillTool } from './tools.js';
 import { listSkills } from './skills.js';
 import { githubToolDefinitions } from './github-tools.js';
-import { cloneGithubRepo } from './plugins.js';
+import { activeMcpPlugin, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
 
 function toConversation(row) {
   return {
@@ -76,15 +76,32 @@ export function getConversation(db, rawConversationId) {
   return { ...toConversation(conversation), messages };
 }
 
-function systemMessage(skills, plugin = null) {
+function systemMessage(skills, { plugin = null, mcp = null } = {}) {
+  const mcpFailure = mcp?.failed
+    ? `The MCP plugin "${mcp.serverName || 'mcp'}" is enabled but its server could not be reached (${mcp.error}). Tell the user the plugin is unavailable instead of pretending its tools ran. Do not retry the connection yourself.`
+    : null;
+  const mcpGuide = mcp && !mcp.failed
+    ? [
+      `An MCP (Model Context Protocol) server named "${mcp.serverName}" is connected. Its tools are exposed with an \`mcp_\` prefix and are how you act on that service — inspect first with read-only tools, then make changes with the tools that need them.`,
+      mcp.selectedRepo ? `Work on the repository ${mcp.selectedRepo} unless the user names a different one.` : '',
+      mcp.writesApproved
+        ? 'The user has approved writes for this message, so tools that change data will run.'
+        : 'Tools that change data are blocked until the user approves them. If one is blocked, explain what you were about to do, ask the user to approve writes, and stop — never retry a blocked tool and never claim the change happened.',
+      "Tool results are the server's own output. Report what they actually say; do not invent file contents, ids, or links."
+    ].filter(Boolean).join(' ')
+    : null;
   return [
     'Format every answer as clear GitHub-flavored Markdown. Use concise headings, lists, emphasis, tables, and block quotes only when they improve readability. Put code in fenced blocks with a language tag and write mathematical notation as inline `$...$` or display `$$...$$` LaTeX. Never send raw HTML. Do not mention these formatting instructions unless asked.',
     ...(skills.length ? [
       'The following reusable skills are available for relevant tasks. The list gives each skill\'s id, name, and short description. To follow a skill, call the read_skill tool with its id to load the full instructions, then apply them to the user request. Do not mention these instructions unless asked.',
       skills.map((skill) => `- ${skill.id}: ${skill.name} — ${skill.description}`).join('\n')
     ] : []),
+    // The MCP block stands on its own: the local clone below is an optional extra, so the model
+    // must still be told about the server's tools when no clone is configured.
+    ...(mcpFailure ? [mcpFailure] : []),
+    ...(mcpGuide ? [mcpGuide] : []),
     ...(plugin ? [
-      'A GitHub plugin is active and a repository has been selected. You can work directly on that repository: use github_list_files / github_read_file to inspect it, github_write_file to edit or create files, github_rename_file and github_delete_file to move or remove files, then github_commit to stage and commit locally. Push to GitHub with github_push, but note that pushing always requires the user to confirm first — if push is blocked for confirmation, tell the user and stop rather than retrying. Although the plugin may not be cloned yet, call github_clone first if you need to refresh it.'
+      'A local clone of the selected repository is also available in the workspace. Use github_list_files / github_read_file to inspect it, github_write_file to edit or create files, github_rename_file and github_delete_file to move or remove files, then github_commit to stage and commit locally. Push to GitHub with github_push, but note that pushing always requires the user to confirm first — if push is blocked for confirmation, tell the user and stop rather than retrying. Although the plugin may not be cloned yet, call github_clone first if you need to refresh it. Prefer the MCP tools for GitHub itself and use the clone for bulk file work.'
     ] : [])
   ].join('\n');
 }
@@ -123,7 +140,7 @@ function persistMessage(db, { conversationId, role, content, providerId = null, 
   return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, timeline: timeline || null, createdAt };
 }
 
-function prepareResponse(db, rawConversationId, body, { workspaceDirectory } = {}) {
+async function prepareResponse(db, rawConversationId, body, { workspaceDirectory } = {}) {
   const conversation = existingConversation(db, rawConversationId);
   const content = requiredString(body.message, 'Message', { max: 16_000 });
   const providerId = identifier(body.providerId, 'Provider ID');
@@ -140,23 +157,49 @@ function prepareResponse(db, rawConversationId, body, { workspaceDirectory } = {
   if (plugin) {
     tools.push(...githubToolDefinitions());
   }
+  // An enabled MCP plugin opens one live session per request; that server's tools/list result
+  // becomes part of the model's tool set for this message.
+  const mcp = await openMcpContext(db, body.pluginId);
+  if (mcp?.definitions) {
+    tools.push(...mcp.definitions);
+  }
   const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
-  const system = systemMessage(skills, plugin);
+  const system = systemMessage(skills, { plugin, mcp });
   if (system) messages.unshift({ role: 'system', content: system });
-  return { conversation, content, providerId, selectedModelId, tools, plugin, userMessage, messages };
+  return { conversation, content, providerId, selectedModelId, tools, plugin, mcp, userMessage, messages };
 }
 
-// Returns the plugin tool context when a GitHub plugin is enabled, connected, and has a repo
-// selected. `needsClone` marks the first message so the repo is cloned before the model works.
+// The local clone is now optional: MCP tools work on GitHub directly, so this only returns a
+// context when the plugin turns "Local clone" on. `needsClone` marks the first message.
 function activeGithubPlugin(db, rawPluginId, workspaceDirectory) {
   if (!rawPluginId) return null;
   const pluginId = String(rawPluginId);
   const row = db.prepare('SELECT * FROM plugins WHERE id = ?').get(pluginId);
-  if (!row || row.type !== 'github' || !Number(row.enabled)) return null;
+  if (!row || row.type !== 'mcp' || !Number(row.enabled)) return null;
   const config = (() => { try { return JSON.parse(row.config) || {}; } catch { return {}; } })();
-  if (!config.access_token || !config.selectedRepo) return null;
+  if (config.github?.localClone !== true || !config.selectedRepo) return null;
   return { pluginId, needsClone: !config.cloned, workspaceDirectory };
+}
+
+// Opens the MCP session for this request. A server that cannot be reached must not block the
+// message: the failure is recorded so the system prompt tells the model to say so.
+async function openMcpContext(db, rawPluginId) {
+  const active = activeMcpPlugin(db, rawPluginId);
+  if (!active) return null;
+  try {
+    return await createMcpToolContext(db, active.pluginId);
+  } catch (error) {
+    return { pluginId: active.pluginId, failed: true, error: String(error?.message || 'The MCP server could not be reached.') };
+  }
+}
+
+// Every MCP session is torn down when the request ends, and the one-shot write approval is
+// consumed so the next message has to be approved again.
+async function closeMcpContext(db, mcp) {
+  if (!mcp) return;
+  if (typeof mcp.dispose === 'function') await mcp.dispose();
+  if (mcp.pluginId) clearWriteApproval(db, mcp.pluginId);
 }
 
 // Clones the selected repo into the local workspace the first time a message is sent with the
@@ -403,47 +446,51 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
 }
 
 export async function respondToConversation(db, rawConversationId, body, timeoutMs, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
-  const context = prepareResponse(db, rawConversationId, body, { workspaceDirectory });
+  const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory });
   const { provider, credentials } = providerCredentials(db, context.providerId);
   const toolEvents = [];
   const timeline = [];
   let assistantContent = '';
   let reasoning = '';
   if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
-  for (let round = 0; round < maxToolRounds; round += 1) {
-    const response = await providerCompletionWithRetry({ provider, credentials, selectedModelId: context.selectedModelId, messages: context.messages, tools: context.tools, timeoutMs, maxRetries: maxProviderRetries });
-    let payload;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new AppError(502, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.', { expose: true });
-    }
-    const providerMessage = payload?.choices?.[0]?.message;
-    const toolCalls = Array.isArray(providerMessage?.tool_calls) ? providerMessage.tool_calls : [];
-    if (toolCalls.length === 0) {
-      assistantContent = normalizeAssistantContent(providerMessage?.content);
+  try {
+    for (let round = 0; round < maxToolRounds; round += 1) {
+      const response = await providerCompletionWithRetry({ provider, credentials, selectedModelId: context.selectedModelId, messages: context.messages, tools: context.tools, timeoutMs, maxRetries: maxProviderRetries });
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new AppError(502, 'PROVIDER_INVALID_RESPONSE', 'The provider returned an invalid chat response.', { expose: true });
+      }
+      const providerMessage = payload?.choices?.[0]?.message;
+      const toolCalls = Array.isArray(providerMessage?.tool_calls) ? providerMessage.tool_calls : [];
+      if (toolCalls.length === 0) {
+        assistantContent = normalizeAssistantContent(providerMessage?.content);
+        const reasoningText = typeof providerMessage?.reasoning_content === 'string' ? providerMessage.reasoning_content : (typeof providerMessage?.reasoning === 'string' ? providerMessage.reasoning : '');
+        if (reasoningText) timeline.push({ type: 'thinking', text: reasoningText });
+        if (assistantContent) timeline.push({ type: 'content', text: assistantContent });
+        break;
+      }
       const reasoningText = typeof providerMessage?.reasoning_content === 'string' ? providerMessage.reasoning_content : (typeof providerMessage?.reasoning === 'string' ? providerMessage.reasoning : '');
       if (reasoningText) timeline.push({ type: 'thinking', text: reasoningText });
-      if (assistantContent) timeline.push({ type: 'content', text: assistantContent });
-      break;
+      if (providerMessage?.content) timeline.push({ type: 'content', text: normalizeAssistantContent(providerMessage.content) });
+      context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
+      for (const call of toolCalls) {
+        timeline.push({ type: 'tool_call', name: typeof call.function?.name === 'string' ? call.function.name : '' });
+        const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp });
+        toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
+        timeline.push({ type: 'tool_result', toolId: execution.toolId, summary: execution.summary });
+        context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
+      }
     }
-    const reasoningText = typeof providerMessage?.reasoning_content === 'string' ? providerMessage.reasoning_content : (typeof providerMessage?.reasoning === 'string' ? providerMessage.reasoning : '');
-    if (reasoningText) timeline.push({ type: 'thinking', text: reasoningText });
-    if (providerMessage?.content) timeline.push({ type: 'content', text: normalizeAssistantContent(providerMessage.content) });
-    context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
-    for (const call of toolCalls) {
-      timeline.push({ type: 'tool_call', name: typeof call.function?.name === 'string' ? call.function.name : '' });
-      const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin });
-      toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
-      timeline.push({ type: 'tool_result', toolId: execution.toolId, summary: execution.summary });
-      context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
-    }
+    return finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
+  } finally {
+    await closeMcpContext(db, context.mcp);
   }
-  return finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
 }
 
 export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
-  const context = prepareResponse(db, rawConversationId, body, { workspaceDirectory });
+  const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory });
   const { provider, credentials } = providerCredentials(db, context.providerId);
   emit('started', { conversationId: context.conversation.id });
   if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
@@ -456,31 +503,35 @@ export async function respondToConversationStream(db, rawConversationId, body, t
     else if (event === 'tool_call') timeline.push({ type: 'tool_call', name: data.name });
     else if (event === 'tool_result') timeline.push({ type: 'tool_result', toolId: data.toolId, summary: data.summary });
   };
-  for (let round = 0; round < maxToolRounds; round += 1) {
-    const result = await streamProviderRoundWithRetry({
-      provider,
-      credentials,
-      selectedModelId: context.selectedModelId,
-      messages: context.messages,
-      tools: context.tools,
-      timeoutMs,
-      emit: timelineEmit,
-      maxRetries: maxProviderRetries
-    });
-    if (result.toolCalls.length === 0) break;
-    context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
-    for (const call of result.toolCalls) {
-      const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin });
-      toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
-      timelineEmit('tool_result', { toolId: execution.toolId, summary: execution.summary });
-      context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
+  try {
+    for (let round = 0; round < maxToolRounds; round += 1) {
+      const result = await streamProviderRoundWithRetry({
+        provider,
+        credentials,
+        selectedModelId: context.selectedModelId,
+        messages: context.messages,
+        tools: context.tools,
+        timeoutMs,
+        emit: timelineEmit,
+        maxRetries: maxProviderRetries
+      });
+      if (result.toolCalls.length === 0) break;
+      context.messages.push({ role: 'assistant', content: result.content || null, tool_calls: result.toolCalls });
+      for (const call of result.toolCalls) {
+        const execution = await executeToolCall(call, new Set(context.tools.map((tool) => tool.id)), { getSkill: skillResolver(db), db, rootDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp });
+        toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
+        timelineEmit('tool_result', { toolId: execution.toolId, summary: execution.summary });
+        context.messages.push({ role: 'tool', tool_call_id: typeof call.id === 'string' && call.id ? call.id : randomUUID(), content: JSON.stringify(execution.result) });
+      }
     }
+    // Derive the persisted content/reasoning from the emitted timeline so a resumed stream keeps
+    // the partial text that was already shown live, rather than only the last retry's segment.
+    const assistantContent = timeline.filter((entry) => entry.type === 'content').map((entry) => entry.text).join('');
+    const reasoning = timeline.filter((entry) => entry.type === 'thinking').map((entry) => entry.text).join('');
+    const result = finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
+    emit('completed', result);
+    return result;
+  } finally {
+    await closeMcpContext(db, context.mcp);
   }
-  // Derive the persisted content/reasoning from the emitted timeline so a resumed stream keeps
-  // the partial text that was already shown live, rather than only the last retry's segment.
-  const assistantContent = timeline.filter((entry) => entry.type === 'content').map((entry) => entry.text).join('');
-  const reasoning = timeline.filter((entry) => entry.type === 'thinking').map((entry) => entry.text).join('');
-  const result = finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline);
-  emit('completed', result);
-  return result;
 }

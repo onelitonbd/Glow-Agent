@@ -74,11 +74,19 @@ const TOOL_NAMES = {
 function toolIconName(toolId) {
   if (toolId === 'calculator') return 'calculator';
   if (toolId === 'current_time') return 'clock';
-  if (toolId.startsWith('github_')) return 'plug';
+  if (toolId.startsWith('github_') || toolId.startsWith('mcp_')) return 'plug';
   return 'spark';
 }
 
+// MCP tool ids are discovered at runtime (mcp_<server tool>), so they get a readable label
+// instead of a lookup in the static catalog.
+function mcpToolLabel(toolId) {
+  const bare = toolId.slice(4).replace(/[_-]+/gu, ' ').trim();
+  return bare ? `MCP: ${bare.charAt(0).toUpperCase()}${bare.slice(1)}` : 'MCP tool';
+}
+
 function toolDisplay(toolId) {
+  if (typeof toolId === 'string' && toolId.startsWith('mcp_')) return { label: mcpToolLabel(toolId), icon: 'plug' };
   return { label: TOOL_NAMES[toolId] || toolId || 'Tool', icon: toolIconName(toolId) };
 }
 
@@ -271,92 +279,101 @@ function toolIcon(toolId) {
   return toolId === 'calculator' ? 'calculator' : 'clock';
 }
 
-function activeGithubPlugin() {
-  return state.plugins.find((plugin) => plugin.type === 'github' && plugin.enabled && plugin.config?.hasToken && plugin.config?.selectedRepo) || null;
+// The plugin used for a message: an enabled MCP plugin whose server answered the handshake.
+function activeMcpPlugin() {
+  return state.plugins.find((plugin) => plugin.type === 'mcp' && plugin.enabled && plugin.config?.connected) || null;
 }
 
 function setPluginTrigger(active) {
   if (!pluginTrigger) return;
   pluginTrigger.classList.toggle('selected', active);
-  pluginTrigger.setAttribute('aria-label', active ? 'A plugin is enabled for this workspace.' : 'Plugins — connect extensions like GitHub');
+  pluginTrigger.setAttribute('aria-label', active ? 'An MCP plugin is enabled for this conversation.' : 'Plugins — connect MCP servers like GitHub');
   pluginTrigger.title = active ? 'Plugin enabled' : 'Plugins';
 }
 
 function renderPluginPicker() {
-  const active = activeGithubPlugin();
+  const active = activeMcpPlugin();
   state.selectedPluginId = active?.id || null;
   setPluginTrigger(Boolean(active));
   chatPluginOptions.replaceChildren();
   if (state.plugins.length === 0) {
-    chatPluginOptions.append(element('p', 'hint', 'No plugins are installed yet. Add the GitHub plugin from the Plugins page.'));
+    chatPluginOptions.append(element('p', 'hint', 'No plugins yet. Add the GitHub MCP server from the Plugins page.'));
     return;
   }
-  chatPluginOptions.append(element('p', 'hint', 'Enable the GitHub plugin and pick a repository so the assistant can work on it.'));
+  chatPluginOptions.append(element('p', 'hint', 'Enable a connected MCP server to give the assistant its tools. For GitHub, also pick the repository to work on.'));
   state.plugins.forEach((plugin) => {
     const card = element('div', 'plugin-flow');
-    const connected = Boolean(plugin.config?.hasToken);
+    const config = plugin.config || {};
+    const connected = Boolean(config.connected);
     const enabled = Boolean(plugin.enabled);
 
-    // Enable button
-    const toggle = element('button', `switch${enabled ? '' : ''}`);
+    const toggle = element('button', `switch${enabled ? ' on' : ''}`);
     toggle.type = 'button';
     toggle.setAttribute('role', 'switch');
     toggle.setAttribute('aria-checked', String(enabled));
-    toggle.setAttribute('aria-label', enabled ? 'Disable plugin' : 'Enable plugin');
+    toggle.setAttribute('aria-label', enabled ? `Disable ${plugin.name}` : `Enable ${plugin.name}`);
     const titleRow = element('div', 'plugin-step-title');
     titleRow.append(element('span', 'step-num', '1'), document.createTextNode(plugin.name));
     titleRow.append(toggle);
     card.append(titleRow);
 
     if (!connected) {
-      card.append(element('p', 'hint', 'Connect your GitHub account in the Plugins page before chat can use it.'));
+      card.append(element('p', 'hint', config.lastError ? `Not connected — ${config.lastError}` : 'Connect this MCP server on the Plugins page before chat can use it.'));
     } else {
-      const repoRow = element('div', 'plugin-step-title');
-      repoRow.append(element('span', 'step-num', '2'), document.createTextNode('Repository'));
-      card.append(repoRow);
-      const select = element('select');
-      select.setAttribute('aria-label', 'Repository');
-      const repos = state.pluginRepos || [];
-      if (repos.length === 0) select.append(element('option', '', 'Loading repositories…'));
-      repos.forEach((repo) => {
-        const option = element('option', '', repo.fullName);
-        option.value = repo.fullName;
-        if (plugin.config?.selectedRepo === repo.fullName) option.selected = true;
-        select.append(option);
-      });
-      select.addEventListener('change', async () => {
-        const repo = repos.find((entry) => entry.fullName === select.value);
-        if (!repo) return;
-        try {
-          await api.plugins.selectRepo(plugin.id, { owner: repo.owner, repo: repo.name, defaultBranch: repo.defaultBranch });
-          state.selectedPluginId = enabled ? plugin.id : null;
-          showToast(`Repository ${repo.fullName} selected. It will be cloned on your next message.`);
-        } catch (error) {
-          showToast(error.message, 'danger');
-        }
-      });
-      const field = element('div', 'field');
-      field.append(select);
-      card.append(field);
-      if (plugin.config?.selectedRepo) {
-        const status = element('div', 'plugin-status ok');
-        status.append(document.createElement('i'), document.createTextNode(`Selected ${plugin.config.selectedRepo}`));
-        card.append(status);
-        const approve = element('button', 'button secondary full', 'Approve push to GitHub');
-        approve.type = 'button';
-        approve.addEventListener('click', async () => {
-          approve.disabled = true;
+      const status = element('div', 'plugin-status ok');
+      status.append(icon('check'), document.createTextNode(`${config.serverName || 'MCP server'} · ${config.toolCount || 0} tools`));
+      card.append(status);
+
+      if (config.preset === 'github') {
+        const repoRow = element('div', 'plugin-step-title');
+        repoRow.append(element('span', 'step-num', '2'), document.createTextNode('Repository'));
+        card.append(repoRow);
+        const select = element('select');
+        select.setAttribute('aria-label', 'Repository');
+        const repos = state.pluginRepos || [];
+        if (repos.length === 0) select.append(element('option', '', config.ownerLogin ? 'Loading repositories…' : 'Enable the users toolset to list repositories'));
+        repos.forEach((repo) => {
+          const option = element('option', '', repo.fullName);
+          option.value = repo.fullName;
+          if (config.selectedRepo === repo.fullName) option.selected = true;
+          select.append(option);
+        });
+        select.addEventListener('change', async () => {
+          const repo = repos.find((entry) => entry.fullName === select.value);
+          if (!repo) return;
           try {
-            await api.plugins.approvePush(plugin.id);
-            showToast('The next push is approved.');
+            await api.plugins.selectRepo(plugin.id, { owner: repo.owner, repo: repo.name, defaultBranch: repo.defaultBranch });
+            showToast(`Working on ${repo.fullName}.`);
+            await loadWorkspace();
           } catch (error) {
             showToast(error.message, 'danger');
-          } finally {
-            approve.disabled = false;
           }
         });
-        card.append(approve);
+        const field = element('div', 'field');
+        field.append(select);
+        card.append(field);
+        if (config.selectedRepo) {
+          const selected = element('div', 'plugin-status ok');
+          selected.append(icon('check'), document.createTextNode(`Selected ${config.selectedRepo}`));
+          card.append(selected);
+        }
       }
+
+      const approve = element('button', 'button secondary full', 'Approve writes for the next message');
+      approve.type = 'button';
+      approve.title = 'MCP tools that change data stay blocked until you approve them.';
+      approve.addEventListener('click', async () => {
+        approve.disabled = true;
+        try {
+          await api.plugins.approveWrites(plugin.id);
+          showToast('Writes approved for your next message.');
+        } catch (error) {
+          showToast(error.message, 'danger');
+        } finally {
+          approve.disabled = false;
+        }
+      });
+      card.append(approve);
     }
 
     toggle.addEventListener('click', async () => {
@@ -365,9 +382,8 @@ function renderPluginPicker() {
         const updated = await api.plugins.update(plugin.id, { enabled: !enabled });
         const index = state.plugins.findIndex((entry) => entry.id === plugin.id);
         if (index !== -1) state.plugins[index] = updated;
-        state.pluginRepos = state.pluginRepos || [];
         renderPluginPicker();
-        showToast(updated.enabled ? 'Plugin enabled.' : 'Plugin disabled.');
+        showToast(updated.enabled ? `${plugin.name} enabled.` : `${plugin.name} disabled.`);
       } catch (error) {
         toggle.disabled = false;
         showToast(error.message, 'danger');
@@ -414,8 +430,10 @@ async function loadModels() {
   renderModelPicker();
 }
 
+// The repository list comes from the server's own search tool, so it only works once the
+// GitHub MCP server is connected (the users + repos toolsets must be enabled).
 async function loadPluginRepos() {
-  const plugin = state.plugins.find((entry) => entry.type === 'github' && entry.config?.hasToken);
+  const plugin = state.plugins.find((entry) => entry.type === 'mcp' && entry.config?.connected && entry.config?.preset === 'github');
   if (!plugin) { state.pluginRepos = []; return; }
   try {
     state.pluginRepos = await api.plugins.githubRepos(plugin.id);
@@ -512,7 +530,7 @@ composer.addEventListener('submit', async (event) => {
       modelId: state.selectedModelId,
       toolIds: state.tools.map((tool) => tool.id)
     };
-    const activePlugin = activeGithubPlugin();
+    const activePlugin = activeMcpPlugin();
     if (activePlugin) requestBody.pluginId = activePlugin.id;
     const result = await api.conversations.streamRespond(conversation.id, requestBody, async (eventName, payload) => {
       if (eventName === 'thinking' || eventName === 'token' || eventName === 'tool_call' || eventName === 'tool_result') appendStreamDelta(eventName, payload);

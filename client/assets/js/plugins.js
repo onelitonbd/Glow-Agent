@@ -4,32 +4,79 @@ import { element, icon, showToast, setButtonBusy } from './ui.js';
 const state = {
   plugins: [],
   repos: [],
-  selectedPluginId: null,
-  cloneStatus: {}
+  reposPluginId: null,
+  cloneStatus: {},
+  openTools: new Set()
 };
 
 const pluginsState = document.getElementById('pluginsState');
 const pluginsCount = document.getElementById('pluginsCount');
 const dialog = document.getElementById('githubDialog');
 const form = document.getElementById('githubForm');
-const dialogTitle = document.getElementById('githubDialogTitle');
 const saveGithub = document.getElementById('saveGithub');
-const clientIdInput = document.getElementById('clientId');
-const clientSecretInput = document.getElementById('clientSecret');
-const codeInput = document.getElementById('code');
-const callbackUrlLabel = document.getElementById('callbackUrlLabel');
+const presetSelect = document.getElementById('preset');
+const modeSelect = document.getElementById('mode');
+const modeHint = document.getElementById('modeHint');
+const transportSelect = document.getElementById('transport');
+const githubFields = document.getElementById('githubFields');
+const customFields = document.getElementById('customFields');
 let dialogOpener = document.getElementById('openPluginDialog');
+let editingPluginId = null;
 
-function githubPlugin() {
-  return state.plugins.find((plugin) => plugin.type === 'github') || null;
+const MODE_HINTS = {
+  remote: 'GitHub hosts the server at https://api.githubcopilot.com/mcp/. Nothing to install; a personal access token is sent as a bearer header.',
+  'local-docker': 'Runs ghcr.io/github/github-mcp-server in Docker and talks to it over stdio. Leave the token empty to use the image\'s own browser sign-in.',
+  'local-binary': 'Runs a github-mcp-server binary on this machine with the stdio argument.'
+};
+
+function parseJsonField(value, fallback, label) {
+  const text = String(value || '').trim();
+  if (!text) return fallback;
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed === null || typeof parsed !== 'object') throw new Error('not an object');
+    return parsed;
+  } catch {
+    throw new Error(`${label} must be valid JSON.`);
+  }
 }
 
-function openDialog(opener) {
+function splitList(value) {
+  return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function syncDialogFields() {
+  const preset = presetSelect.value;
+  githubFields.hidden = preset !== 'github';
+  customFields.hidden = preset !== 'custom';
+  modeHint.textContent = MODE_HINTS[modeSelect.value] || '';
+  const http = transportSelect.value === 'http';
+  for (const id of ['url', 'headers']) document.getElementById(id).closest('.field').hidden = !http;
+  for (const id of ['command', 'args', 'env']) document.getElementById(id).closest('.field').hidden = http;
+  const binaryField = document.getElementById('binary').closest('.field');
+  binaryField.hidden = preset !== 'github' || modeSelect.value !== 'local-binary';
+}
+
+function openDialog(opener, plugin = null) {
   dialogOpener = opener;
+  editingPluginId = plugin?.id || null;
   form.reset();
-  callbackUrlLabel.textContent = `${window.location.origin}/plugins.html`;
+  const config = plugin?.config || {};
+  presetSelect.value = config.preset === 'custom' ? 'custom' : 'github';
+  modeSelect.value = config.mode || 'remote';
+  transportSelect.value = config.transport === 'stdio' ? 'stdio' : 'http';
+  document.getElementById('toolsets').value = (config.toolsets || []).join(',');
+  document.getElementById('readOnly').checked = Boolean(config.readOnly);
+  document.getElementById('localClone').checked = Boolean(config.localClone);
+  document.getElementById('binary').value = '';
+  document.getElementById('url').value = config.url || '';
+  document.getElementById('command').value = config.command || '';
+  document.getElementById('args').value = (config.args || []).length ? JSON.stringify(config.args) : '';
+  // Secrets are never sent back to the browser, so the token/header/env fields start empty.
+  document.getElementById('token').placeholder = config.hasToken ? 'Saved — enter a new value to replace it' : 'ghp_… or github_pat_…';
+  syncDialogFields();
   dialog.showModal();
-  setTimeout(() => clientIdInput.focus(), 20);
+  setTimeout(() => document.getElementById('token').focus(), 20);
 }
 
 function closeDialog() {
@@ -37,17 +84,289 @@ function closeDialog() {
   dialogOpener?.focus();
 }
 
-function actionMenu(plugin, shell) {
-  const menu = element('div', 'overflow-menu');
-  menu.setAttribute('role', 'menu');
-  menu.setAttribute('aria-label', `Actions for ${plugin.name}`);
-  const remove = element('button', 'menu-danger', 'Delete plugin');
-  remove.type = 'button'; remove.setAttribute('role', 'menuitem'); remove.prepend(icon('trash'));
+async function submitDialog(event) {
+  event.preventDefault();
+  let values;
+  try {
+    if (presetSelect.value === 'github') {
+      const token = document.getElementById('token').value.trim();
+      values = {
+        preset: 'github',
+        github: {
+          mode: modeSelect.value,
+          toolsets: splitList(document.getElementById('toolsets').value),
+          readOnly: document.getElementById('readOnly').checked,
+          localClone: document.getElementById('localClone').checked,
+          ...(token ? { token } : {}),
+          ...(document.getElementById('binary').value.trim() ? { binary: document.getElementById('binary').value.trim() } : {})
+        }
+      };
+    } else {
+      values = {
+        preset: 'custom',
+        transport: transportSelect.value,
+        url: document.getElementById('url').value.trim(),
+        headers: parseJsonField(document.getElementById('headers').value, {}, 'Headers'),
+        command: document.getElementById('command').value.trim(),
+        args: Object.values(parseJsonField(document.getElementById('args').value, [], 'Arguments')),
+        env: parseJsonField(document.getElementById('env').value, {}, 'Environment')
+      };
+    }
+  } catch (error) {
+    showToast(error.message, 'danger');
+    return;
+  }
+  setButtonBusy(saveGithub, true, 'Connecting…');
+  try {
+    const pluginId = editingPluginId || (await api.plugins.create({ type: 'mcp', preset: values.preset })).id;
+    await api.plugins.configure(pluginId, values);
+    await api.plugins.connect(pluginId);
+    closeDialog();
+    await load();
+    showToast('MCP server connected.');
+  } catch (error) {
+    showToast(error.message, 'danger');
+    await load();
+  } finally {
+    setButtonBusy(saveGithub, false, 'Connect server');
+  }
+}
+
+function statusLine(plugin) {
+  const config = plugin.config || {};
+  if (config.connected) {
+    const box = element('div', 'plugin-status ok');
+    box.append(icon('check'));
+    const label = config.serverName ? `${config.serverName}${config.serverVersion ? ` ${config.serverVersion}` : ''}` : 'Connected';
+    box.append(element('span', '', `${label} · ${config.toolCount} tools`));
+    return box;
+  }
+  const box = element('div', 'plugin-status warn');
+  box.append(icon('plug'));
+  box.append(element('span', '', config.lastError ? `Not connected — ${config.lastError}` : 'Not connected yet'));
+  return box;
+}
+
+function enableSwitch(plugin) {
+  const toggle = element('button', `switch${plugin.enabled ? ' on' : ''}`);
+  toggle.type = 'button';
+  toggle.setAttribute('role', 'switch');
+  toggle.setAttribute('aria-checked', String(Boolean(plugin.enabled)));
+  toggle.setAttribute('aria-label', plugin.enabled ? `Disable ${plugin.name}` : `Enable ${plugin.name}`);
+  toggle.addEventListener('click', async () => {
+    toggle.disabled = true;
+    try {
+      const updated = await api.plugins.update(plugin.id, { enabled: !plugin.enabled });
+      const index = state.plugins.findIndex((entry) => entry.id === plugin.id);
+      if (index !== -1) state.plugins[index] = updated;
+      render();
+      showToast(updated.enabled ? `${plugin.name} enabled.` : `${plugin.name} disabled.`);
+    } catch (error) {
+      showToast(error.message, 'danger');
+    } finally {
+      toggle.disabled = false;
+    }
+  });
+  return toggle;
+}
+
+function toolsPanel(plugin) {
+  const tools = plugin.config?.tools || [];
+  if (tools.length === 0) return element('p', 'hint', 'No tools discovered yet.');
+  const list = element('div', 'tool-grid');
+  for (const tool of tools) {
+    const chip = element('div', `tool-chip${tool.mutating ? ' write' : ''}`);
+    chip.append(element('strong', '', tool.name));
+    if (tool.description) chip.append(element('span', 'tool-chip-desc', tool.description));
+    if (tool.mutating) chip.append(element('em', 'tool-chip-flag', 'writes'));
+    list.append(chip);
+  }
+  return list;
+}
+
+async function loadRepos(plugin) {
+  state.reposPluginId = plugin.id;
+  state.repos = [];
+  render();
+  try {
+    state.repos = await api.plugins.githubRepos(plugin.id);
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+  render();
+}
+
+function repoSection(plugin) {
+  const shell = element('div', 'plugin-repo');
+  const config = plugin.config || {};
+  const row = element('div', 'plugin-step-title');
+  row.append(element('span', 'step-num', '2'), document.createTextNode('Repository'));
+  const refresh = element('button', 'link-button', 'Reload');
+  refresh.type = 'button';
+  refresh.addEventListener('click', () => loadRepos(plugin));
+  row.append(refresh);
+  shell.append(row);
+
+  if (!config.connected) {
+    shell.append(element('p', 'hint', 'Connect the server first, then the repositories for your account appear here.'));
+    return shell;
+  }
+  if (!config.ownerLogin) {
+    shell.append(element('p', 'hint', 'No GitHub account resolved. Enable the users toolset and reconnect to list your repositories.'));
+    return shell;
+  }
+  shell.append(element('p', 'hint', `Signed in as ${config.ownerLogin}.`));
+
+  const select = element('select');
+  select.setAttribute('aria-label', 'Repository');
+  const placeholder = element('option', '', 'Choose a repository…');
+  placeholder.value = '';
+  select.append(placeholder);
+  const repos = state.reposPluginId === plugin.id ? state.repos : [];
+  if (state.reposPluginId !== plugin.id && !config.selectedRepo) loadRepos(plugin);
+  for (const repo of repos) {
+    const option = element('option', '', `${repo.fullName}${repo.private ? ' (private)' : ''}`);
+    option.value = repo.fullName;
+    if (config.selectedRepo === repo.fullName) option.selected = true;
+    select.append(option);
+  }
+  select.addEventListener('change', async () => {
+    const [owner, ...rest] = select.value.split('/');
+    if (!owner || rest.length === 0) return;
+    try {
+      const updated = await api.plugins.selectRepo(plugin.id, { owner, repo: rest.join('/'), defaultBranch: repos.find((entry) => entry.fullName === select.value)?.defaultBranch });
+      const index = state.plugins.findIndex((entry) => entry.id === plugin.id);
+      if (index !== -1) state.plugins[index] = updated;
+      render();
+      showToast(`Working on ${updated.config.selectedRepo}.`);
+    } catch (error) {
+      showToast(error.message, 'danger');
+    }
+  });
+  shell.append(select);
+  if (config.selectedRepo) {
+    const status = element('div', 'plugin-status ok');
+    status.append(icon('check'), element('span', '', `Selected ${config.selectedRepo}`));
+    shell.append(status);
+  }
+  return shell;
+}
+
+async function browseFiles(plugin, target) {
+  setButtonBusy(target, true, 'Loading…');
+  try {
+    const listing = await api.plugins.repoList(plugin.id, '');
+    target.replaceChildren(icon('server'), document.createTextNode('Browse files'));
+    const next = target.nextElementSibling;
+    if (next?.classList.contains('repo-browser')) { next.remove(); return; }
+    const panel = element('div', 'repo-browser');
+    if (listing.error) {
+      panel.append(element('p', 'hint', listing.error));
+    } else {
+      for (const entry of listing.entries) {
+        const row = element('div', `repo-file${entry.type === 'directory' ? ' dir' : ''}`);
+        row.append(icon(entry.type === 'directory' ? 'server' : 'wrench'), element('span', '', entry.path));
+        panel.append(row);
+      }
+      if (listing.entries.length === 0) panel.append(element('p', 'hint', 'The repository is empty.'));
+    }
+    target.after(panel);
+  } catch (error) {
+    showToast(error.message, 'danger');
+    target.replaceChildren(icon('server'), document.createTextNode('Browse files'));
+  } finally {
+    setButtonBusy(target, false);
+  }
+}
+
+function localCloneSection(plugin) {
+  const shell = element('div', 'plugin-repo');
+  const row = element('div', 'plugin-step-title');
+  row.append(element('span', 'step-num', '3'), document.createTextNode('Local clone'));
+  shell.append(row);
+  shell.append(element('p', 'hint', 'Advanced: keeps a git clone in the workspace so the assistant can also work on files locally. The MCP tools work on GitHub directly without this.'));
+  const actions = element('div', 'row-actions');
+  const clone = element('button', 'button small');
+  clone.type = 'button';
+  clone.append(icon('server'), document.createTextNode(state.cloneStatus[plugin.id] || 'Clone now'));
+  clone.disabled = !plugin.config?.selectedRepo;
+  clone.addEventListener('click', async () => {
+    setButtonBusy(clone, true, 'Cloning…');
+    try {
+      const result = await api.plugins.clone(plugin.id);
+      state.cloneStatus[plugin.id] = result.status === 'cloned' ? 'Cloned' : 'Updated';
+      showToast(`Repository ${result.status} at ${result.directory}.`);
+      render();
+    } catch (error) {
+      showToast(error.message, 'danger');
+    } finally {
+      setButtonBusy(clone, false);
+    }
+  });
+  const browse = element('button', 'button small secondary');
+  browse.type = 'button';
+  browse.append(icon('server'), document.createTextNode('Browse files'));
+  browse.disabled = !plugin.config?.selectedRepo;
+  browse.addEventListener('click', () => browseFiles(plugin, browse));
+  actions.append(clone, browse);
+  shell.append(actions);
+  if (!plugin.config?.selectedRepo) shell.append(element('p', 'hint', 'Select a repository above to enable cloning.'));
+  return shell;
+}
+
+function pluginCard(plugin) {
+  const card = element('div', 'plugin-flow');
+  const head = element('div', 'plugin-card-head');
+  const titleRow = element('div', 'plugin-step-title');
+  titleRow.append(element('span', 'step-num', '1'), document.createTextNode(plugin.name));
+  const badge = element('span', 'plugin-badge', plugin.config?.preset === 'github' ? 'GitHub MCP' : 'MCP');
+  titleRow.append(badge);
+  head.append(titleRow, enableSwitch(plugin));
+  card.append(head);
+  card.append(statusLine(plugin));
+
+  const actions = element('div', 'row-actions');
+  const settings = element('button', 'button small secondary');
+  settings.type = 'button';
+  settings.append(icon('settings'), document.createTextNode('Settings'));
+  settings.addEventListener('click', () => openDialog(settings, plugin));
+  const test = element('button', 'button small secondary');
+  test.type = 'button';
+  test.append(icon('plug'), document.createTextNode('Test'));
+  test.addEventListener('click', async () => {
+    setButtonBusy(test, true, 'Testing…');
+    try {
+      const result = await api.plugins.inspect(plugin.id);
+      showToast(`${result.server?.name || 'Server'} answered with ${result.toolCount} tools.`);
+    } catch (error) {
+      showToast(error.message, 'danger');
+    } finally {
+      setButtonBusy(test, false);
+    }
+  });
+  const approve = element('button', 'button small');
+  approve.type = 'button';
+  approve.append(icon('check'), document.createTextNode('Approve writes'));
+  approve.title = 'Lets the assistant run one message worth of tools that change data.';
+  approve.addEventListener('click', async () => {
+    setButtonBusy(approve, true, 'Approving…');
+    try {
+      await api.plugins.approveWrites(plugin.id);
+      showToast('Writes approved for the next message.');
+    } catch (error) {
+      showToast(error.message, 'danger');
+    } finally {
+      setButtonBusy(approve, false);
+    }
+  });
+  const remove = element('button', 'button small danger');
+  remove.type = 'button';
+  remove.append(icon('trash'), document.createTextNode('Delete'));
   remove.addEventListener('click', async () => {
+    if (!window.confirm(`Delete the plugin "${plugin.name}"?`)) return;
     remove.disabled = true;
     try {
       await api.plugins.remove(plugin.id);
-      state.selectedPluginId = null;
       await load();
       showToast('Plugin deleted.');
     } catch (error) {
@@ -55,281 +374,67 @@ function actionMenu(plugin, shell) {
       showToast(error.message, 'danger');
     }
   });
-  menu.append(remove);
-  shell.append(menu);
-}
+  actions.append(settings, test, approve, remove);
+  card.append(actions);
 
-function avatar(plugin) {
-  const node = element('span', 'plugin-avatar');
-  node.setAttribute('aria-hidden', 'true');
-  if (plugin.config?.avatarUrl) {
-    const image = new Image();
-    image.alt = plugin.config.account || 'GitHub account';
-    image.src = plugin.config.avatarUrl;
-    image.referrerPolicy = 'no-referrer';
-    node.append(image);
-  } else {
-    node.append(icon('server'));
+  if (plugin.config?.preset === 'github') {
+    card.append(repoSection(plugin));
+    if (plugin.config?.localClone) card.append(localCloneSection(plugin));
   }
-  return node;
-}
 
-function statusLine(kind, text) {
-  const status = element('div', `plugin-status ${kind}`);
-  status.append(document.createElement('i'), document.createTextNode(text));
-  return status;
-}
-
-function enableSwitch(plugin) {
-  const toggle = element('button', 'switch');
-  toggle.type = 'button';
-  toggle.setAttribute('role', 'switch');
-  toggle.setAttribute('aria-checked', String(plugin.enabled));
-  toggle.setAttribute('aria-label', plugin.enabled ? `Disable ${plugin.name}` : `Enable ${plugin.name}`);
-  toggle.title = plugin.enabled ? 'Click to disable for chat' : 'Click to enable for chat';
-  toggle.addEventListener('click', async () => {
-    toggle.disabled = true;
-    try {
-      const updated = await api.plugins.update(plugin.id, { enabled: !plugin.enabled });
-      const index = state.plugins.findIndex((entry) => entry.id === plugin.id);
-      if (index !== -1) state.plugins[index] = updated;
-      toggle.disabled = false;
+  const toolCount = plugin.config?.toolCount || 0;
+  if (toolCount > 0) {
+    const toggle = element('button', 'link-button', state.openTools.has(plugin.id) ? 'Hide tools' : `Show ${toolCount} tools`);
+    toggle.type = 'button';
+    toggle.addEventListener('click', () => {
+      if (state.openTools.has(plugin.id)) state.openTools.delete(plugin.id);
+      else state.openTools.add(plugin.id);
       render();
-      showToast(updated.enabled ? `${plugin.name} enabled.` : `${plugin.name} disabled.`);
-    } catch (error) {
-      toggle.disabled = false;
-      showToast(error.message, 'danger');
-    }
-  });
-  return toggle;
-}
-
-function connectedCard(plugin) {
-  const shell = element('div', 'plugin-flow');
-  const connected = plugin.config.hasToken;
-
-  if (!connected) {
-    const connect = element('button', 'button small', 'Connect GitHub'); connect.type = 'button';
-    connect.prepend(icon('server'));
-    connect.addEventListener('click', () => openDialog(connect));
-    const step = element('div', 'plugin-step');
-    step.append(element('div', 'plugin-step-title', 'Connect your account'));
-    step.append(statusLine('busy', 'Not connected yet'));
-    step.append(connect);
-    shell.append(step);
-  } else {
-    const accountStep = element('div', 'plugin-step');
-    accountStep.append(element('div', 'plugin-step-title', 'Signed in as'));
-    const account = element('div', 'plugin-account');
-    account.append(avatar(plugin), (() => {
-      const copy = element('span');
-      copy.append(element('b', 'data-name', plugin.config.account || plugin.config.ownerLogin || 'GitHub account'));
-      copy.append(element('span', 'data-subtitle', `@${plugin.config.ownerLogin || plugin.config.owner || ''} · connected`));
-      return copy;
-    })());
-    accountStep.append(account);
-    accountStep.append(statusLine('ok', 'Connected to GitHub'));
-    shell.append(accountStep);
-  }
-
-  const repoStep = element('div', 'plugin-step');
-  repoStep.append(element('div', 'plugin-step-title', 'Choose a repository'));
-  if (connected) {
-    const selectWrap = element('div', 'field');
-    const label = element('label', '', 'Repository');
-    label.append(element('span', '', 'FROM  YOUR  ACCOUNT'));
-    const select = element('select');
-    select.setAttribute('aria-label', 'Repository');
-    select.append(element('option', '', state.repos.length ? 'Loading repositories…' : 'No repositories found'));
-    state.repos.forEach((repo) => {
-      const option = element('option', '', repo.fullName);
-      option.value = repo.fullName;
-      if (plugin.config.selectedRepo === repo.fullName) option.selected = true;
-      select.append(option);
     });
-    select.addEventListener('change', async () => {
-      const fullName = select.value;
-      const repo = state.repos.find((entry) => entry.fullName === fullName);
-      if (!repo) return;
-      setButtonBusy(select, true, 'Selecting…');
-      try {
-        await api.plugins.selectRepo(plugin.id, { owner: repo.owner, repo: repo.name, defaultBranch: repo.defaultBranch });
-        setButtonBusy(select, false);
-        await load();
-        showToast(`Repository ${fullName} selected. It will be cloned on your next message.`);
-      } catch (error) {
-        setButtonBusy(select, false);
-        showToast(error.message, 'danger');
-      }
-    });
-    selectWrap.append(label, select);
-    repoStep.append(selectWrap);
-
-    if (!plugin.config.selectedRepo) {
-      repoStep.append(statusLine('busy', 'Select a repository above to enable cloning.'));
-    } else {
-      const clone = element('button', 'button small full', 'Clone now'); clone.type = 'button';
-      clone.prepend(icon('spark'));
-      clone.addEventListener('click', async () => {
-        setButtonBusy(clone, true, 'Cloning…');
-        state.cloneStatus[plugin.id] = { kind: 'busy', text: 'Cloning the repository…' };
-        render();
-        try {
-          const result = await api.plugins.clone(plugin.id);
-          state.cloneStatus[plugin.id] = { kind: 'ok', text: `Cloned ${result.repository} (${result.status})`.trim() };
-          await load();
-          showToast('Repository cloned into the local workspace.');
-        } catch (error) {
-          state.cloneStatus[plugin.id] = { kind: 'error', text: error.message };
-          render();
-          showToast(error.message, 'danger');
-        } finally {
-          setButtonBusy(clone, false);
-          clone.disabled = false;
-        }
-      });
-      repoStep.append(clone);
-
-      const status = state.cloneStatus[plugin.id] || statusLineForPlugin(plugin);
-      if (status) repoStep.append(status);
-
-      const browse = element('button', 'button small full', 'Browse files'); browse.type = 'button';
-      browse.prepend(icon('spark'));
-      browse.addEventListener('click', async () => {
-        setButtonBusy(browse, true, 'Loading…');
-        try {
-          const listing = await api.plugins.repoList(plugin.id, '');
-          setButtonBusy(browse, false);
-          if (listing.error) {
-            showToast(listing.error, 'danger');
-            return;
-          }
-          const panel = element('div', 'repo-browser');
-          const entries = Array.isArray(listing.entries) ? listing.entries : [];
-          if (entries.length === 0) panel.append(element('p', 'hint', 'This repository is empty.'));
-          entries.forEach((entry) => {
-            const row = element('div', `repo-file${entry.type === 'directory' ? ' dir' : ''}`);
-            const dot = element('span', 'repo-file-toggle'); dot.setAttribute('aria-hidden', 'true');
-            row.append(dot, document.createTextNode(entry.path));
-            row.addEventListener('click', async () => {
-              if (entry.type === 'directory') {
-                const child = await api.plugins.repoList(plugin.id, entry.path);
-                if (child.error) { showToast(child.error, 'danger'); return; }
-                (child.entries || []).forEach((childEntry) => {
-                  const childRow = element('div', `repo-file${childEntry.type === 'directory' ? ' dir' : ''}`);
-                  childRow.append(document.createElement('span'), document.createTextNode(childEntry.path));
-                  panel.append(childRow);
-                });
-              }
-            });
-            panel.append(row);
-          });
-          repoStep.append(panel);
-        } catch (error) {
-          setButtonBusy(browse, false);
-          showToast(error.message, 'danger');
-        }
-      });
-      repoStep.append(browse);
-    }
-  } else {
-    repoStep.append(statusLine('busy', 'Connect GitHub to choose a repository.'));
+    card.append(toggle);
+    if (state.openTools.has(plugin.id)) card.append(toolsPanel(plugin));
   }
-  shell.append(repoStep);
-  return shell;
-}
-function statusLineForPlugin(plugin) {
-  if (plugin.config.selectedRepo) {
-    return statusLine(plugin.enabled ? 'ok' : 'busy', plugin.enabled ? `Selected ${plugin.config.selectedRepo}` : `Selected ${plugin.config.selectedRepo} · enable to use`);
-  }
-  return null;
-}
-
-function pluginCard(plugin) {
-  const shell = element('div', 'list-shell');
-  const card = element('article', 'card data-card');
-  const top = element('div', 'data-card-top');
-  const pluginIcon = element('span', 'data-icon violet');
-  pluginIcon.setAttribute('aria-hidden', 'true'); pluginIcon.append(icon('server'));
-  const copy = element('span');
-  copy.append(element('b', 'data-name', plugin.name), element('span', 'data-subtitle', 'GitHub · repositories & commits'));
-  const toggle = enableSwitch(plugin);
-  top.append(pluginIcon, copy, toggle);
-  const meta = element('div', 'data-meta');
-  const dot = document.createElement('i');
-  meta.append(dot, document.createTextNode(plugin.enabled ? 'Enabled for chat' : 'Disabled for chat'));
-  card.append(top, meta, connectedCard(plugin));
-  shell.append(card);
-  return shell;
+  return card;
 }
 
 function render() {
+  pluginsCount.textContent = state.plugins.length ? `${state.plugins.length} installed` : '';
   pluginsState.replaceChildren();
-  pluginsCount.textContent = `${state.plugins.length} ${state.plugins.length === 1 ? 'plugin' : 'plugins'}`;
   if (state.plugins.length === 0) {
     const empty = element('div', 'empty-state');
-    const mark = element('span', 'empty-icon'); mark.setAttribute('aria-hidden', 'true'); mark.append(icon('server'));
-    const add = element('button', 'button full', 'Add GitHub plugin'); add.type = 'button'; add.prepend(icon('plus'));
-    add.addEventListener('click', async () => {
-      setButtonBusy(add, true, 'Adding…');
-      try {
-        await api.plugins.create({ type: 'github', name: 'GitHub' });
-        await load();
-        showToast('GitHub plugin added.');
-      } catch (error) {
-        setButtonBusy(add, false);
-        showToast(error.message, 'danger');
-      }
-    });
-    empty.append(mark, element('h2', '', 'No plugins yet'), element('p', '', 'Add the GitHub plugin to let the assistant work on a cloned repository.'), add);
+    empty.append(element('h2', '', 'No plugins yet'));
+    empty.append(element('p', 'hint', 'Add the GitHub MCP server and the assistant can read and change your repositories.'));
+    const add = element('button', 'button');
+    add.type = 'button';
+    add.append(icon('plus'), document.createTextNode('Add GitHub MCP server'));
+    add.addEventListener('click', () => openDialog(add));
+    empty.append(add);
     pluginsState.append(empty);
     return;
   }
-  const list = element('div', 'list');
-  state.plugins.forEach((plugin) => list.append(pluginCard(plugin)));
-  pluginsState.append(list);
+  const add = element('button', 'button small secondary');
+  add.type = 'button';
+  add.append(icon('plus'), document.createTextNode('Add another MCP server'));
+  add.addEventListener('click', () => openDialog(add));
+  pluginsState.append(add);
+  for (const plugin of state.plugins) pluginsState.append(pluginCard(plugin));
 }
 
 async function load() {
-  pluginsState.replaceChildren(element('div', 'loading', 'Loading plugins'));
   try {
     state.plugins = await api.plugins.list();
-    const plugin = githubPlugin();
-    if (plugin?.config?.hasToken) {
-      try { state.repos = await api.plugins.githubRepos(plugin.id); } catch { state.repos = []; }
-    } else {
-      state.repos = [];
-    }
     render();
   } catch (error) {
-    const empty = element('div', 'empty-state');
-    const retry = element('button', 'button secondary full', 'Try again'); retry.type = 'button'; retry.addEventListener('click', load);
-    empty.append(element('h2', '', 'Could not load plugins'), element('p', '', error.message), retry);
-    pluginsState.append(empty);
+    pluginsState.replaceChildren(element('p', 'hint', error.message));
   }
 }
 
-form.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const plugin = githubPlugin();
-  if (!plugin) { closeDialog(); return; }
-  const values = { clientId: clientIdInput.value, clientSecret: clientSecretInput.value, code: codeInput.value };
-  setButtonBusy(saveGithub, true, 'Connecting…');
-  try {
-    await api.plugins.connectGithub(plugin.id, values);
-    state.repos = [];
-    state.cloneStatus[plugin.id] = { kind: 'ok', text: 'Connected to GitHub' };
-    closeDialog();
-    await load();
-    showToast('GitHub connected.');
-  } catch (error) {
-    showToast(error.message, 'danger');
-  } finally {
-    setButtonBusy(saveGithub, false);
-  }
-});
-
+presetSelect.addEventListener('change', syncDialogFields);
+modeSelect.addEventListener('change', syncDialogFields);
+transportSelect.addEventListener('change', syncDialogFields);
+form.addEventListener('submit', submitDialog);
 document.getElementById('closeGithubDialog').addEventListener('click', closeDialog);
 document.getElementById('cancelGithub').addEventListener('click', closeDialog);
-dialog.addEventListener('cancel', () => setTimeout(() => dialogOpener?.focus(), 0));
+dialog.addEventListener('close', () => { editingPluginId = null; });
+
 load();

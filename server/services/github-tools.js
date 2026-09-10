@@ -1,8 +1,7 @@
 import {
-  approveGithubPush,
   cloneGithubRepo,
   commitGithub,
-  githubListRepos,
+  pluginRepositories,
   pushGithub,
   repoDeleteFile,
   repoListFiles,
@@ -11,9 +10,10 @@ import {
   repoWriteFile
 } from './plugins.js';
 
-// Tool definitions the model can call. Only offered when a connected GitHub plugin with a
-// selected repo is enabled for the request. `commit` and `push` are split so a push always
-// requires explicit confirmation from the user.
+// Tool definitions for the OPTIONAL local clone of the selected repository. These are only
+// offered when the plugin has "Local clone" enabled; normally the model works directly on
+// GitHub through the MCP tools. `commit` and `push` are split so a push always requires
+// explicit confirmation from the user (the model cannot approve its own writes).
 function toolDefinition(id, name, description, properties, required = []) {
   return {
     id,
@@ -70,7 +70,7 @@ export async function executeGithubTool(call, ctx) {
   const { db, pluginId, workspaceDirectory } = ctx;
   try {
     if (id === 'github_list_repos') {
-      const repos = await githubListRepos(db, pluginId);
+      const repos = await pluginRepositories(db, pluginId);
       result = { count: repos.length, repos: repos.slice(0, 50) };
     } else if (id === 'github_clone') {
       result = await cloneGithubRepo(db, pluginId, workspaceDirectory);
