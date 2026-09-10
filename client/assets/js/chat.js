@@ -143,6 +143,14 @@ function renderTimeline(message) {
   return fragment;
 }
 
+function renderStreamStatus(text, tone) {
+  const row = element('div', `stream-status${tone === 'warn' ? ' warn' : ''}`);
+  const dot = element('span', 'stream-status-dot');
+  dot.setAttribute('aria-hidden', 'true');
+  row.append(dot, element('span', '', text));
+  return row;
+}
+
 function renderToolEvents(toolEvents) {
   const wrap = element('div', 'tool-events');
   const head = element('div', 'tool-events-head');
@@ -191,6 +199,7 @@ function renderLog() {
     } else if (message.content) {
       bubble.append(document.createTextNode(message.content));
     }
+    if (message.isStreaming && message.status) bubble.append(renderStreamStatus(message.status, message.statusTone));
     chatLog.append(bubble);
   });
   [...chatLog.querySelectorAll('.markdown-table-scroll')].forEach((table, index) => {
@@ -484,6 +493,15 @@ async function ensureConversation() {
 
 function appendStreamDelta(event, payload) {
   if (!payload || !state.conversation) return;
+  if (event === 'started') {
+    // Show something immediately so a slow first token never looks like a dead screen.
+    const messages = state.conversation.messages || (state.conversation.messages = []);
+    if (!messages.find((message) => message.id === 'streaming-assistant')) {
+      messages.push({ id: 'streaming-assistant', role: 'assistant', content: '', reasoning: '', timeline: [], isStreaming: true, status: 'Connecting…' });
+    }
+    renderLog();
+    return;
+  }
   const messages = state.conversation.messages || (state.conversation.messages = []);
   let assistant = messages.find((message) => message.id === 'streaming-assistant');
   if (!assistant) {
@@ -491,6 +509,14 @@ function appendStreamDelta(event, payload) {
     messages.push(assistant);
   }
   const timeline = assistant.timeline || (assistant.timeline = []);
+  if (event === 'status') {
+    assistant.status = payload.text || '';
+    assistant.statusTone = payload.tone === 'warn' ? 'warn' : 'info';
+    renderLog();
+    return;
+  }
+  // Once real output arrives, drop the connect/retreive line.
+  assistant.status = '';
   if (event === 'thinking') {
     assistant.reasoning += payload.text || '';
     timeline.push({ type: 'thinking', text: payload.text });
@@ -537,7 +563,9 @@ composer.addEventListener('submit', async (event) => {
       toolIds: state.tools.map((tool) => tool.id)
     };
     const result = await api.conversations.streamRespond(conversation.id, requestBody, async (eventName, payload) => {
-      if (eventName === 'thinking' || eventName === 'token' || eventName === 'tool_call' || eventName === 'tool_result') appendStreamDelta(eventName, payload);
+      if (eventName === 'started' || eventName === 'status' || eventName === 'thinking' || eventName === 'token' || eventName === 'tool_call' || eventName === 'tool_result') {
+        appendStreamDelta(eventName, payload);
+      }
     });
     state.conversation = result.conversation;
     await loadWorkspace();

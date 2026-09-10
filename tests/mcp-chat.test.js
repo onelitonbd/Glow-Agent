@@ -238,3 +238,59 @@ test('a plugin whose server cannot be reached is reported to the model instead o
   assert.match(system, /could not be reached/u, 'the model is told the plugin is unavailable');
   assert.match(system, /Do not retry the connection yourself/u);
 });
+
+// The client must be able to see the connection, the wait, and every retry, so a slow or flaky
+// provider never looks like a frozen screen.
+test('the stream reports connecting, waiting, and each retry until the model answers', async (t) => {
+  let calls = 0;
+  const upstream = createServer(async (request, response) => {
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    calls += 1;
+    if (calls <= 2) {
+      response.writeHead(500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'upstream blew up' }));
+      return;
+    }
+    response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    response.write('data: {"choices":[{"delta":{"content":"Recovered."}}]}\n\n');
+    response.write('data: [DONE]\n\n');
+    response.end();
+  });
+  const upstreamServer = await listen(upstream);
+  const directory = await mkdtemp(join(tmpdir(), 'glow-agent-status-'));
+  const instance = createApp({
+    rootDirectory: process.cwd(),
+    databasePath: join(directory, 'g.sqlite'),
+    providerFetchTimeoutMs: 5_000,
+    chatTimeoutMs: 10_000,
+    maxToolRounds: 4,
+    maxProviderRetries: 5
+  });
+  const appServer = await listen(instance.app);
+  const base = `http://127.0.0.1:${appServer.address().port}/api/v1`;
+  const provider = (await json(`${base}/providers`, { method: 'POST', body: { name: 'P', baseUrl: `http://127.0.0.1:${upstreamServer.address().port}/v1`, apiKey: 'k' } })).payload.data;
+  await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'm' } });
+  const conversation = (await json(`${base}/conversations`, { method: 'POST' })).payload.data;
+  t.after(async () => { await close(appServer); instance.close(); await close(upstreamServer); await rm(directory, { recursive: true, force: true }); });
+
+  const response = await fetch(`${base}/conversations/${conversation.id}/respond/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({ message: 'hi', providerId: provider.id, modelId: 'm' })
+  });
+  const text = await response.text();
+  const statuses = text.split('\n\n')
+    .filter((block) => block.includes('event: status'))
+    .map((block) => {
+      const data = block.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('');
+      return JSON.parse(data);
+    });
+
+  assert.ok(statuses.some((status) => /Connecting to/u.test(status.text)), 'the connection is announced');
+  assert.ok(statuses.some((status) => /Waiting for the model/u.test(status.text)), 'the wait is announced');
+  assert.ok(statuses.some((status) => status.tone === 'warn' && /Retrying 1 of 5/u.test(status.text)), 'the first retry is announced with its reason');
+  assert.ok(statuses.some((status) => /attempt 2/u.test(status.text)), 'later attempts are announced');
+  assert.equal(calls, 3, 'the provider was retried until it answered');
+  assert.match(text, /Recovered\./u, 'the final answer still arrives');
+});

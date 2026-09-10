@@ -311,6 +311,11 @@ async function providerCompletionWithRetry({ provider, credentials, selectedMode
   throw failureError('PROVIDER_RETRY_EXHAUSTED', 'The provider could not be reached after repeated attempts.');
 }
 
+// A one-line, safe-for-the-UI reason for a failed provider call.
+function shortStatus(error) {
+  return String(error?.message || 'connection failed').replace(/\s+/gu, ' ').trim().slice(0, 120);
+}
+
 function finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline = null) {
   if (!assistantContent) {
     throw new AppError(502, 'PROVIDER_EMPTY_RESPONSE', 'The provider did not return a final chat response after tool use.', { expose: true });
@@ -400,6 +405,7 @@ function streamFailure(shift, code, message) {
 async function streamProviderRoundWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, maxRetries }) {
   let attempt = 0;
   while (attempt <= maxRetries) {
+    emit('status', { tone: 'info', text: attempt === 0 ? 'Waiting for the model…' : `Waiting for the model — attempt ${attempt + 1}…` });
     try {
       return await streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit });
     } catch (error) {
@@ -409,6 +415,7 @@ async function streamProviderRoundWithRetry({ provider, credentials, selectedMod
         messages.push({ role: 'assistant', content: partial.content });
         messages.push({ role: 'user', content: 'Continue your previous response exactly from where it stopped. Do not repeat any text you already wrote; continue with the next part of your answer.' });
       }
+      emit('status', { tone: 'warn', text: `The model failed (${shortStatus(error)}). Retrying ${attempt + 1} of ${maxRetries}…` });
       await new Promise((resolve) => setTimeout(resolve, Math.min(400 * (attempt + 1), 2_500)));
       attempt += 1;
     }
@@ -549,7 +556,14 @@ export async function respondToConversation(db, rawConversationId, body, timeout
 export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
   const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory });
   const { provider, credentials } = providerCredentials(db, context.providerId);
+  for (const server of context.mcp?.servers || []) {
+    emit('status', { tone: 'info', text: `MCP connected — ${server.pluginName || server.name}: ${server.toolCount} tools.` });
+  }
+  for (const failure of context.mcp?.failures || []) {
+    emit('status', { tone: 'warn', text: `MCP unavailable — ${failure.serverName}: ${failure.error}` });
+  }
   emit('started', { conversationId: context.conversation.id });
+  emit('status', { tone: 'info', text: `Connecting to ${provider.name}…` });
   if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
   const toolEvents = [];
   const timeline = [];
