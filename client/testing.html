@@ -20,9 +20,11 @@
 
     <section aria-labelledby="testModelsLabel">
       <div class="section-head"><h2 class="section-label" id="testModelsLabel">Models to test</h2><span class="section-label section-count" id="testModelCount"></span></div>
-      <div id="testModelList" class="test-list" aria-live="polite"><div class="loading">Gathering models</div></div>
-      <button class="button full button-spaced" id="runTests" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 3 14 9-14 9V3Z"/></svg>Run tests</button>
+      <!-- Above the list, not below it: with several models the bottom of the list scrolls off
+           a phone screen, and the live status has to stay in view the whole run. -->
       <div class="test-progress" id="testProgress" aria-live="polite" hidden></div>
+      <div id="testModelList" class="test-list" aria-live="polite"><div class="loading">Gathering models</div></div>
+      <button class="button full button-spaced" id="runTests" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 3 14 9-14 9V3Z"/></svg><span id="runTestsLabel">Run tests</span></button>
     </section>
 
     <section aria-labelledby="rankingLabel">

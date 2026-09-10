@@ -171,33 +171,57 @@ function scoreResults(results) {
   return thinking + vision + files + tools + latency;
 }
 
-async function testOneModel(db, { providerId, providerName, modelId: model }, { timeoutMs, emit }) {
-  const results = { baseline: { status: 'rejected', reason: 'Not run.', ms: 0 }, thinking: {}, vision: {}, files: {}, tools: {} };
-  const step = (name, label) => emit?.('progress', { key: `${providerId}:${model}`, providerName, modelId: model, step: name, label });
+// Every probe, in the order it runs. Publishing the list means the UI can say "step 4 of 9"
+// instead of looking stuck.
+export const PROBE_STEPS = [
+  { id: 'baseline', label: 'Waking the model up' },
+  ...THINKING_LEVELS.map((level) => ({ id: `thinking:${level.id}`, label: `Thinking level ${level.label}` })),
+  { id: 'vision', label: 'Image input' },
+  { id: 'files', label: 'File attachments' },
+  { id: 'tools', label: 'Tool use' }
+];
 
-  step('baseline', 'Waking the model up');
+async function testOneModel(db, { providerId, providerName, modelId: model }, { timeoutMs, emit, index = 0, total = 1 }) {
+  const results = { baseline: { status: 'rejected', reason: 'Not run.', ms: 0 }, thinking: {}, vision: {}, files: {}, tools: {} };
+  const key = `${providerId}:${model}`;
+  let stepIndex = 0;
+  // Announced before the probe runs, so the UI can name the model and the capability while it
+  // waits on the network rather than only after it comes back.
+  const step = (id) => {
+    const found = PROBE_STEPS.find((entry) => entry.id === id);
+    stepIndex += 1;
+    emit?.('progress', {
+      key, providerName, modelId: model, step: id, label: found?.label || id,
+      stepIndex, stepTotal: PROBE_STEPS.length, index, total
+    });
+  };
+
+  step('baseline');
   results.baseline = await probe(db, providerId, model, {
     messages: [{ role: 'user', content: 'Reply with the single word READY.' }]
   }, { timeoutMs, judge: (result) => (result.content.trim() ? { status: 'works', reason: shortReason(result.content).slice(0, 40) } : { status: 'accepted', reason: 'No content returned.' }) });
 
   if (results.baseline.status === 'rejected') {
     // Nothing else can be learned from a model that will not answer at all.
-    for (const level of THINKING_LEVELS) results.thinking[level.id] = { status: 'skipped', reason: 'The model did not answer the baseline question.', ms: 0 };
-    results.vision = { status: 'skipped', reason: 'The model did not answer the baseline question.', ms: 0 };
-    results.files = { ...results.vision };
-    results.tools = { ...results.vision };
+    const skipped = { status: 'skipped', reason: 'The model did not answer the baseline question.', ms: 0 };
+    for (const level of THINKING_LEVELS) results.thinking[level.id] = { ...skipped };
+    results.vision = { ...skipped };
+    results.files = { ...skipped };
+    results.tools = { ...skipped };
+    stepIndex = PROBE_STEPS.length;
+    emit?.('progress', { key, providerName, modelId: model, step: 'skipped', label: 'Skipping the rest — the model did not answer', stepIndex, stepTotal: PROBE_STEPS.length, index, total });
     return finish(db, { providerId, providerName, modelId: model }, results);
   }
 
   for (const level of THINKING_LEVELS) {
-    step(`thinking:${level.id}`, `Thinking level ${level.label}`);
+    step(`thinking:${level.id}`);
     results.thinking[level.id] = await testThinkingLevel(db, providerId, model, level, timeoutMs);
   }
-  step('vision', 'Image input');
+  step('vision');
   results.vision = await testVision(db, providerId, model, timeoutMs);
-  step('files', 'File attachments');
+  step('files');
   results.files = await testFiles(db, providerId, model, timeoutMs);
-  step('tools', 'Tool use');
+  step('tools');
   results.tools = await testTools(db, providerId, model, timeoutMs);
   return finish(db, { providerId, providerName, modelId: model }, results);
 }
@@ -266,15 +290,17 @@ export function supportedThinkingLevels(db, rawProviderId, rawModelId) {
 
 export async function runModelTests(db, { timeoutMs = 20_000, emit, only = null } = {}) {
   const models = listTestableModels(db).filter((model) => !only || only.includes(model.key));
-  emit?.('started', { total: models.length, models });
+  emit?.('started', { total: models.length, steps: PROBE_STEPS.length, models: models.map(({ key, providerName, modelId }) => ({ key, providerName, modelId })) });
   const completed = [];
-  for (const model of models) {
+  for (const [index, model] of models.entries()) {
+    // Named before the first probe, so a slow model is visibly "being tested" from the start.
+    emit?.('model-start', { key: model.key, providerName: model.providerName, modelId: model.modelId, index, total: models.length });
     try {
-      const entry = await testOneModel(db, model, { timeoutMs, emit });
+      const entry = await testOneModel(db, model, { timeoutMs, emit, index, total: models.length });
       completed.push(entry);
-      emit?.('model', { key: model.key, providerName: model.providerName, modelId: model.modelId, score: entry.score });
+      emit?.('model', { key: model.key, providerName: model.providerName, modelId: model.modelId, score: entry.score, index, total: models.length });
     } catch (error) {
-      emit?.('model', { key: model.key, providerName: model.providerName, modelId: model.modelId, error: shortReason(error.message) });
+      emit?.('model', { key: model.key, providerName: model.providerName, modelId: model.modelId, error: shortReason(error.message), index, total: models.length });
     }
   }
   const report = modelTestReport(db);

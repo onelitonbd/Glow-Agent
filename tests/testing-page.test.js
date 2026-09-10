@@ -47,13 +47,17 @@ function report() {
 async function loadPage() {
   const { document, byId } = createDom(PAGE_HTML);
   const requests = [];
+  // Delivered one event per chunk with a pause between them. Sending the whole stream at once
+  // would let a UI that only updates at the end pass, which is how the missing live status
+  // got through the first time.
   const sse = [
-    ['started', { total: 2, models: [] }],
-    ['progress', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', step: 'vision', label: 'Image input' }],
-    ['model', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', score: 78 }],
+    ['started', { total: 2, steps: 9, models: [{ key: 'p1:capable', providerName: 'Local', modelId: 'capable' }] }],
+    ['model-start', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', index: 0, total: 2 }],
+    ['progress', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', step: 'baseline', label: 'Waking the model up', stepIndex: 1, stepTotal: 9, index: 0, total: 2 }],
+    ['progress', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', step: 'vision', label: 'Image input', stepIndex: 7, stepTotal: 9, index: 0, total: 2 }],
+    ['model', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', score: 78, index: 0, total: 2 }],
     ['completed', report()]
   ];
-  const payload = sse.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
   const encoder = new TextEncoder();
 
   globalThis.document = document;
@@ -82,12 +86,15 @@ async function loadPage() {
         status: 200,
         body: {
           getReader: () => {
-            let sent = false;
+            let cursor = 0;
             return {
               read: async () => {
-                if (sent) return { done: true, value: undefined };
-                sent = true;
-                return { done: false, value: encoder.encode(payload) };
+                if (cursor >= sse.length) return { done: true, value: undefined };
+                const [event, data] = sse[cursor];
+                cursor += 1;
+                // Hold the previous events back briefly so the page has to paint them.
+                if (cursor > 1) await new Promise((resolve) => setTimeout(resolve, 12));
+                return { done: false, value: encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) };
               },
               releaseLock() {}
             };
@@ -141,14 +148,37 @@ test('the stored report renders as a ranking with a verdict per capability', asy
   assert.match(cards[0].querySelector('.rank-meta').textContent, /Answered in 0\.9s/u);
 });
 
-test('running the tests sends only the ticked models and repaints the report', async () => {
+test('running the tests names the model and the capability while it works, on the button and the row', async () => {
   const { byId, requests } = await loadPage();
   byId.get('testModelList').querySelectorAll('input')[1].checked = false;
+  const rows = byId.get('testModelList').querySelectorAll('.test-row');
   byId.get('runTests').dispatchEvent('click');
-  await waitFor(() => byId.get('testProgress').hidden === true, 4_000);
+
+  // The button and the rows react before anything comes back from the server.
+  assert.equal(byId.get('runTests').disabled, true);
+  assert.equal(byId.get('runTestsLabel').textContent, 'Testing…');
+  assert.equal(byId.get('testProgress').hidden, false);
+  assert.match(byId.get('testProgress').querySelector('.test-progress-title').textContent, /1 model to test/u);
+  assert.equal(rows[0].querySelector('.test-row-state').textContent, 'Queued');
+  assert.equal(rows[1].querySelector('.test-row-state').textContent, 'Waiting', 'an unticked model is not part of the run');
+
+  // Then the live status: which model, then which capability, then how far through.
+  await waitFor(() => rows[0].querySelector('.test-row-state').textContent === 'Image input', 4_000);
+  assert.equal(rows[0].classList.contains('testing'), true, 'the row being probed is marked');
+  assert.equal(byId.get('testProgress').querySelector('.test-progress-title').textContent, 'capable — Image input');
+  assert.equal(byId.get('testProgress').querySelector('.test-progress-detail').textContent, 'model 1 of 2 · step 7 of 9');
+
+  await waitFor(() => byId.get('runTests').disabled === false, 4_000);
+  assert.equal(byId.get('runTestsLabel').textContent, 'Run tests', 'the button reads normally again');
+  assert.equal(rows[0].querySelector('.test-row-state').textContent, '78 pts');
+  assert.equal(rows[0].classList.contains('done'), true);
+  // The outcome stays on screen, without the pulsing dot that means "still working".
+  assert.equal(byId.get('testProgress').hidden, false);
+  assert.match(byId.get('testProgress').querySelector('.test-progress-title').textContent, /Testing finished/u);
+  assert.equal(byId.get('testProgress').querySelectorAll('.stream-status-dot').length, 0);
+
   const run = requests.find((request) => request.path === '/api/v1/tests/run/stream');
   assert.deepEqual(run.body, { models: ['p1:capable'] }, 'only the ticked model is tested');
-  assert.equal(byId.get('runTests').disabled, false, 'the button is usable again');
   assert.equal(byId.get('testModelList').querySelectorAll('input').every((box) => box.disabled === false), true);
   assert.equal(byId.get('rankingReport').querySelectorAll('.rank-card').length, 2);
 });

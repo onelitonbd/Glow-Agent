@@ -377,11 +377,28 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .test-list { display: grid; gap: 7px; }
 .test-row { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; }
 .test-row input { width: 19px; height: 19px; flex: 0 0 auto; accent-color: var(--accent); }
-.test-row-copy { display: grid; gap: 2px; min-width: 0; }
+.test-row-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .test-row .data-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.test-progress { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 9px 11px; border: 1px dashed rgba(198,255,107,.5); border-radius: 11px; background: var(--accent-wash); color: var(--accent); font: 11px var(--mono); }
+/* The row being probed is the one you should be able to find without reading anything else. */
+.test-row-state { flex: 0 0 auto; max-width: 46%; overflow: hidden; color: var(--quiet); font: 10px var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.test-row.queued .test-row-state { color: var(--muted); }
+.test-row.testing { border-color: rgba(198,255,107,.55); background: var(--accent-wash); }
+.test-row.testing .test-row-state { color: var(--accent); }
+.test-row.done { border-color: rgba(198,255,107,.3); }
+.test-row.done .test-row-state { color: var(--accent); }
+.test-row.failed { border-color: rgba(255,158,158,.4); background: var(--danger-wash); }
+.test-row.failed .test-row-state { color: var(--danger); }
+.test-progress { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 4px 9px; margin-bottom: 11px; padding: 10px 11px; border: 1px dashed rgba(198,255,107,.5); border-radius: 11px; background: var(--accent-wash); color: var(--accent); }
 .test-progress.warn { border-color: rgba(255,158,158,.5); background: var(--danger-wash); color: var(--danger); }
 .test-progress[hidden] { display: none; }
+.test-progress-copy { display: grid; gap: 2px; min-width: 0; }
+.test-progress-title { overflow: hidden; font: 11.5px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.test-progress-detail { color: var(--muted); font: 10px var(--mono); letter-spacing: .04em; }
+.test-progress.warn .test-progress-detail { color: var(--danger); }
+.test-progress.done { grid-template-columns: minmax(0,1fr); }
+.test-progress-bar { grid-column: 1 / -1; height: 4px; margin-top: 4px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; }
+.test-progress-fill { display: block; height: 100%; border-radius: 99px; background: currentColor; transition: width .2s ease; }
+.button.is-busy { cursor: progress; opacity: .8; }
 .rank-card { padding: 13px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
 .rank-card + .rank-card { margin-top: 9px; }
 .rank-head { display: flex; align-items: baseline; gap: 8px; }
