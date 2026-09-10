@@ -1,7 +1,8 @@
 import { api } from './api.js';
 import { element, showToast } from './ui.js';
 
-const state = { models: [], report: null, running: false, status: new Map(), auto: null, poll: null };
+const MAX_POLLS = 400;
+const state = { models: [], report: null, running: false, status: new Map(), auto: null, poll: null, ticks: 0 };
 
 const modelList = document.getElementById('testModelList');
 const modelCount = document.getElementById('testModelCount');
@@ -318,7 +319,9 @@ function scheduleAutoPoll(auto) {
   if (state.poll) clearTimeout(state.poll);
   state.poll = null;
   const active = Boolean(auto?.running || auto?.current || auto?.untested?.length);
-  if (!active || auto?.enabled === false) return;
+  // Bounded so a hung probe cannot keep this page polling for the life of the tab.
+  state.ticks += 1;
+  if (!active || auto?.enabled === false || state.ticks > MAX_POLLS) return;
   state.poll = setTimeout(pollAuto, 1_500);
 }
 

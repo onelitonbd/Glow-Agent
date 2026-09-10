@@ -26,8 +26,13 @@ const state = {
   capabilities: [],
   // Files waiting to go with the next message, and the automatic runner's live status.
   attachments: [],
-  autoTest: null
+  autoTest: null,
+  autoTicks: 0
 };
+
+// How many times the chat will poll the automatic runner before giving up. A real run finishes in
+// seconds per model; this only stops a hung probe from polling for the life of the tab.
+const MAX_AUTO_POLLS = 400;
 const chatLog = document.getElementById('chatLog');
 const title = document.getElementById('conversationTitle');
 const composer = document.getElementById('composer');
@@ -1094,7 +1099,9 @@ function watchAutoTests() {
   if (autoPollTimer) clearTimeout(autoPollTimer);
   autoPollTimer = null;
   const active = Boolean(state.autoTest?.running || state.autoTest?.queued || state.autoTest?.untested?.length);
-  if (!active || state.autoTest?.enabled === false) return;
+  // Bounded so a probe that hangs upstream cannot leave an open chat polling forever.
+  state.autoTicks += 1;
+  if (!active || state.autoTest?.enabled === false || state.autoTicks > MAX_AUTO_POLLS) return;
   autoPollTimer = setTimeout(async () => {
     const before = state.autoTest?.current?.key || '';
     await loadAutoStatus();
