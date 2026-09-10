@@ -13,7 +13,12 @@ const state = {
   selectedProviderId: null,
   selectedModelId: null,
   selectedPluginId: null,
-  pluginRepos: []
+  pluginRepos: [],
+  // Guards every action that starts a request, so two streams can never run at once.
+  busy: false,
+  editingMessageId: null,
+  // Set while the model picker is open to re-answer one message instead of choosing a default.
+  modelPickFor: null
 };
 const chatLog = document.getElementById('chatLog');
 const title = document.getElementById('conversationTitle');
@@ -25,6 +30,7 @@ const skillTrigger = document.getElementById('openSkills');
 const toolTrigger = document.getElementById('openTools');
 const pluginTrigger = document.getElementById('openPlugins');
 const modelDialog = document.getElementById('modelDialog');
+const modelDialogTitle = document.getElementById('modelDialogTitle');
 const modelOptions = document.getElementById('modelOptions');
 const modelPickerHint = document.getElementById('modelPickerHint');
 const skillsDialog = document.getElementById('skillsDialog');
@@ -171,6 +177,201 @@ function renderToolEvents(toolEvents) {
   return wrap;
 }
 
+// The buttons under each message. An answer can be re-asked, copied, removed, or sent to a
+// different model; a question can be copied or corrected.
+function messageActions(message) {
+  if (message.role === 'assistant') {
+    return [
+      { id: 'regenerate', icon: 'refresh', label: 'Regenerate', run: () => regenerate(message.id) },
+      { id: 'copy', icon: 'copy', label: 'Copy', run: () => copyText(message.content) },
+      { id: 'delete', icon: 'trash', label: 'Delete', run: () => removeMessage(message.id), danger: true, confirm: 'Delete both?' },
+      { id: 'other-model', icon: 'database', label: 'Try another model', run: () => askForModel(message.id) }
+    ];
+  }
+  return [
+    { id: 'copy', icon: 'copy', label: 'Copy', run: () => copyText(message.content) },
+    { id: 'edit', icon: 'pencil', label: 'Edit', run: () => startEditing(message.id) }
+  ];
+}
+
+// Nothing is actionable until the message exists on the server, so the optimistic copies shown
+// while a request is in flight stay inert.
+function isPersisted(message) {
+  return typeof message.id === 'string' && !message.id.startsWith('pending-') && !message.id.startsWith('streaming-');
+}
+
+function renderActions(message) {
+  if (!isPersisted(message) || message.isStreaming) return null;
+  const bar = element('div', `message-actions ${message.role}`);
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', message.role === 'assistant' ? 'Answer options' : 'Your message options');
+  for (const action of messageActions(message)) {
+    const button = element('button', `message-action${action.danger ? ' danger' : ''}`);
+    button.type = 'button';
+    button.dataset.action = action.id;
+    button.dataset.messageId = message.id;
+    button.setAttribute('aria-label', action.label);
+    button.title = action.label;
+    const label = element('span', 'message-action-label', action.label);
+    button.append(icon(action.icon), label);
+    button.disabled = state.busy;
+    button.addEventListener('click', () => {
+      if (button.disabled) return;
+      // Destructive actions ask once more in place, which keeps the flow usable on a phone where
+      // a native confirm dialog is awkward.
+      if (action.confirm && !button.classList.contains('confirming')) {
+        button.classList.add('confirming');
+        label.textContent = action.confirm;
+        setTimeout(() => {
+          button.classList.remove('confirming');
+          label.textContent = action.label;
+        }, 4_000);
+        return;
+      }
+      button.classList.remove('confirming');
+      label.textContent = action.label;
+      action.run();
+    });
+    bar.append(button);
+  }
+  return bar;
+}
+
+function renderEditor(message) {
+  const wrap = element('div', 'message-editor');
+  const field = element('textarea', 'message-editor-input');
+  field.value = message.content;
+  field.setAttribute('rows', '3');
+  field.setAttribute('aria-label', 'Edit your message');
+  const actions = element('div', 'message-editor-actions');
+  const cancel = element('button', 'button secondary small', 'Cancel');
+  cancel.type = 'button';
+  cancel.dataset.action = 'cancel-edit';
+  cancel.addEventListener('click', () => { state.editingMessageId = null; renderLog(); });
+  const save = element('button', 'button small', 'Save and send');
+  save.type = 'button';
+  save.dataset.action = 'save-edit';
+  save.addEventListener('click', () => saveEdit(message.id, field.value));
+  actions.append(cancel, save);
+  wrap.append(field, actions);
+  return wrap;
+}
+
+async function copyText(text) {
+  const value = String(text ?? '');
+  if (!value.trim()) { showToast('There is nothing to copy yet.'); return; }
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      copied = true;
+    }
+  } catch { copied = false; }
+  if (!copied) copied = legacyCopy(value);
+  if (copied) showToast('Copied to your clipboard.');
+  else showToast('The browser blocked copying. Select the text instead.', 'danger');
+}
+
+// Older browsers and non-secure contexts have no clipboard API.
+function legacyCopy(value) {
+  try {
+    const area = element('textarea', 'copy-fallback');
+    area.value = value;
+    area.setAttribute('readonly', '');
+    document.body.append(area);
+    area.select?.();
+    const ok = document.execCommand?.('copy');
+    area.remove();
+    return Boolean(ok);
+  } catch {
+    return false;
+  }
+}
+
+async function removeMessage(messageId) {
+  const conversation = state.conversation;
+  if (!conversation || state.busy) return;
+  try {
+    // A reply is removed together with the question that produced it.
+    state.conversation = await api.conversations.deleteMessage(conversation.id, messageId);
+    await loadWorkspace();
+    renderLog();
+    showToast('Message deleted.');
+  } catch (error) {
+    showToast(error.message, 'danger');
+  }
+}
+
+function startEditing(messageId) {
+  if (state.busy) { showToast('Wait for the current answer to finish first.', 'danger'); return; }
+  state.editingMessageId = messageId;
+  renderLog();
+}
+
+// Saving a correction answers it again right away, which is what the edit button promises.
+async function saveEdit(messageId, content) {
+  const text = String(content ?? '').trim();
+  const conversation = state.conversation;
+  if (!text) { showToast('A message cannot be empty.', 'danger'); return; }
+  if (!conversation || state.busy) return;
+  try {
+    state.editingMessageId = null;
+    state.conversation = await api.conversations.editMessage(conversation.id, messageId, text);
+    renderLog();
+  } catch (error) {
+    showToast(error.message, 'danger');
+    return;
+  }
+  await regenerate(messageId);
+}
+
+function askForModel(messageId) {
+  if (state.busy) { showToast('Wait for the current answer to finish first.', 'danger'); return; }
+  state.modelPickFor = messageId;
+  renderModelPicker();
+  modelDialog.showModal();
+}
+
+// A reply is always re-answered through the question that produced it, so either id works as the
+// starting point here.
+function questionIdFor(messageId) {
+  const messages = state.conversation?.messages || [];
+  const index = messages.findIndex((entry) => entry.id === messageId);
+  if (index < 0) return null;
+  if (messages[index].role === 'user') return messageId;
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    if (messages[cursor].role === 'user') return messages[cursor].id;
+  }
+  return null;
+}
+
+// Answers a stored question again. The old reply is dropped first so the new one lands in its
+// place, while the question itself stays where it is.
+async function regenerate(messageId, model = {}) {
+  const conversation = state.conversation;
+  if (!conversation || state.busy) return;
+  const providerId = model.providerId || state.selectedProviderId;
+  const modelId = model.modelId || state.selectedModelId;
+  if (!providerId || !modelId) {
+    showToast('Choose a configured model before answering again.', 'danger');
+    return;
+  }
+  const questionId = questionIdFor(messageId);
+  const messages = conversation.messages || [];
+  const index = questionId ? messages.findIndex((entry) => entry.id === questionId) : -1;
+  if (index < 0) {
+    showToast('There is no question here to answer again.', 'danger');
+    return;
+  }
+  state.conversation = { ...conversation, messages: messages.slice(0, index + 1) };
+  renderLog();
+  await runStream((onEvent) => api.conversations.streamRegenerate(conversation.id, questionId, {
+    providerId,
+    modelId,
+    toolIds: state.tools.map((tool) => tool.id)
+  }, onEvent));
+}
+
 function renderLog() {
   const followLatest = chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 56;
   const tableOffsets = [...chatLog.querySelectorAll('.markdown-table-scroll')].map((table) => table.scrollLeft);
@@ -186,6 +387,7 @@ function renderLog() {
   }
   messages.forEach((message) => {
     const bubble = element('article', `message ${message.role}`);
+    const editing = state.editingMessageId === message.id && message.role === 'user';
     if (message.role === 'assistant') {
       const streaming = Boolean(message.isStreaming);
       const hasTimeline = Array.isArray(message.timeline) && message.timeline.length;
@@ -196,11 +398,19 @@ function renderLog() {
         if (message.content) bubble.append(renderMarkdown(message.content, { streaming }));
         if (Array.isArray(message.toolEvents) && message.toolEvents.length) bubble.append(renderToolEvents(message.toolEvents));
       }
+    } else if (editing) {
+      bubble.append(renderEditor(message));
     } else if (message.content) {
       bubble.append(document.createTextNode(message.content));
     }
     if (message.isStreaming && message.status) bubble.append(renderStreamStatus(message.status, message.statusTone));
     chatLog.append(bubble);
+    // A reply carries its actions underneath; the ones for a question sit outside the bubble so
+    // the pill itself stays clean.
+    if (!editing) {
+      const actions = renderActions(message);
+      if (actions) chatLog.append(actions);
+    }
   });
   [...chatLog.querySelectorAll('.markdown-table-scroll')].forEach((table, index) => {
     table.scrollLeft = tableOffsets[index] || 0;
@@ -231,7 +441,13 @@ function renderConversationList() {
   });
 }
 
+// The same list serves two jobs: choosing the default model, and picking the model that answers
+// one message again. The heading and hint say which one is open.
 function renderModelPicker() {
+  const reAnswer = Boolean(state.modelPickFor);
+  if (modelDialogTitle) {
+    modelDialogTitle.textContent = reAnswer ? 'Answer with another model' : 'Choose provider and model';
+  }
   modelOptions.replaceChildren();
   if (state.availableModels.length === 0) {
     modelPickerHint.textContent = 'No selected models yet. Add a provider, fetch its models, and select at least one for chat.';
@@ -239,27 +455,37 @@ function renderModelPicker() {
     modelOptions.append(link);
     return;
   }
-  modelPickerHint.textContent = 'The highlighted selection is used for your next message.';
+  modelPickerHint.textContent = reAnswer
+    ? 'Pick a model to answer that message again. Your message stays in the conversation.'
+    : 'The highlighted selection is used for your next message.';
   state.availableModels.forEach((entry) => {
     const isSelected = entry.providerId === state.selectedProviderId && entry.modelId === state.selectedModelId;
     const option = element('button', `model-option${isSelected ? ' selected' : ''}`);
     option.type = 'button';
+    option.dataset.modelId = entry.modelId;
     const badge = element('span', 'data-icon violet'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon('database'));
     const copy = element('span', 'copy'); copy.append(element('b', 'data-name', entry.modelId), element('span', 'data-subtitle', entry.providerName));
     option.append(badge, copy);
     if (isSelected) option.append(icon('check'));
     option.addEventListener('click', () => {
-      state.selectedProviderId = entry.providerId;
-      state.selectedModelId = entry.modelId;
-      modelTrigger.classList.add('selected');
-      modelTrigger.setAttribute('aria-label', `Selected model: ${entry.modelId}. Choose provider and model.`);
-      modelTrigger.title = `${entry.providerName} · ${entry.modelId}`;
+      const messageId = state.modelPickFor;
+      state.modelPickFor = null;
+      selectModel(entry);
       modelDialog.close();
       renderModelPicker();
-      showToast(`${entry.modelId} selected.`);
+      if (messageId) regenerate(messageId);
     });
     modelOptions.append(option);
   });
+}
+
+function selectModel(entry) {
+  state.selectedProviderId = entry.providerId;
+  state.selectedModelId = entry.modelId;
+  modelTrigger.classList.add('selected');
+  modelTrigger.setAttribute('aria-label', `Selected model: ${entry.modelId}. Choose provider and model.`);
+  modelTrigger.title = `${entry.providerName} · ${entry.modelId}`;
+  showToast(`${entry.modelId} selected.`);
 }
 
 function renderSkillPicker() {
@@ -531,7 +757,34 @@ function appendStreamDelta(event, payload) {
   renderLog();
 }
 
-composer.addEventListener('submit', async (event) => {
+const STREAM_EVENTS = new Set(['started', 'status', 'thinking', 'token', 'tool_call', 'tool_result']);
+
+// Every way of getting an answer — a new message, a regenerate, a different model — streams
+// through here, so the live status line and the error recovery behave the same everywhere.
+async function runStream(start) {
+  state.busy = true;
+  sendButton.disabled = true;
+  renderLog();
+  try {
+    const result = await start((eventName, payload) => {
+      if (STREAM_EVENTS.has(eventName)) appendStreamDelta(eventName, payload);
+    });
+    state.conversation = result.conversation;
+    await loadWorkspace();
+    renderLog();
+  } catch (error) {
+    showToast(error.message, 'danger');
+    if (state.conversation) {
+      try { state.conversation = await api.conversations.get(state.conversation.id); renderLog(); } catch { /* Preserve the current UI after an upstream failure. */ }
+    }
+  } finally {
+    state.busy = false;
+    sendButton.disabled = false;
+    renderLog();
+  }
+}
+
+composer.addEventListener('submit', (event) => {
   event.preventDefault();
   const message = messageInput.value.trim();
   if (!message) return;
@@ -540,8 +793,7 @@ composer.addEventListener('submit', async (event) => {
     modelDialog.showModal();
     return;
   }
-  sendButton.disabled = true;
-  try {
+  runStream(async (onEvent) => {
     const conversation = await ensureConversation();
     const pendingUserMessage = {
       id: `pending-${Date.now()}`,
@@ -556,31 +808,21 @@ composer.addEventListener('submit', async (event) => {
     messageInput.value = '';
     messageInput.style.height = 'auto';
     renderLog();
-    const requestBody = {
+    return api.conversations.streamRespond(conversation.id, {
       message,
       providerId: state.selectedProviderId,
       modelId: state.selectedModelId,
       toolIds: state.tools.map((tool) => tool.id)
-    };
-    const result = await api.conversations.streamRespond(conversation.id, requestBody, async (eventName, payload) => {
-      if (eventName === 'started' || eventName === 'status' || eventName === 'thinking' || eventName === 'token' || eventName === 'tool_call' || eventName === 'tool_result') {
-        appendStreamDelta(eventName, payload);
-      }
-    });
-    state.conversation = result.conversation;
-    await loadWorkspace();
-    renderLog();
-  } catch (error) {
-    showToast(error.message, 'danger');
-    if (state.conversation) {
-      try { state.conversation = await api.conversations.get(state.conversation.id); renderLog(); } catch { /* Preserve the current UI after an upstream failure. */ }
-    }
-  } finally {
-    sendButton.disabled = false;
-  }
+    }, onEvent);
+  });
 });
 
-document.getElementById('openModelPicker').addEventListener('click', () => { renderModelPicker(); modelDialog.showModal(); });
+document.getElementById('openModelPicker').addEventListener('click', () => { state.modelPickFor = null; renderModelPicker(); modelDialog.showModal(); });
+modelDialog.addEventListener('close', () => {
+  if (!state.modelPickFor) return;
+  state.modelPickFor = null;
+  renderModelPicker();
+});
 document.getElementById('openSkills').addEventListener('click', () => { renderSkillPicker(); skillsDialog.showModal(); });
 document.getElementById('openTools').addEventListener('click', () => { renderToolPicker(); toolsDialog.showModal(); });
 document.getElementById('openPlugins')?.addEventListener('click', () => { renderPluginPicker(); document.getElementById('pluginsDialog').showModal(); });

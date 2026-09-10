@@ -12,7 +12,16 @@ import {
   updateProvider
 } from '../services/providers.js';
 import { createSkill, deleteSkill, getSkill, listSkills, updateSkill } from '../services/skills.js';
-import { createConversation, getConversation, listConversations, respondToConversation, respondToConversationStream } from '../services/conversations.js';
+import {
+  createConversation,
+  deleteMessage,
+  editMessage,
+  getConversation,
+  listConversations,
+  regenerateMessageStream,
+  respondToConversation,
+  respondToConversationStream
+} from '../services/conversations.js';
 import { listTools } from '../services/tools.js';
 import {
   approvePluginWrites,
@@ -44,6 +53,29 @@ function success(response, data, status = 200) {
 
 function asyncRoute(handler) {
   return (request, response, next) => Promise.resolve(handler(request, response, next)).catch(next);
+}
+
+// Server-sent events need their own error path: headers are already on the wire, so a failure is
+// reported as an `error` event instead of an HTTP status.
+function sseRoute(run) {
+  return async (request, response) => {
+    response.status(200).set({
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+    response.flushHeaders?.();
+    const emit = (event, data) => response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    try {
+      await run(request, emit);
+    } catch (error) {
+      const appError = error instanceof AppError ? error : new AppError(500, 'INTERNAL_ERROR', 'An unexpected server error occurred.', { expose: true });
+      emit('error', { code: appError.code, message: appError.expose ? appError.message : 'An unexpected server error occurred.' });
+    } finally {
+      response.end();
+    }
+  };
 }
 
 function rateLimit({ windowMs, max, code }) {
@@ -128,24 +160,29 @@ export function createApiRouter({ db, config }) {
   router.post('/conversations/:conversationId/respond', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), asyncRoute(async (request, response) => {
     success(response, await respondToConversation(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, { rootDirectory: config.rootDirectory, workspaceDirectory: config.workspaceDirectory, fetchTimeoutMs: config.providerFetchTimeoutMs, maxToolRounds: config.maxToolRounds, maxProviderRetries: config.maxProviderRetries }));
   }));
-  router.post('/conversations/:conversationId/respond/stream', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), async (request, response) => {
-    response.status(200).set({
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no'
-    });
-    response.flushHeaders?.();
-    const emit = (event, data) => response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    try {
-      await respondToConversationStream(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, emit, { rootDirectory: config.rootDirectory, workspaceDirectory: config.workspaceDirectory, fetchTimeoutMs: config.providerFetchTimeoutMs, maxToolRounds: config.maxToolRounds, maxProviderRetries: config.maxProviderRetries });
-    } catch (error) {
-      const appError = error instanceof AppError ? error : new AppError(500, 'INTERNAL_ERROR', 'An unexpected server error occurred.', { expose: true });
-      emit('error', { code: appError.code, message: appError.expose ? appError.message : 'An unexpected server error occurred.' });
-    } finally {
-      response.end();
-    }
+  const chatOptions = () => ({
+    rootDirectory: config.rootDirectory,
+    workspaceDirectory: config.workspaceDirectory,
+    fetchTimeoutMs: config.providerFetchTimeoutMs,
+    maxToolRounds: config.maxToolRounds,
+    maxProviderRetries: config.maxProviderRetries
   });
+  router.post('/conversations/:conversationId/respond/stream', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), sseRoute(async (request, emit) => {
+    await respondToConversationStream(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, emit, chatOptions());
+  }));
+  // Per-message actions behind the chat bubbles. Deleting a reply takes the question that produced
+  // it; editing a question drops the reply it produced; regenerate re-answers a stored question,
+  // with the model the caller picks.
+  router.route('/conversations/:conversationId/messages/:messageId')
+    .delete((request, response, next) => {
+      try { success(response, deleteMessage(db, request.params.conversationId, request.params.messageId, request.body ?? {})); } catch (error) { next(error); }
+    })
+    .put((request, response, next) => {
+      try { success(response, editMessage(db, request.params.conversationId, request.params.messageId, request.body ?? {})); } catch (error) { next(error); }
+    });
+  router.post('/conversations/:conversationId/messages/:messageId/regenerate/stream', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), sseRoute(async (request, emit) => {
+    await regenerateMessageStream(db, request.params.conversationId, request.params.messageId, request.body ?? {}, config.chatTimeoutMs, emit, chatOptions());
+  }));
 
   // ---- Plugins ----
   // The catalog of MCP servers Glow Agent ships. Declared before /plugins/:pluginId so the

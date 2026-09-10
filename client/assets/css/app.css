@@ -210,6 +210,23 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .message.assistant > .thinking:last-child,
 .message.assistant > .tool-call:last-child,
 .message.assistant > .tool-event:last-child { margin-bottom: 0; }
+/* Per-message actions. They sit below the bubble: inside a reply, and beside (not inside) the
+   question pill, so the accent bubble keeps its own colour. */
+.message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
+.message-actions.assistant { justify-self: stretch; }
+.message-actions.user { justify-self: end; max-width: 88%; }
+.message-action { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font: 10.5px var(--mono); letter-spacing: .01em; white-space: nowrap; }
+.message-action svg { width: 13px; height: 13px; }
+.message-action:hover, .message-action:focus-visible { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); }
+.message-action.danger:hover, .message-action.danger:focus-visible { border-color: rgba(255,158,158,.42); background: var(--danger-wash); color: var(--danger); }
+.message-action.confirming, .message-action.confirming:hover { border-color: rgba(255,158,158,.55); background: var(--danger-wash); color: var(--danger); }
+.message-action:disabled { opacity: .5; }
+:root[data-theme="light"] .message-action { border-color: rgba(25,36,22,.16); background: #ffffff; }
+/* Inline correction of a question: the textarea replaces the bubble's text until it is saved. */
+.message-editor { display: grid; gap: 8px; width: 100%; }
+.message-editor-input { display: block; width: 100%; min-height: 74px; padding: 8px 9px; resize: vertical; border: 1px solid rgba(25,36,22,.28); border-radius: 10px; background: #ffffff; color: #161b15; font: 14px/1.5 var(--font); }
+.message-editor-actions { display: flex; justify-content: flex-end; gap: 7px; }
+.copy-fallback { position: fixed; top: -1000px; left: -1000px; opacity: 0; }
 .markdown-code-block { margin: 0 0 20px; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #0c0e11; }
 .code-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 6px 8px 6px 14px; background: rgba(255,255,255,.045); border-bottom: 1px solid var(--line); color: var(--muted); }
 .code-language { font: 10.5px var(--mono); letter-spacing: .06em; text-transform: lowercase; }

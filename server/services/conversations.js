@@ -150,7 +150,63 @@ function persistMessage(db, { conversationId, role, content, providerId = null, 
   return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, timeline: timeline || null, createdAt };
 }
 
-async function prepareResponse(db, rawConversationId, body, { workspaceDirectory } = {}) {
+// The rows behind a conversation in display order. `rowid` breaks ties when two messages land in
+// the same millisecond, which is what makes "everything after this message" unambiguous.
+function messageRows(db, conversationId) {
+  return db.prepare('SELECT rowid, * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC').all(conversationId);
+}
+
+function existingMessage(db, rawConversationId, rawMessageId) {
+  const conversation = existingConversation(db, rawConversationId);
+  const messageId = identifier(rawMessageId, 'Message ID');
+  const message = db.prepare('SELECT rowid, * FROM messages WHERE id = ? AND conversation_id = ?').get(messageId, conversation.id);
+  if (!message) throw notFound('Message');
+  return { conversation, message };
+}
+
+function dropMessagesAfter(db, conversationId, message) {
+  db.prepare(`
+    DELETE FROM messages
+    WHERE conversation_id = ? AND (created_at > ? OR (created_at = ? AND rowid > ?))
+  `).run(conversationId, message.created_at, message.created_at, message.rowid);
+}
+
+function touchConversation(db, conversationId) {
+  db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now(), conversationId);
+}
+
+// Deleting a reply takes the question that produced it with it, so the log never keeps a question
+// nobody answered. `withQuestion: false` keeps the question (used by Regenerate, which re-answers
+// it instead).
+export function deleteMessage(db, rawConversationId, rawMessageId, body = {}) {
+  const { conversation, message } = existingMessage(db, rawConversationId, rawMessageId);
+  let question = null;
+  if (body.withQuestion !== false && message.role === 'assistant') {
+    question = db.prepare(`
+      SELECT id FROM messages
+      WHERE conversation_id = ? AND role = 'user' AND (created_at < ? OR (created_at = ? AND rowid < ?))
+      ORDER BY created_at DESC, rowid DESC
+      LIMIT 1
+    `).get(conversation.id, message.created_at, message.created_at, message.rowid);
+  }
+  db.prepare('DELETE FROM messages WHERE id = ?').run(message.id);
+  if (question) db.prepare('DELETE FROM messages WHERE id = ?').run(question.id);
+  touchConversation(db, conversation.id);
+  return getConversation(db, conversation.id);
+}
+
+// Correcting a question also drops the answer it produced; the caller re-answers the edited text.
+export function editMessage(db, rawConversationId, rawMessageId, body = {}) {
+  const { conversation, message } = existingMessage(db, rawConversationId, rawMessageId);
+  if (message.role !== 'user') throw validation('Only your own messages can be edited.');
+  const content = requiredString(body.content, 'Message', { max: 16_000 });
+  db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(content, message.id);
+  dropMessagesAfter(db, conversation.id, message);
+  touchConversation(db, conversation.id);
+  return getConversation(db, conversation.id);
+}
+
+async function prepareResponse(db, rawConversationId, body, { workspaceDirectory, existingUserMessage = null } = {}) {
   const conversation = existingConversation(db, rawConversationId);
   const content = requiredString(body.message, 'Message', { max: 16_000 });
   const providerId = identifier(body.providerId, 'Provider ID');
@@ -173,7 +229,20 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
   if (mcp?.definitions?.length) {
     tools.push(...mcp.definitions);
   }
-  const userMessage = persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
+  // Regenerate/Edit re-answer a message that is already stored, so no new user row is written.
+  const userMessage = existingUserMessage
+    ? {
+      id: existingUserMessage.id,
+      role: 'user',
+      content,
+      providerId,
+      modelId: selectedModelId,
+      reasoning: '',
+      toolEvents: [],
+      timeline: null,
+      createdAt: existingUserMessage.created_at
+    }
+    : persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId });
   const messages = conversationMessages(db, conversation.id).map((message) => ({ role: message.role, content: message.content }));
   const system = systemMessage(skills, { plugin, mcp });
   if (system) messages.unshift({ role: 'system', content: system });
@@ -553,8 +622,9 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   }
 }
 
-export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
-  const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory });
+// Shared by "answer my new message" and "answer this stored message again": everything from the
+// live status line through the tool rounds to persisting the reply.
+async function streamConversation(db, context, timeoutMs, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
   const { provider, credentials } = providerCredentials(db, context.providerId);
   for (const server of context.mcp?.servers || []) {
     emit('status', { tone: 'info', text: `MCP connected — ${server.pluginName || server.name}: ${server.toolCount} tools.` });
@@ -605,4 +675,21 @@ export async function respondToConversationStream(db, rawConversationId, body, t
   } finally {
     await closeMcpContexts(db, context.mcp);
   }
+}
+
+export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, options = {}) {
+  const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory: options.workspaceDirectory });
+  return streamConversation(db, context, timeoutMs, emit, options);
+}
+
+// Re-answers a stored user message — with the same model (Regenerate) or a different one (Try with
+// another model). The reply it produced is removed first, so the question stays where it is and
+// only the answer is replaced.
+export async function regenerateMessageStream(db, rawConversationId, rawMessageId, body, timeoutMs, emit, options = {}) {
+  const { conversation, message } = existingMessage(db, rawConversationId, rawMessageId);
+  if (message.role !== 'user') throw validation('Choose one of your own messages to answer again.');
+  dropMessagesAfter(db, conversation.id, message);
+  touchConversation(db, conversation.id);
+  const context = await prepareResponse(db, conversation.id, { ...body, message: message.content }, { workspaceDirectory: options.workspaceDirectory, existingUserMessage: message });
+  return streamConversation(db, context, timeoutMs, emit, options);
 }

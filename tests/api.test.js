@@ -429,3 +429,94 @@ test('stream resumes from partial content when the provider is interrupted mid-r
   // Partial text that was shown live is kept, and the resumed continuation is appended, not restarted.
   assert.equal(saved.messages[1].content, 'Partial answer continued.');
 });
+
+// The buttons under each message (Regenerate, Delete, Edit, Try another model) are only as good
+// as these routes: a regenerate must not duplicate the question, and a delete must take the pair.
+test('per-message actions: delete takes the pair, edit re-answers, regenerate can switch model', async (t) => {
+  const modelsSeen = [];
+  const tempDirectory = await mkdtemp(join(tmpdir(), 'glow-agent-messages-'));
+  const upstream = createServer(async (request, response) => {
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    const body = JSON.parse(raw);
+    modelsSeen.push({ model: body.model, lastUser: [...body.messages].reverse().find((entry) => entry.role === 'user')?.content });
+    const reply = `Answer from ${body.model}.`;
+    if (body.stream) {
+      response.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' });
+      response.write(`data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\n`);
+      response.end('data: [DONE]\n\n');
+      return;
+    }
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ choices: [{ message: { content: reply } }] }));
+  });
+  const upstreamServer = await listen(upstream);
+  const instance = createApp({
+    rootDirectory: process.cwd(),
+    databasePath: join(tempDirectory, 'glow-agent.sqlite'),
+    providerFetchTimeoutMs: 2_000,
+    chatTimeoutMs: 5_000
+  });
+  const appServer = await listen(instance.app);
+  const base = `http://127.0.0.1:${appServer.address().port}/api/v1`;
+  t.after(async () => { await close(appServer); instance.close(); await close(upstreamServer); await rm(tempDirectory, { recursive: true, force: true }); });
+
+  const provider = (await json(`${base}/providers`, { method: 'POST', body: { name: 'Message actions', baseUrl: `http://127.0.0.1:${upstreamServer.address().port}/v1`, apiKey: 'k' } })).payload.data;
+  await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'alpha' } });
+  await json(`${base}/providers/${provider.id}/models`, { method: 'POST', body: { modelId: 'beta' } });
+  const conversation = (await json(`${base}/conversations`, { method: 'POST' })).payload.data;
+  const ask = { providerId: provider.id, modelId: 'alpha' };
+
+  const first = (await json(`${base}/conversations/${conversation.id}/respond`, { method: 'POST', body: { message: 'First question.', ...ask } })).payload.data.conversation;
+  assert.deepEqual(first.messages.map((entry) => [entry.role, entry.content]), [['user', 'First question.'], ['assistant', 'Answer from alpha.']]);
+  const [question, answer] = first.messages;
+
+  // Delete on a reply removes the question that produced it as well.
+  const afterDelete = (await json(`${base}/conversations/${conversation.id}/messages/${answer.id}`, { method: 'DELETE', body: { withQuestion: true } })).payload.data;
+  assert.deepEqual(afterDelete.messages, []);
+
+  // Regenerate answers the same stored question again, and may use a different model.
+  await json(`${base}/conversations/${conversation.id}/respond`, { method: 'POST', body: { message: 'Second question.', ...ask } });
+  const withPair = (await json(`${base}/conversations/${conversation.id}`)).payload.data;
+  const secondQuestion = withPair.messages[0];
+  const regenerateResponse = await fetch(`${base}/conversations/${conversation.id}/messages/${secondQuestion.id}/regenerate/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify({ providerId: provider.id, modelId: 'beta' })
+  });
+  const streamText = await regenerateResponse.text();
+  const completed = streamText.split('\n\n').find((block) => block.includes('event: completed'));
+  assert.ok(completed, 'the regenerate stream completed');
+  const regenerated = JSON.parse(completed.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('')).conversation;
+  assert.deepEqual(regenerated.messages.map((entry) => [entry.role, entry.content]), [['user', 'Second question.'], ['assistant', 'Answer from beta.']]);
+  assert.equal(regenerated.messages[0].id, secondQuestion.id, 'the question row is reused, not duplicated');
+  assert.equal(modelsSeen.at(-1).model, 'beta', 'the picked model answered');
+  assert.ok(streamText.includes('Connecting to'), 'the regenerate stream reports its progress like a normal message');
+
+  // Editing a question keeps its id, drops the reply it produced, and is answered again.
+  const edited = (await json(`${base}/conversations/${conversation.id}/messages/${secondQuestion.id}`, { method: 'PUT', body: { content: 'Second question, corrected.' } })).payload.data;
+  assert.deepEqual(edited.messages.map((entry) => entry.role), ['user'], 'the old answer is dropped');
+  assert.equal(edited.messages[0].content, 'Second question, corrected.');
+  const afterEditRegenerate = JSON.parse((await (await fetch(`${base}/conversations/${conversation.id}/messages/${secondQuestion.id}/regenerate/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(ask)
+  })).text()).split('\n\n').filter((block) => block.includes('event: completed')).map((block) => block.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join(''))[0]).conversation;
+  assert.deepEqual(afterEditRegenerate.messages.map((entry) => [entry.role, entry.content]), [['user', 'Second question, corrected.'], ['assistant', 'Answer from alpha.']]);
+  assert.equal(modelsSeen.at(-1).lastUser, 'Second question, corrected.', 'the corrected text is what the model sees');
+
+  // Deleting a question removes only that question.
+  const withUserOnly = (await json(`${base}/conversations/${conversation.id}`)).payload.data;
+  const afterUserDelete = (await json(`${base}/conversations/${conversation.id}/messages/${withUserOnly.messages[0].id}`, { method: 'DELETE', body: { withQuestion: true } })).payload.data;
+  assert.deepEqual(afterUserDelete.messages.map((entry) => entry.role), ['assistant'], 'the answer stays when a question is deleted');
+
+  // Guard rails.
+  const malformed = await json(`${base}/conversations/${conversation.id}/messages/not-a-message`, { method: 'DELETE', body: {} });
+  assert.equal(malformed.response.status, 400);
+  const missing = await json(`${base}/conversations/${conversation.id}/messages/00000000-0000-4000-8000-000000000000`, { method: 'DELETE', body: {} });
+  assert.equal(missing.response.status, 404);
+  const editReply = await json(`${base}/conversations/${conversation.id}/messages/${afterUserDelete.messages[0].id}`, { method: 'PUT', body: { content: 'nope' } });
+  assert.equal(editReply.response.status, 400);
+  assert.equal(editReply.payload.error.code, 'VALIDATION_ERROR');
+  assert.equal(question.role, 'user');
+});

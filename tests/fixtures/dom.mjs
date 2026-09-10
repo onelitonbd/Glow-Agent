@@ -63,6 +63,7 @@ export class DomNode {
     this.autocomplete = '';
     this.htmlFor = '';
     this.title = '';
+    this.style = {};
     this.hidden = false;
     this.disabled = false;
     this.selected = false;
@@ -230,17 +231,22 @@ export function createDom(html) {
     byId.set(id, node);
     root.append(node);
   }
+  const documentElement = new DomNode('html');
   const document = {
     body: root,
+    documentElement,
     createElement: (tag) => new DomNode(tag),
     createElementNS: (_namespace, tag) => new DomNode(tag),
+    createDocumentFragment: () => new DomNode('#fragment'),
     createTextNode: (text) => {
       const node = new DomNode('#text');
       node.textContent = String(text);
       return node;
     },
     getElementById: (id) => byId.get(id) || null,
-    querySelector: (selector) => root.querySelector(selector)
+    querySelector: (selector) => root.querySelector(selector),
+    querySelectorAll: (selector) => root.querySelectorAll(selector),
+    addEventListener: (type, handler) => root.addEventListener(type, handler)
   };
   return { document, root, byId, DomNode };
 }
