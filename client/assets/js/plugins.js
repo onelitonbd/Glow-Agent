@@ -27,6 +27,13 @@ let dialogFields = new Map();
 let dialogHints = new Map();
 let dialogSubmit = null;
 
+// A short, readable build tag (0.6.3, 2026.8.31). Long hashes and image refs are dropped.
+function cleanVersion(version) {
+  const value = String(version || '').trim();
+  if (!value || value.length > 12) return '';
+  return value;
+}
+
 function splitList(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
 }
@@ -268,8 +275,11 @@ function statusLine(plugin) {
   if (config.connected) {
     const box = element('div', 'plugin-status ok');
     box.append(icon('check'));
-    const label = config.serverName ? `${config.serverName}${config.serverVersion ? ` ${config.serverVersion}` : ''}` : 'Connected';
-    box.append(element('span', '', `${label} · ${config.toolCount} tools`));
+    const shortVersion = cleanVersion(config.serverVersion);
+    const label = [config.serverName, shortVersion].filter(Boolean).join(' ');
+    const text = element('span', '', `${label || 'Connected'} · ${config.toolCount} tools`);
+    if (config.serverVersion && config.serverVersion !== shortVersion) text.title = config.serverVersion;
+    box.append(text);
     return box;
   }
   const box = element('div', 'plugin-status warn');
@@ -348,13 +358,17 @@ function repoSection(plugin) {
   }
   shell.append(element('p', 'hint', `Signed in as ${config.ownerLogin}.`));
 
+  const selectField = element('div', 'field repo-field');
   const select = element('select');
   select.setAttribute('aria-label', 'Repository');
   const placeholder = element('option', '', 'Choose a repository…');
   placeholder.value = '';
   select.append(placeholder);
   const repos = state.reposPluginId === plugin.id ? state.repos : [];
-  if (state.reposPluginId !== plugin.id && !config.selectedRepo) loadRepos(plugin);
+  if (state.reposPluginId !== plugin.id) loadRepos(plugin);
+  if (state.reposPluginId === plugin.id && repos.length === 0) {
+    select.append(element('option', '', 'Loading repositories…'));
+  }
   for (const repo of repos) {
     const option = element('option', '', `${repo.fullName}${repo.private ? ' (private)' : ''}`);
     option.value = repo.fullName;
@@ -374,7 +388,8 @@ function repoSection(plugin) {
       showToast(error.message, 'danger');
     }
   });
-  shell.append(select);
+  selectField.append(select);
+  shell.append(selectField);
   if (config.selectedRepo) {
     const status = element('div', 'plugin-status ok');
     status.append(icon('check'), element('span', '', `Selected ${config.selectedRepo}`));

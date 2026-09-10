@@ -9,7 +9,7 @@ const PAGE_HTML = readFileSync(fileURLToPath(new URL('../client/plugins.html', i
 
 // Loads the real Plugins page script against a seeded DOM and a stubbed API, then returns
 // everything needed to drive it: the catalog, the dialog, and every request it made.
-async function loadPage({ plugins = [] } = {}) {
+async function loadPage({ plugins = [], reposStub = [] } = {}) {
   const { document, byId } = createDom(PAGE_HTML);
   const requests = [];
   let nextPluginId = 1;
@@ -23,7 +23,8 @@ async function loadPage({ plugins = [] } = {}) {
       return { status: 201, data: plugin };
     }],
     ['POST', /^\/api\/v1\/plugins\/[\w-]+\/config$/u, (body, url) => ({ status: 200, data: { id: url.split('/')[4], config: body[body.preset] } })],
-    ['POST', /^\/api\/v1\/plugins\/[\w-]+\/connect$/u, (body, url) => ({ status: 200, data: { plugin: { id: url.split('/')[4] }, server: { name: 'fixture-mcp', toolCount: 5 } } })]
+    ['POST', /^\/api\/v1\/plugins\/[\w-]+\/connect$/u, (body, url) => ({ status: 200, data: { plugin: { id: url.split('/')[4] }, server: { name: 'fixture-mcp', toolCount: 5 } } })],
+    ['POST', /^\/api\/v1\/plugins\/[\w-]+\/github\/repos$/u, () => ({ status: 200, data: reposStub })]
   ];
 
   globalThis.document = document;
@@ -45,6 +46,14 @@ async function loadPage({ plugins = [] } = {}) {
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
   return { byId, requests };
+}
+
+async function waitFor(condition, ms = 200) {
+  const started = Date.now();
+  while (Date.now() - started < ms) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
 }
 
 function controls(form) {
@@ -141,6 +150,29 @@ test('a server with no settings opens a dialog that only has to be connected', a
   const configure = requests.find((request) => request.path.endsWith('/config'));
   assert.deepEqual(configure.body, { preset: 'sequential-thinking', 'sequential-thinking': {} });
   assert.ok(requests.some((request) => request.path.endsWith('/connect')));
+});
+
+test('the repository list loads even when a repository is already chosen', async () => {
+  const reposStub = [
+    { fullName: 'octocat/gizmos', name: 'gizmos', owner: 'octocat', private: true, defaultBranch: 'trunk' },
+    { fullName: 'octocat/widgets', name: 'widgets', owner: 'octocat', private: false, defaultBranch: 'main' }
+  ];
+  const { byId } = await loadPage({
+    reposStub,
+    plugins: [{ id: 'p1', type: 'mcp', name: 'GitHub', enabled: true,
+      config: { preset: 'github', accountAware: true, connected: true, toolCount: 5, tools: [], ownerLogin: 'octocat', selectedRepo: 'octocat/gizmos' } }]
+  });
+  // Wait for the repository list to arrive.
+  await waitFor(() => {
+    const select = byId.get('pluginsState').querySelector('select');
+    return select && select.querySelectorAll('option').length > 1;
+  });
+
+  const select = byId.get('pluginsState').querySelector('select');
+  assert.ok(select, 'a repository picker is rendered');
+  const options = select.querySelectorAll('option').map((option) => option.value).filter(Boolean);
+  assert.deepEqual(options, ['octocat/gizmos', 'octocat/widgets'], 'both repositories are offered for switching');
+  assert.equal(select.querySelectorAll('option').find((option) => option.value === 'octocat/gizmos').selected, true, 'the chosen one is preselected');
 });
 
 test('a server already added cannot be added twice', async () => {
