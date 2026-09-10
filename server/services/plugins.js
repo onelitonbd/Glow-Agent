@@ -138,8 +138,15 @@ const MCP_PRESETS = Object.freeze({
         label: 'GitHub personal access token',
         type: 'password',
         placeholder: 'ghp_… or github_pat_…',
-        hint: 'Paste a token with the repo, read:org, and user scopes and everything else is chosen for you. It is stored on this device and never shown again.',
-        secret: true
+        hint: 'A classic token (ghp_…) with the repo, read:org, and read:user scopes. Everything else here is chosen for you. The token is stored on this device and never shown again.',
+        secret: true,
+        // Opens GitHub's token form with these three scopes already ticked, so the user does not
+        // have to work out what to select. read:user is what resolves the account, repo is what
+        // reaches private repositories, read:org covers organization membership.
+        link: {
+          href: 'https://github.com/settings/tokens/new?description=Glow%20Agent&scopes=repo,read:org,read:user',
+          label: 'Create a token on GitHub'
+        }
       },
       {
         key: 'mode',
@@ -290,9 +297,10 @@ export function listPresets() {
     description: preset.description,
     accountAware: preset.accountAware === true,
     ...(preset.defaultToolsets ? { defaultToolsets: [...preset.defaultToolsets] } : {}),
-    setup: preset.setup.map(({ key, label, type, placeholder, hint, options, showWhen, secret, advanced, default: fallback }) => ({
+    setup: preset.setup.map(({ key, label, type, placeholder, hint, options, showWhen, secret, advanced, link, default: fallback }) => ({
       key, label, type,
       ...(advanced ? { advanced: true } : {}),
+      ...(link ? { link } : {}),
       ...(fallback ? { default: [...fallback] } : {}),
       ...(placeholder ? { placeholder } : {}),
       ...(hint ? { hint } : {}),

@@ -77,6 +77,13 @@ test('the setup form is built from the chosen server\'s own fields, not a shared
   assert.equal(fields.find((field) => field.name === 'token').type, 'password');
   assert.equal(/name="token"|id="token"/u.test(PAGE_HTML), false, 'the page holds no static server form');
 
+  // The field links to GitHub's token form with the scopes this app needs already selected.
+  const help = form.querySelector('a.field-link');
+  assert.equal(help.textContent, 'Create a token on GitHub');
+  assert.equal(help.getAttribute('rel'), 'noopener');
+  assert.match(help.href, /^https:\/\/github\.com\/settings\/tokens\/new\?/u);
+  assert.match(decodeURIComponent(help.href), /scopes=repo,read:org,read:user/u);
+
   // A field can be scoped to one of another field's values.
   const mode = fields.find((field) => field.name === 'mode');
   const binary = fields.find((field) => field.name === 'binary');

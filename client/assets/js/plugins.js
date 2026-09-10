@@ -44,6 +44,16 @@ function fieldValue(field) {
   return value;
 }
 
+// A field can point at the page where the thing it asks for is created.
+function buildLink(field) {
+  if (!field.link) return null;
+  const link = element('a', 'field-link', field.link.label);
+  link.href = field.link.href;
+  link.setAttribute('target', '_blank');
+  link.setAttribute('rel', 'noopener');
+  return link;
+}
+
 function buildControl(field) {
   if (field.type === 'select') {
     const control = element('select');
@@ -105,6 +115,8 @@ function renderFields(preset, config) {
     label.htmlFor = control.id;
     wrap.append(label, control);
     if (field.hint) wrap.append(element('p', 'hint', field.hint));
+    const help = buildLink(field);
+    if (help) wrap.append(help);
     // A select explains the choice the user just made.
     if (field.type === 'select') {
       const hint = element('p', 'hint');
@@ -136,6 +148,8 @@ function renderFields(preset, config) {
     label.htmlFor = control.id;
     wrap.append(label, control);
     if (field.hint) wrap.append(element('p', 'hint', field.hint));
+    const help = buildLink(field);
+    if (help) wrap.append(help);
     if (field.type === 'select') {
       const hint = element('p', 'hint');
       dialogHints.set(field.key, hint);
