@@ -163,7 +163,7 @@ export class DomNode {
   }
 
   querySelectorAll(selector) {
-    return [...walk(this)].filter((child) => child !== this && matches(child, selector));
+    return nodeList([...walk(this)].filter((child) => child !== this && matches(child, selector)));
   }
 
   focus() {}
@@ -176,6 +176,21 @@ export class DomNode {
     this.open = false;
     this.dispatchEvent('close');
   }
+}
+
+// A NodeList rather than an Array, because that is what a browser returns: it has forEach, is
+// iterable, and is indexable — but it has no filter, map, find, some, or every. Returning an
+// Array here let page code call .filter on a NodeList and pass every test while throwing in the
+// browser, so the shape is now honest and a misuse fails here too.
+function nodeList(nodes) {
+  const list = {
+    length: nodes.length,
+    forEach: (callback, thisArg) => nodes.forEach(callback, thisArg),
+    item: (index) => nodes[index] ?? null,
+    [Symbol.iterator]: () => nodes[Symbol.iterator]()
+  };
+  nodes.forEach((node, index) => { list[index] = node; });
+  return list;
 }
 
 function* walk(node) {
@@ -245,7 +260,7 @@ export function createDom(html) {
     },
     getElementById: (id) => byId.get(id) || null,
     querySelector: (selector) => root.querySelector(selector),
-    querySelectorAll: (selector) => root.querySelectorAll(selector),
+    querySelectorAll: (selector) => nodeList([...walk(root)].filter((child) => child !== root && matches(child, selector))),
     addEventListener: (type, handler) => root.addEventListener(type, handler)
   };
   return { document, root, byId, DomNode };

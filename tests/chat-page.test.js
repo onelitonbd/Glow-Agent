@@ -168,12 +168,12 @@ async function waitFor(condition, ms = 2_000) {
 
 // The buttons are icon-only, so their names live in aria-label, not in text.
 function labels(node) {
-  return node.querySelectorAll('button').map((button) => button.getAttribute('aria-label'));
+  return [...node.querySelectorAll('button')].map((button) => button.getAttribute('aria-label'));
 }
 
 function actionButton(byId, role, actionId) {
-  const bar = byId.get('chatLog').querySelectorAll('.message-actions').find((entry) => entry.classList.contains(role));
-  return bar.querySelectorAll('button').find((button) => button.dataset.action === actionId);
+  const bar = [...byId.get('chatLog').querySelectorAll('.message-actions')].find((entry) => entry.classList.contains(role));
+  return [...bar.querySelectorAll('button')].find((button) => button.dataset.action === actionId);
 }
 
 async function openConversation(byId) {
@@ -185,7 +185,7 @@ async function openConversation(byId) {
 test('an answer offers Regenerate, Copy, Delete, and Try another model', async () => {
   const { byId } = await loadChat();
   await openConversation(byId);
-  const bars = byId.get('chatLog').querySelectorAll('.message-actions');
+  const bars = [...byId.get('chatLog').querySelectorAll('.message-actions')];
   assert.deepEqual(bars.map((bar) => bar.className), ['message-actions user', 'message-actions assistant']);
   assert.deepEqual(labels(bars[1]), ['Regenerate', 'Copy', 'Delete', 'Try another model']);
   // Icons only: nothing but the svg is rendered inside a button.
@@ -198,7 +198,7 @@ test('an answer offers Regenerate, Copy, Delete, and Try another model', async (
 test('a question offers Regenerate, Copy, and Edit, and copying uses the clipboard', async () => {
   const { byId, copied } = await loadChat();
   await openConversation(byId);
-  const bars = byId.get('chatLog').querySelectorAll('.message-actions');
+  const bars = [...byId.get('chatLog').querySelectorAll('.message-actions')];
   assert.deepEqual(labels(bars[0]), ['Regenerate', 'Copy', 'Edit']);
   actionButton(byId, 'user', 'copy').dispatchEvent('click');
   await waitFor(() => copied.length === 1);
@@ -241,7 +241,7 @@ test('Try another model opens the picker and re-answers with the chosen model', 
   assert.equal(byId.get('modelDialog').open, true);
   assert.equal(byId.get('modelDialogTitle').textContent, 'Answer with another model');
   assert.match(byId.get('modelPickerHint').textContent, /answer that message again/u);
-  const beta = byId.get('modelOptions').querySelectorAll('button').find((button) => button.dataset.modelId === 'beta');
+  const beta = [...byId.get('modelOptions').querySelectorAll('button')].find((button) => button.dataset.modelId === 'beta');
   beta.dispatchEvent('click');
   await waitFor(() => requests.some((request) => request.path.endsWith('/regenerate/stream')));
   const regenerate = requests.find((request) => request.path.endsWith('/regenerate/stream'));
@@ -273,7 +273,7 @@ test('the thinking button lists the levels the test proved, and sends the chosen
   await openConversation(byId);
   byId.get('openThinking').dispatchEvent('click');
   assert.equal(byId.get('thinkingDialog').open, true);
-  const options = byId.get('thinkingOptions').querySelectorAll('button');
+  const options = [...byId.get('thinkingOptions').querySelectorAll('button')];
   // Off first, then the proven levels, then the refused ones — not the ladder's own order.
   assert.deepEqual(options.map((option) => option.querySelector('b').textContent), ['Off', 'Low', 'Medium', 'High', 'Extra High', 'Max']);
   const refused = options.find((option) => option.dataset.level === 'xhigh');
@@ -297,7 +297,7 @@ test('Edit replaces the bubble with a field and re-sends the corrected message',
   const field = byId.get('chatLog').querySelector('.message-editor-input');
   assert.equal(field.value, 'Write me a haiku.');
   field.value = 'Write me a tanka.';
-  byId.get('chatLog').querySelector('.message-editor-actions').querySelectorAll('button')
+  [...byId.get('chatLog').querySelector('.message-editor-actions').querySelectorAll('button')]
     .find((button) => button.dataset.action === 'save-edit').dispatchEvent('click');
   await waitFor(() => requests.some((request) => request.path.endsWith('/regenerate/stream')));
   const edit = requests.find((request) => request.method === 'PUT');

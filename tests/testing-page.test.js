@@ -121,16 +121,16 @@ async function waitFor(condition, ms = 2_000) {
 
 test('every selected model is listed with a checkbox, all ticked by default', async () => {
   const { byId } = await loadPage();
-  const boxes = byId.get('testModelList').querySelectorAll('input');
+  const boxes = [...byId.get('testModelList').querySelectorAll('input')];
   assert.deepEqual(boxes.map((box) => box.dataset.key), ['p1:capable', 'p1:plain']);
   assert.equal(boxes.every((box) => box.checked), true);
   assert.equal(byId.get('testModelCount').textContent, '2 selected models');
-  assert.deepEqual(byId.get('testModelList').querySelectorAll('.data-name').map((node) => node.textContent), ['capable', 'plain']);
+  assert.deepEqual([...byId.get('testModelList').querySelectorAll('.data-name')].map((node) => node.textContent), ['capable', 'plain']);
 });
 
 test('the stored report renders as a ranking with a verdict per capability', async () => {
   const { byId } = await loadPage();
-  const cards = byId.get('rankingReport').querySelectorAll('.rank-card');
+  const cards = [...byId.get('rankingReport').querySelectorAll('.rank-card')];
   assert.equal(cards.length, 2);
   assert.deepEqual(cards.map((card) => card.querySelector('.rank-model').textContent), ['capable', 'plain']);
   assert.deepEqual(cards.map((card) => card.querySelector('.rank-place').textContent), ['#1', '#2']);
@@ -138,9 +138,9 @@ test('the stored report renders as a ranking with a verdict per capability', asy
   assert.equal(cards[0].querySelector('.score-bar-fill').style.width, '100%');
   assert.equal(cards[1].querySelector('.score-bar-fill').style.width, '18%', 'the bar is relative to the best score');
 
-  const chips = (card, label) => card.querySelectorAll('.capability')
+  const chips = (card, label) => [...[...card.querySelectorAll('.capability')]
     .find((row) => row.querySelector('.capability-label').textContent === label)
-    .querySelectorAll('.chip').map((chip) => `${chip.textContent}:${chip.className}`);
+    .querySelectorAll('.chip')].map((chip) => `${chip.textContent}:${chip.className}`);
   assert.deepEqual(chips(cards[0], 'Thinking'), ['Low:chip ok', 'Medium:chip ok', 'High:chip ok', 'Extra High:chip no', 'Max:chip no']);
   assert.deepEqual(chips(cards[0], 'Images'), ['Yes:chip ok']);
   assert.deepEqual(chips(cards[0], 'Files'), ['No:chip no']);
@@ -151,7 +151,7 @@ test('the stored report renders as a ranking with a verdict per capability', asy
 test('running the tests names the model and the capability while it works, on the button and the row', async () => {
   const { byId, requests } = await loadPage();
   byId.get('testModelList').querySelectorAll('input')[1].checked = false;
-  const rows = byId.get('testModelList').querySelectorAll('.test-row');
+  const rows = [...byId.get('testModelList').querySelectorAll('.test-row')];
   byId.get('runTests').dispatchEvent('click');
 
   // The button and the rows react before anything comes back from the server.
@@ -179,6 +179,6 @@ test('running the tests names the model and the capability while it works, on th
 
   const run = requests.find((request) => request.path === '/api/v1/tests/run/stream');
   assert.deepEqual(run.body, { models: ['p1:capable'] }, 'only the ticked model is tested');
-  assert.equal(byId.get('testModelList').querySelectorAll('input').every((box) => box.disabled === false), true);
+  assert.equal([...byId.get('testModelList').querySelectorAll('input')].every((box) => box.disabled === false), true);
   assert.equal(byId.get('rankingReport').querySelectorAll('.rank-card').length, 2);
 });

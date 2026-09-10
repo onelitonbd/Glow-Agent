@@ -78,7 +78,9 @@ function markAll(phase, text) {
 }
 
 function selectedKeys() {
-  return modelList.querySelectorAll('input').filter((box) => box.checked).map((box) => box.dataset.key);
+  // Spread first: querySelectorAll returns a NodeList in a browser, which has forEach but no
+  // filter or map. Calling .filter on it directly throws and silently kills the click handler.
+  return [...modelList.querySelectorAll('input')].filter((box) => box.checked).map((box) => box.dataset.key);
 }
 
 // The summary line above the list: which model, which capability, and how far through the run.

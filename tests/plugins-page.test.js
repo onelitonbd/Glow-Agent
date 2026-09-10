@@ -57,7 +57,7 @@ async function waitFor(condition, ms = 200) {
 }
 
 function controls(form) {
-  return form.querySelectorAll('input, select').filter((node) => node.name);
+  return [...form.querySelectorAll('input, select')].filter((node) => node.name);
 }
 
 test('the setup form is built from the chosen server\'s own fields, not a shared GitHub form', async () => {
@@ -66,7 +66,7 @@ test('the setup form is built from the chosen server\'s own fields, not a shared
 
   // The catalog is the curated list the server sent, with one Add button per server.
   // One card per shipped server, and only GitHub asks for a credential.
-  assert.deepEqual(catalog.querySelectorAll('button').map((button) => button.textContent), ['Set up GitHub', 'Set up Memory', 'Add Sequential Thinking', 'Set up Filesystem']);
+  assert.deepEqual([...catalog.querySelectorAll('button')].map((button) => button.textContent), ['Set up GitHub', 'Set up Memory', 'Add Sequential Thinking', 'Set up Filesystem']);
   const add = catalog.querySelector('button');
   add.dispatchEvent('click');
 
@@ -137,7 +137,7 @@ test('saving sends only that server\'s settings and keeps a stored credential un
 
 test('a server with no settings opens a dialog that only has to be connected', async () => {
   const { byId, requests } = await loadPage();
-  const thinking = byId.get('presetState').querySelectorAll('button').find((button) => button.textContent === 'Add Sequential Thinking');
+  const thinking = [...byId.get('presetState').querySelectorAll('button')].find((button) => button.textContent === 'Add Sequential Thinking');
   thinking.dispatchEvent('click');
 
   assert.equal(byId.get('presetDialogTitle').textContent, 'Add Sequential Thinking');
@@ -170,9 +170,9 @@ test('the repository list loads even when a repository is already chosen', async
 
   const select = byId.get('pluginsState').querySelector('select');
   assert.ok(select, 'a repository picker is rendered');
-  const options = select.querySelectorAll('option').map((option) => option.value).filter(Boolean);
+  const options = [...select.querySelectorAll('option')].map((option) => option.value).filter(Boolean);
   assert.deepEqual(options, ['octocat/gizmos', 'octocat/widgets'], 'both repositories are offered for switching');
-  assert.equal(select.querySelectorAll('option').find((option) => option.value === 'octocat/gizmos').selected, true, 'the chosen one is preselected');
+  assert.equal([...select.querySelectorAll('option')].find((option) => option.value === 'octocat/gizmos').selected, true, 'the chosen one is preselected');
 });
 
 test('a server already added cannot be added twice', async () => {
