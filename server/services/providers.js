@@ -146,11 +146,15 @@ export function addSelectedModel(db, rawProviderId, body) {
   return { id, modelId: selectedModelId };
 }
 
+// Returns the model id that was dropped so the caller can throw away its capability report: a
+// model re-added later may sit behind a different key, and an old verdict would be a guess.
 export function deleteSelectedModel(db, rawProviderId, rawModelId) {
   const providerId = identifier(rawProviderId, 'Provider ID');
   const selectedModelId = identifier(rawModelId, 'Selected model ID');
-  const result = db.prepare('DELETE FROM provider_models WHERE id = ? AND provider_id = ?').run(selectedModelId, providerId);
-  if (Number(result.changes) === 0) throw notFound('Selected model');
+  const row = db.prepare('SELECT model_id FROM provider_models WHERE id = ? AND provider_id = ?').get(selectedModelId, providerId);
+  if (!row) throw notFound('Selected model');
+  db.prepare('DELETE FROM provider_models WHERE id = ? AND provider_id = ?').run(selectedModelId, providerId);
+  return { id: selectedModelId, providerId, modelId: row.model_id };
 }
 
 function upstreamUrl(baseUrl, path) {

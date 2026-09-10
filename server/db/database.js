@@ -64,6 +64,84 @@ const migrations = [
   {
     version: 4,
     sql: `ALTER TABLE messages ADD COLUMN reasoning TEXT;`
+  },
+  {
+    version: 5,
+    sql: `ALTER TABLE messages ADD COLUMN timeline TEXT;`
+  },
+  {
+    version: 6,
+    sql: `
+      CREATE TABLE IF NOT EXISTS plugins (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        config TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS plugins_type_idx ON plugins(type);
+      CREATE INDEX IF NOT EXISTS plugins_enabled_idx ON plugins(enabled);
+    `
+  },
+  {
+    // Plugins are now a curated catalog of MCP servers, so every row has to name one of the
+    // shipped presets. That leaves two kinds of stale row: the original GitHub OAuth plugin
+    // (type 'github', an OAuth token in config) and the first-cut MCP plugin that could point at
+    // an arbitrary URL or command (preset 'custom'). Neither shape can be connected any more, so
+    // both are rewritten as a fresh GitHub MCP plugin. The stored credential is deliberately not
+    // carried over: an OAuth token does not authenticate against the MCP endpoint, and a custom
+    // server's header/env secrets have no place in a preset config.
+    version: 7,
+    apply(db) {
+      for (const row of db.prepare('SELECT id, type, config FROM plugins').all()) {
+        let config = {};
+        try { config = JSON.parse(row.config) || {}; } catch { config = {}; }
+        const preset = String(config.preset || '').toLowerCase();
+        if (String(row.type).toLowerCase() === 'mcp' && preset && preset !== 'custom') continue;
+        const next = { preset: 'github', github: { mode: 'remote' } };
+        db.prepare('UPDATE plugins SET type = ?, config = ?, updated_at = ? WHERE id = ?')
+          .run('mcp', JSON.stringify(next), now(), row.id);
+      }
+    }
+  },
+  {
+    // Workspace preferences that outlive a request but are not environment configuration, so
+    // they belong in the database rather than in .env. One row per named setting, JSON value.
+    version: 8,
+    sql: `
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `
+  },
+  {
+    // Results of the capability probes the Testing page runs against each selected model, kept so
+    // the ranking report and the chat's thinking-level menu survive a restart.
+    version: 9,
+    sql: `
+      CREATE TABLE IF NOT EXISTS model_tests (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+        provider_name TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        results TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        tested_at TEXT NOT NULL,
+        UNIQUE(provider_id, model_id)
+      );
+      CREATE INDEX IF NOT EXISTS model_tests_provider_id_idx ON model_tests(provider_id);
+    `
+  },
+  {
+    // Attachments sent with a question: a small JSON array of {kind, name, mimeType, size, dataUrl}.
+    // Kept on the message so a chat you reopen still shows what you sent, and so a regenerate can
+    // hand the same file back to the model.
+    version: 10,
+    sql: `ALTER TABLE messages ADD COLUMN attachments TEXT;`
   }
 ];
 

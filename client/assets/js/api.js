@@ -104,11 +104,48 @@ export const api = {
     update: (id, values) => request(`/skills/${encodeURIComponent(id)}`, { method: 'PUT', body: values }),
     remove: (id) => request(`/skills/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
+  tests: {
+    models: () => request('/tests/models'),
+    levels: () => request('/tests/levels'),
+    report: () => request('/tests/report'),
+    levelsFor: (providerId, modelId) => request(`/tests/levels/${encodeURIComponent(providerId)}/${encodeURIComponent(modelId)}`),
+    // Everything the composer needs in one call: every selected model with its proven thinking
+    // levels and whether it takes images or files.
+    capabilities: () => request('/tests/capabilities'),
+    capabilitiesFor: (providerId, modelId) => request(`/tests/capabilities/${encodeURIComponent(providerId)}/${encodeURIComponent(modelId)}`),
+    auto: () => request('/tests/auto'),
+    runAuto: () => request('/tests/auto/run', { method: 'POST' }),
+    streamRun: (models, onEvent) => stream('/tests/run/stream', models ? { models } : {}, onEvent)
+  },
+  settings: {
+    get: () => request('/settings'),
+    update: (values) => request('/settings', { method: 'PUT', body: values })
+  },
   conversations: {
     list: () => request('/conversations'),
     create: (title) => request('/conversations', { method: 'POST', body: title ? { title } : {} }),
     get: (id) => request(`/conversations/${encodeURIComponent(id)}`),
     respond: (id, values) => request(`/conversations/${encodeURIComponent(id)}/respond`, { method: 'POST', body: values }),
-    streamRespond: (id, values, onEvent) => stream(`/conversations/${encodeURIComponent(id)}/respond/stream`, values, onEvent)
+    streamRespond: (id, values, onEvent) => stream(`/conversations/${encodeURIComponent(id)}/respond/stream`, values, onEvent),
+    deleteMessage: (id, messageId, withQuestion = true) => request(`/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE', body: { withQuestion } }),
+    editMessage: (id, messageId, content) => request(`/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}`, { method: 'PUT', body: { content } }),
+    streamRegenerate: (id, messageId, values, onEvent) => stream(`/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/regenerate/stream`, values, onEvent)
+  },
+  plugins: {
+    list: () => request('/plugins'),
+    presets: () => request('/plugins/presets'),
+    get: (id) => request(`/plugins/${encodeURIComponent(id)}`),
+    create: (values) => request('/plugins', { method: 'POST', body: values }),
+    update: (id, values) => request(`/plugins/${encodeURIComponent(id)}`, { method: 'PUT', body: values }),
+    remove: (id) => request(`/plugins/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    configure: (id, values) => request(`/plugins/${encodeURIComponent(id)}/config`, { method: 'POST', body: values }),
+    connect: (id, values = {}) => request(`/plugins/${encodeURIComponent(id)}/connect`, { method: 'POST', body: values }),
+    inspect: (id) => request(`/plugins/${encodeURIComponent(id)}/inspect`, { method: 'POST' }),
+    approveWrites: (id) => request(`/plugins/${encodeURIComponent(id)}/writes/approve`, { method: 'POST' }),
+    githubMe: (id) => request(`/plugins/${encodeURIComponent(id)}/github/me`, { method: 'POST' }),
+    githubRepos: (id, query = '') => request(`/plugins/${encodeURIComponent(id)}/github/repos`, { method: 'POST', body: { query } }),
+    selectRepo: (id, values) => request(`/plugins/${encodeURIComponent(id)}/github/select`, { method: 'POST', body: values }),
+    clone: (id) => request(`/plugins/${encodeURIComponent(id)}/github/clone`, { method: 'POST' }),
+    repoList: (id, path = '') => request(`/plugins/${encodeURIComponent(id)}/repo/list`, { method: 'POST', body: { path } })
   }
 };

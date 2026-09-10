@@ -33,6 +33,15 @@ function integerSetting(value, fallback, name) {
   return number;
 }
 
+function positiveIntegerSetting(value, fallback, name) {
+  if (value === undefined || value === '') return fallback;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 1) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return number;
+}
+
 export function loadConfig({ env = process.env, loadEnv = true } = {}) {
   if (loadEnv) loadDotEnv(resolve(rootDirectory, '.env'));
   const host = env.HOST || '127.0.0.1';
@@ -45,7 +54,20 @@ export function loadConfig({ env = process.env, loadEnv = true } = {}) {
     host,
     port: integerSetting(env.PORT, 3000, 'PORT'),
     databasePath: isAbsolute(databaseSetting) ? databaseSetting : resolve(rootDirectory, databaseSetting),
+    // Where cloned plugin repos live. Defaults to ./data/workspace inside the project.
+    workspaceDirectory: isAbsolute(env.WORKSPACE_DIRECTORY || './data/workspace')
+      ? env.WORKSPACE_DIRECTORY
+      : resolve(rootDirectory, env.WORKSPACE_DIRECTORY || './data/workspace'),
     providerFetchTimeoutMs: 15_000,
-    chatTimeoutMs: 60_000
+    chatTimeoutMs: 60_000,
+    // Safety ceiling on tool-use rounds per turn (kept high so it is effectively unlimited,
+    // still bounded so a runaway tool loop cannot hang the request). Configure with MAX_TOOL_ROUNDS.
+    maxToolRounds: positiveIntegerSetting(env.MAX_TOOL_ROUNDS, 500, 'MAX_TOOL_ROUNDS'),
+    // How many times to retry a provider request after a failure (network, 5xx, timeout, or a
+    // mid-stream interruption), resuming from any partial content. Configure with MAX_PROVIDER_RETRIES.
+    maxProviderRetries: positiveIntegerSetting(env.MAX_PROVIDER_RETRIES, 20, 'MAX_PROVIDER_RETRIES'),
+    // How often the automatic capability runner sweeps for models that have never been probed.
+    // Adding a model also triggers a run immediately; this only catches anything missed.
+    autoTestIntervalMs: positiveIntegerSetting(env.AUTO_TEST_INTERVAL_MS, 30_000, 'AUTO_TEST_INTERVAL_MS')
   });
 }
