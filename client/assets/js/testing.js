@@ -35,12 +35,16 @@ function renderModels() {
   state.status = new Map();
   modelCount.textContent = state.models.length ? `${state.models.length} selected model${state.models.length === 1 ? '' : 's'}` : '';
   if (state.models.length === 0) {
-    modelList.append(element('p', 'hint', 'No models are selected yet. Add a provider and select at least one model to test.'));
+    modelList.append(element('p', 'hint', 'Nothing to test yet. Testing runs against the models you have selected on the Models page for each provider — discovering a provider\'s models is not enough.'));
     const link = element('a', 'button secondary full button-spaced', 'Open providers');
     link.href = '/providers.html';
     modelList.append(link);
+    runButton.disabled = true;
+    runLabel.textContent = 'No models selected';
     return;
   }
+  runButton.disabled = false;
+  runLabel.textContent = 'Run tests';
   state.models.forEach((model) => {
     const row = element('label', 'test-row');
     row.dataset.key = model.key;
@@ -225,16 +229,31 @@ runButton.addEventListener('click', async () => {
   }
 });
 
-async function load() {
+// Loaded separately on purpose: a failure reading the old report must not leave the model list
+// stuck on "Gathering models", which reads exactly like a page that does nothing.
+async function loadModels() {
   try {
-    const [models, report] = await Promise.all([api.tests.models(), api.tests.report()]);
-    state.models = models;
-    state.report = report;
+    state.models = await api.tests.models();
     renderModels();
-    renderReport();
   } catch (error) {
+    modelList.replaceChildren(element('p', 'hint', `The model list could not be loaded: ${error.message}`));
+    modelCount.textContent = '';
     showToast(error.message, 'danger');
   }
+}
+
+async function loadReport() {
+  try {
+    state.report = await api.tests.report();
+    renderReport();
+  } catch {
+    // No stored report is normal on a fresh install; the empty state already says so.
+    renderReport();
+  }
+}
+
+async function load() {
+  await Promise.all([loadModels(), loadReport()]);
 }
 
 load();
