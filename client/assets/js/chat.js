@@ -725,6 +725,8 @@ function renderLog() {
   const tableOffsets = [...chatLog.querySelectorAll('.markdown-table-scroll')].map((table) => table.scrollLeft);
   chatLog.replaceChildren();
   title.textContent = state.conversation?.title || 'New conversation';
+  // The tab reads like the page, which matters once a chat has its own deep link.
+  document.title = state.conversation?.title ? `${state.conversation.title} — Glow Agent` : 'Glow Agent';
   const messages = state.conversation?.messages || [];
   if (messages.length === 0) {
     const empty = element('div', 'chat-empty');
@@ -800,10 +802,8 @@ function renderConversationList() {
     button.type = 'button';
     button.addEventListener('click', async () => {
       try {
-        state.conversation = await api.conversations.get(conversation.id);
+        await openConversation(conversation.id);
         historyDrawer.close();
-        renderConversationList();
-        renderLog();
       } catch (error) {
         showToast(error.message, 'danger');
       }
@@ -1203,6 +1203,7 @@ async function loadWorkspace() {
 
 function startNewConversation() {
   state.conversation = null;
+  syncChatUrl(null);
   messageInput.value = '';
   renderLog();
   renderConversationList();
@@ -1213,8 +1214,67 @@ async function ensureConversation() {
   if (state.conversation) return state.conversation;
   state.conversation = await api.conversations.create();
   state.conversations.unshift(state.conversation);
+  // The chat exists only now, so its address replaces the fresh "/" entry instead of adding a
+  // navigation step the user never saw.
+  syncChatUrl(state.conversation.id, { replace: true });
   renderConversationList();
   return state.conversation;
+}
+
+// ---- Deep links: every saved conversation has its own /chat/<id> address --------------------
+
+function chatIdFromLocation() {
+  const path = window.location?.pathname || '';
+  const match = /^\/chat\/([\w-]+)\/?$/u.exec(path);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function syncChatUrl(id, { replace = false } = {}) {
+  const target = id ? `/chat/${encodeURIComponent(id)}` : '/';
+  if ((window.location?.pathname || '/') === target) return;
+  try {
+    const historyApi = window.history;
+    if (replace) historyApi?.replaceState?.(null, '', target);
+    else historyApi?.pushState?.(null, '', target);
+  } catch { /* History can be unavailable in embedded contexts; the chat still works. */ }
+}
+
+async function openConversation(id, { pushUrl = true } = {}) {
+  state.conversation = await api.conversations.get(id);
+  if (pushUrl) syncChatUrl(id);
+  renderConversationList();
+  renderLog();
+}
+
+// Boot deep link: /chat/<id> loads that conversation straight away; a gone or unknown id falls
+// back to a fresh chat with a notice (the URL is corrected in place).
+async function restoreFromUrl() {
+  const id = chatIdFromLocation();
+  if (!id) return;
+  try {
+    state.conversation = await api.conversations.get(id);
+  } catch (error) {
+    showToast(`${error.message || 'That chat could not be opened.'} A new chat was started instead.`, 'danger');
+    syncChatUrl(null, { replace: true });
+  }
+  renderConversationList();
+  renderLog();
+}
+
+async function copyChatLink() {
+  if (!state.conversation?.id) {
+    showToast('Send a message first — the chat gets its own link once it is saved.', 'danger');
+    return;
+  }
+  const origin = window.location?.origin || '';
+  const url = `${origin}/chat/${encodeURIComponent(state.conversation.id)}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Chat link copied.');
+  } catch {
+    // Clipboard access can be refused; showing the link still lets the user copy it.
+    showToast(`Chat link: ${url}`);
+  }
 }
 
 function appendStreamDelta(event, payload) {
@@ -1356,6 +1416,22 @@ document.addEventListener('glow-theme-change', syncThemeToggle);
 document.getElementById('openHistory').addEventListener('click', () => { renderConversationList(); historyDrawer.showModal(); });
 document.getElementById('closeHistory').addEventListener('click', () => historyDrawer.close());
 document.getElementById('newConversation').addEventListener('click', startNewConversation);
+document.getElementById('copyChatLink').addEventListener('click', copyChatLink);
+
+// Back/forward between chats: the URL is the source of truth, so follow where it points.
+window.addEventListener?.('popstate', async () => {
+  if (state.busy) return showToast('Wait for the reply to finish before switching chats.', 'danger');
+  const id = chatIdFromLocation();
+  try {
+    if (!id) state.conversation = null;
+    else if (state.conversation?.id !== id) await openConversation(id, { pushUrl: false });
+  } catch (error) {
+    showToast(error.message, 'danger');
+    state.conversation = null;
+  }
+  renderConversationList();
+  renderLog();
+});
 document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close()));
 document.querySelectorAll('.coming-soon').forEach((button) => button.addEventListener('click', () => {
   historyDrawer.close();
@@ -1365,3 +1441,6 @@ messageInput.addEventListener('input', () => { messageInput.style.height = 'auto
 syncThemeToggle();
 renderLog();
 loadWorkspace();
+// Runs alongside the workspace load: a deep-linked chat renders as soon as it arrives, and the
+// conversation list highlights it once the list itself lands.
+restoreFromUrl();

@@ -25,6 +25,7 @@ The initial release deliberately binds to `127.0.0.1`. It does not claim to be s
    - The server sends OpenAI-compatible function definitions only for the tools the user selected, validates call arguments, executes a small explicit allowlist, limits execution to four provider rounds, and records a safe tool-use summary alongside the assistant message.
 5. **Usable chat vertical slice**
    - Conversations and messages persist locally.
+   - Every conversation has its own deep link at `/chat/<id>`: the server serves the chat page for any id, and the client resolves it against the API — the address bar follows chat switches, the first message swaps `/` for the new chat's link in place, Back/Forward moves between chats, and a link to a deleted chat falls back to a fresh conversation with a notice.
    - The browser sends a message to the same-origin server. The server resolves the selected provider/model, injects explicitly selected skill instructions as a system message, invokes selected tools when the provider requests them, and forwards OpenAI-compatible stream deltas to the browser. No client code receives the provider secret.
    - A Thinking disclosure is created only if the provider's stream includes reasoning text (`reasoning_content`, `reasoning`, or `analysis_content`); it is never fabricated client-side.
 6. **Verification and handover**

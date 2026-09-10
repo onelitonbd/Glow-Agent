@@ -33,10 +33,20 @@ function sseResponse(events) {
 // Overridable per test so a run can be shown as in flight, then finished.
 let autoStatus = { enabled: true, started: true, running: false, busy: false, current: null, queued: 0, untested: [], lastFinishedAt: null, lastError: null, completedCount: 1, steps: 9 };
 
-async function loadChat() {
+async function loadChat({ pathname = '/' } = {}) {
   const { document, byId } = createDom(PAGE_HTML);
   const requests = [];
   const copied = [];
+  const historyCalls = [];
+  const windowRef = {
+    confirm: () => true,
+    location: { origin: 'http://localhost', pathname },
+    history: {
+      pushState: (_state, _title, url) => { historyCalls.push(['push', url]); windowRef.location.pathname = url; },
+      replaceState: (_state, _title, url) => { historyCalls.push(['replace', url]); windowRef.location.pathname = url; }
+    }
+  };
+  globalThis.window = windowRef;
   const conversation = {
     id: 'conv-1',
     title: 'Haiku chat',
@@ -70,7 +80,7 @@ async function loadChat() {
   };
 
   globalThis.document = document;
-  globalThis.window = { confirm: () => true, location: { origin: 'http://localhost' } };
+  globalThis.window = windowRef;
   globalThis.FileReader = class {
     readAsDataURL(file) {
       setTimeout(() => { this.result = file.dataUrl; this.onload?.(); }, 0);
@@ -90,6 +100,10 @@ async function loadChat() {
     const regeneratePath = path.match(/^\/api\/v1\/conversations\/conv-1\/messages\/([\w-]+)\/regenerate\/stream$/u);
     if (method === 'GET' && path === '/api/v1/conversations') return { status: 200, ok: true, json: async () => ({ data: [{ id: 'conv-1', title: 'Haiku chat', messageCount: 2 }] }) };
     if (method === 'GET' && path === '/api/v1/conversations/conv-1') return { status: 200, ok: true, json: async () => ({ data: clone() }) };
+    // First sends go through this create step; reusing conv-1 keeps the respond/stream stub aligned.
+    if (method === 'POST' && path === '/api/v1/conversations') {
+      return { status: 201, ok: true, json: async () => ({ data: { id: 'conv-1', title: 'New conversation', createdAt: '2026-09-10T10:00:00.000Z', updatedAt: '2026-09-10T10:00:00.000Z', messageCount: 0 } }) };
+    }
     if (method === 'GET' && path === '/api/v1/skills') return { status: 200, ok: true, json: async () => ({ data: [] }) };
     if (method === 'GET' && path === '/api/v1/tools') return { status: 200, ok: true, json: async () => ({ data: [] }) };
     if (method === 'GET' && path === '/api/v1/plugins') return { status: 200, ok: true, json: async () => ({ data: [] }) };
@@ -222,7 +236,7 @@ async function loadChat() {
 
   await import(`../client/assets/js/chat.js?load=${Date.now()}-${Math.random()}`);
   await waitFor(() => byId.get('conversationList').children.length > 0);
-  return { byId, requests, copied, conversation };
+  return { byId, requests, copied, conversation, historyCalls, windowRef, document };
 }
 
 async function waitFor(condition, ms = 2_000) {
@@ -504,4 +518,57 @@ test('the composer says which model is being tested and picks up the result when
   } finally {
     autoStatus = { enabled: true, started: true, running: false, busy: false, current: null, queued: 0, untested: [], lastFinishedAt: null, lastError: null, completedCount: 1, steps: 9 };
   }
+});
+
+// ---- Deep links: every saved chat has its own /chat/<id> address -----------------------------
+
+test('opening /chat/conv-1 directly loads that conversation without touching the drawer', async () => {
+  const { byId, requests, document } = await loadChat({ pathname: '/chat/conv-1' });
+  await waitFor(() => byId.get('chatLog').querySelectorAll('.message-actions').length === 2);
+  assert.equal(byId.get('conversationTitle').textContent, 'Haiku chat');
+  assert.equal(document.title, 'Haiku chat — Glow Agent');
+  assert.ok(requests.some((request) => request.path === '/api/v1/conversations/conv-1'), 'the id in the URL is fetched');
+});
+
+test('a deep link to a missing chat falls back to a fresh screen and corrects the URL', async () => {
+  const { byId, historyCalls } = await loadChat({ pathname: '/chat/nope' });
+  await waitFor(() => historyCalls.some((call) => call[0] === 'replace' && call[1] === '/'));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(byId.get('conversationTitle').textContent, 'New conversation');
+});
+
+test('selecting a chat from the drawer pushes its /chat/<id> address', async () => {
+  const { byId, historyCalls, windowRef } = await loadChat();
+  await openConversation(byId);
+  assert.ok(historyCalls.some((call) => call[0] === 'push' && call[1] === '/chat/conv-1'));
+  assert.equal(windowRef.location.pathname, '/chat/conv-1', 'the address bar follows the open chat');
+});
+
+test('starting a new conversation moves the address back to the chat home', async () => {
+  const { byId, historyCalls, windowRef } = await loadChat();
+  await openConversation(byId);
+  byId.get('newConversation').dispatchEvent('click');
+  assert.ok(historyCalls.some((call) => call[0] === 'push' && call[1] === '/'));
+  assert.equal(windowRef.location.pathname, '/');
+});
+
+test('the first message replaces the fresh address with the new chat’s own link', async () => {
+  const { byId, requests, historyCalls } = await loadChat();
+  // Sends are only possible once a model is picked; the page waits for that itself, so do the same.
+  await waitFor(() => byId.get('openModelPicker').classList.contains('selected'));
+  byId.get('messageInput').value = 'Hello there.';
+  byId.get('composer').dispatchEvent('submit');
+  await waitFor(() => requests.some((request) => request.method === 'POST' && request.path === '/api/v1/conversations'));
+  await waitFor(() => historyCalls.some((call) => call[0] === 'replace' && call[1] === '/chat/conv-1'));
+});
+
+test('the header link button copies the saved chat’s absolute URL', async () => {
+  const { byId, copied } = await loadChat();
+  byId.get('copyChatLink').dispatchEvent('click');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(copied.length, 0, 'an unsaved chat has nothing to copy');
+  await openConversation(byId);
+  byId.get('copyChatLink').dispatchEvent('click');
+  await waitFor(() => copied.length === 1);
+  assert.deepEqual(copied, ['http://localhost/chat/conv-1']);
 });

@@ -39,6 +39,13 @@ export function createApp(config) {
     intervalMs: config.autoTestIntervalMs
   });
   app.use('/api/v1', createApiRouter({ db, config, autoTests }));
+  // Deep links: /chat/<id> is the shareable address of one conversation. The page loads the
+  // same chat shell for every id; the client resolves the id against the API (an unknown or
+  // deleted chat falls back to a fresh conversation with a notice).
+  app.get('/chat', (_request, response) => response.redirect(302, '/'));
+  app.get('/chat/:id', (_request, response, next) => {
+    response.sendFile(join(config.rootDirectory, 'client', 'index.html'), (error) => { if (error) next(error); });
+  });
   app.use(express.static(join(config.rootDirectory, 'client'), {
     extensions: ['html'],
     index: 'index.html',
