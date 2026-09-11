@@ -6,66 +6,66 @@ import { createDom } from './fixtures/dom.mjs';
 
 const PAGE_HTML = readFileSync(fileURLToPath(new URL('../client/testing.html', import.meta.url)), 'utf8');
 
-function sseResponse(events) {
-  const payload = events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
-  const encoder = new TextEncoder();
-  return {
-    ok: true,
-    status: 200,
-    body: {
-      getReader: () => {
-        let sent = false;
-        return {
-          read: async () => {
-            if (sent) return { done: true, value: undefined };
-            sent = true;
-            return { done: false, value: encoder.encode(payload) };
-          },
-          releaseLock() {}
-        };
-      }
-    }
-  };
-}
-
-const MODELS = [
-  { key: 'prov-1:alpha', providerId: 'prov-1', providerName: 'Local', modelId: 'alpha' },
-  { key: 'prov-1:beta', providerId: 'prov-1', providerName: 'Local', modelId: 'beta' }
+const LEVELS = [
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+  { id: 'xhigh', label: 'Extra High' },
+  { id: 'max', label: 'Max' }
 ];
 
-const baselineReport = {
-  testedAt: '2026-09-10T08:00:00.000Z',
-  levels: [{ id: 'low', label: 'Low', value: 'low' }, { id: 'high', label: 'High', value: 'high' }],
-  entries: [
-    {
-      providerId: 'prov-1', providerName: 'Local', modelId: 'alpha', key: 'prov-1:alpha', rank: 1, score: 30,
-      testedAt: '2026-09-10T08:00:00.000Z',
-      results: { baseline: { status: 'works', ms: 120 }, thinking: { low: { status: 'works' }, high: { status: 'rejected' } }, vision: { status: 'works' }, files: { status: 'rejected' }, tools: { status: 'works' } }
-    },
-    {
-      providerId: 'prov-1', providerName: 'Local', modelId: 'beta', key: 'prov-1:beta', rank: 2, score: 20,
-      testedAt: '2026-09-10T08:00:00.000Z',
-      results: { baseline: { status: 'works', ms: 240 }, thinking: { low: { status: 'works' }, high: { status: 'works' } }, vision: { status: 'rejected' }, files: { status: 'rejected' }, tools: { status: 'rejected' } }
-    }
-  ]
-};
-
-// What the run returns in real life: the single model probed again, folded into the full ranking.
-function mergedReport(score) {
+function report() {
   return {
-    ...baselineReport,
-    testedAt: '2026-09-10T10:00:00.000Z',
+    testedAt: '2026-09-10T08:00:00.000Z',
+    levels: LEVELS,
     entries: [
-      { ...baselineReport.entries[0], score, rank: 1, testedAt: '2026-09-10T10:00:00.000Z' },
-      { ...baselineReport.entries[1], rank: 2 }
+      {
+        providerId: 'p1', providerName: 'Local', modelId: 'capable', key: 'p1:capable', rank: 1, score: 78,
+        testedAt: '2026-09-10T08:00:00.000Z',
+        results: {
+          baseline: { status: 'works', ms: 900, reason: 'READY' },
+          thinking: { low: { status: 'works' }, medium: { status: 'works' }, high: { status: 'works' }, xhigh: { status: 'rejected' }, max: { status: 'rejected' } },
+          vision: { status: 'works', reason: 'The model answered the image: RED' },
+          files: { status: 'rejected', reason: 'file parts are not supported' },
+          tools: { status: 'works', reason: 'The model called ping.' }
+        }
+      },
+      {
+        providerId: 'p1', providerName: 'Local', modelId: 'plain', key: 'p1:plain', rank: 2, score: 14,
+        testedAt: '2026-09-10T08:00:00.000Z',
+        results: {
+          baseline: { status: 'works', ms: 2_100, reason: 'READY' },
+          thinking: { low: { status: 'rejected' }, medium: { status: 'rejected' }, high: { status: 'rejected' }, xhigh: { status: 'rejected' }, max: { status: 'rejected' } },
+          vision: { status: 'rejected' }, files: { status: 'rejected' }, tools: { status: 'rejected' }
+        }
+      }
     ]
   };
 }
 
-async function loadTesting({ holdFirstRun = false } = {}) {
+// Loads the real Testing page against a seeded DOM and a stubbed API.
+// Overridable per test so a background run can be shown in flight.
+let autoStatus = {
+  enabled: true, started: true, running: false, busy: false, current: null, queued: 0,
+  untested: [], lastFinishedAt: '2026-09-10T08:00:00.000Z', lastError: null, completedCount: 2, steps: 9
+};
+
+async function loadPage() {
   const { document, byId } = createDom(PAGE_HTML);
   const requests = [];
-  let streaming = null; // { resolve } — when holding, the run completes only when the test ends it.
+  // Delivered one event per chunk with a pause between them. Sending the whole stream at once
+  // would let a UI that only updates at the end pass, which is how the missing live status
+  // got through the first time.
+  const sse = [
+    ['started', { total: 2, steps: 9, models: [{ key: 'p1:capable', providerName: 'Local', modelId: 'capable' }] }],
+    ['model-start', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', index: 0, total: 2 }],
+    ['progress', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', step: 'baseline', label: 'Waking the model up', stepIndex: 1, stepTotal: 9, index: 0, total: 2 }],
+    ['progress', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', step: 'vision', label: 'Image input', stepIndex: 7, stepTotal: 9, index: 0, total: 2 }],
+    ['model', { key: 'p1:capable', providerName: 'Local', modelId: 'capable', score: 78, index: 0, total: 2 }],
+    ['completed', report()]
+  ];
+  const encoder = new TextEncoder();
+
   globalThis.document = document;
   globalThis.window = { location: { origin: 'http://localhost' } };
   globalThis.fetch = async (url, options = {}) => {
@@ -73,38 +73,52 @@ async function loadTesting({ holdFirstRun = false } = {}) {
     const method = options.method || 'GET';
     const body = options.body ? JSON.parse(options.body) : undefined;
     requests.push({ method, path, body });
-    if (method === 'GET' && path === '/api/v1/tests/models') return { status: 200, ok: true, json: async () => ({ data: MODELS }) };
-    if (method === 'GET' && path === '/api/v1/tests/report') return { status: 200, ok: true, json: async () => ({ data: baselineReport }) };
-    if (method === 'GET' && path === '/api/v1/tests/auto') {
-      return { status: 200, ok: true, json: async () => ({ data: { enabled: false, started: true, running: false, current: null, queued: 0, untested: [], completedCount: 0, steps: 0 } }) };
+    if (method === 'GET' && path === '/api/v1/tests/models') {
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          data: [
+            { providerId: 'p1', providerName: 'Local', modelId: 'capable', key: 'p1:capable' },
+            { providerId: 'p1', providerName: 'Local', modelId: 'plain', key: 'p1:plain' }
+          ]
+        })
+      };
+    }
+    if (method === 'GET' && path === '/api/v1/tests/report') return { status: 200, ok: true, json: async () => ({ data: report() }) };
+    if (method === 'GET' && path === '/api/v1/tests/auto') return { status: 200, ok: true, json: async () => ({ data: autoStatus }) };
+    if (method === 'PUT' && path === '/api/v1/settings') {
+      autoStatus = { ...autoStatus, enabled: body.autoTesting?.enabled !== false };
+      return { status: 200, ok: true, json: async () => ({ data: { autoTesting: { enabled: autoStatus.enabled } } }) };
     }
     if (method === 'POST' && path === '/api/v1/tests/run/stream') {
-      const key = body?.models?.[0] || MODELS[0].key;
-      const model = MODELS.find((item) => item.key === key) || MODELS[0];
-      if (holdFirstRun && !streaming) {
-        return new Promise((resolve) => {
-          streaming = {
-            resolve: () => resolve(sseResponse([
-              ['model-start', { key, providerName: model.providerName, modelId: model.modelId, index: 0, total: 1 }],
-              ['model', { key, providerName: model.providerName, modelId: model.modelId, score: 55, index: 0, total: 1 }],
-              ['completed', mergedReport(55)]
-            ]))
-          };
-        });
-      }
-      return sseResponse([
-        ['model-start', { key, providerName: model.providerName, modelId: model.modelId, index: 0, total: 1 }],
-        ['progress', { key, label: 'Thinking low', modelId: model.modelId, index: 0, total: 1, stepIndex: 2, stepTotal: 9 }],
-        ['model', { key, providerName: model.providerName, modelId: model.modelId, score: 55, index: 0, total: 1 }],
-        ['completed', mergedReport(55)]
-      ]);
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => {
+            let cursor = 0;
+            return {
+              read: async () => {
+                if (cursor >= sse.length) return { done: true, value: undefined };
+                const [event, data] = sse[cursor];
+                cursor += 1;
+                // Hold the previous events back briefly so the page has to paint them.
+                if (cursor > 1) await new Promise((resolve) => setTimeout(resolve, 12));
+                return { done: false, value: encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`) };
+              },
+              releaseLock() {}
+            };
+          }
+        }
+      };
     }
     return { status: 404, ok: false, json: async () => ({ error: { message: `No stub for ${method} ${path}` } }) };
   };
+
   await import(`../client/assets/js/testing.js?load=${Date.now()}-${Math.random()}`);
-  await waitFor(() => byId.get('testModelList').querySelectorAll('.test-row').length === 2);
-  await waitFor(() => byId.get('rankingReport').querySelectorAll('.rank-card').length === 2);
-  return { byId, requests, finishRun: () => streaming?.resolve() };
+  await waitFor(() => byId.get('testModelList').querySelectorAll('input').length === 2);
+  return { byId, requests };
 }
 
 async function waitFor(condition, ms = 2_000) {
@@ -116,58 +130,109 @@ async function waitFor(condition, ms = 2_000) {
   throw new Error('Timed out waiting for the page to catch up.');
 }
 
-function rowOf(byId, key) {
-  return [...byId.get('testModelList').querySelectorAll('.test-row')].find((row) => row.dataset.key === key);
-}
-
-test('each model row offers its own Test button that probes only that model', async () => {
-  const { byId, requests } = await loadTesting();
-  const alpha = rowOf(byId, 'prov-1:alpha');
-  const button = alpha.querySelector('.test-single');
-  assert.equal(button.getAttribute('aria-label'), 'Test only alpha');
-  button.dispatchEvent('click');
-  await waitFor(() => requests.some((request) => request.path === '/api/v1/tests/run/stream'));
-  const run = requests.find((request) => request.path === '/api/v1/tests/run/stream');
-  assert.deepEqual(run.body.models, ['prov-1:alpha'], 'exactly one model goes out, whatever the checkboxes say');
-  // The row narrates the run and then shows the fresh score.
-  await waitFor(() => rowOf(byId, 'prov-1:alpha').textContent.includes('55 pts'));
+test('every selected model is listed with a checkbox, all ticked by default', async () => {
+  const { byId } = await loadPage();
+  const boxes = [...byId.get('testModelList').querySelectorAll('input')];
+  assert.deepEqual(boxes.map((box) => box.dataset.key), ['p1:capable', 'p1:plain']);
+  assert.equal(boxes.every((box) => box.checked), true);
+  assert.equal(byId.get('testModelCount').textContent, '2 selected models');
+  assert.deepEqual([...byId.get('testModelList').querySelectorAll('.data-name')].map((node) => node.textContent), ['capable', 'plain']);
 });
 
-test('re-testing one model updates the ranking to the latest result without losing the others', async () => {
-  const { byId } = await loadTesting();
-  // Before: two cards from the old report, alpha at 30 pts.
-  assert.equal(byId.get('rankingReport').querySelectorAll('.rank-card').length, 2);
-  rowOf(byId, 'prov-1:alpha').querySelector('.test-single').dispatchEvent('click');
-  await waitFor(() => rowOf(byId, 'prov-1:alpha').textContent.includes('55 pts'));
+test('the stored report renders as a ranking with a verdict per capability', async () => {
+  const { byId } = await loadPage();
   const cards = [...byId.get('rankingReport').querySelectorAll('.rank-card')];
-  assert.equal(cards.length, 2, 'the full ranking is kept, not collapsed to the one re-tested model');
-  assert.ok(cards[0].textContent.includes('55 pts'), 'the tested model now shows its new score');
-  assert.ok(cards[1].textContent.includes('20 pts'), 'the untouched model keeps its earlier result');
-  assert.match(byId.get('rankingUpdated').textContent, /\S/u, 'the report timestamp is refreshed');
+  assert.equal(cards.length, 2);
+  assert.deepEqual(cards.map((card) => card.querySelector('.rank-model').textContent), ['capable', 'plain']);
+  assert.deepEqual(cards.map((card) => card.querySelector('.rank-place').textContent), ['#1', '#2']);
+  assert.equal(cards[0].querySelector('.rank-score').textContent, '78 pts');
+  assert.equal(cards[0].querySelector('.score-bar-fill').style.width, '100%');
+  assert.equal(cards[1].querySelector('.score-bar-fill').style.width, '18%', 'the bar is relative to the best score');
+
+  const chips = (card, label) => [...[...card.querySelectorAll('.capability')]
+    .find((row) => row.querySelector('.capability-label').textContent === label)
+    .querySelectorAll('.chip')].map((chip) => `${chip.textContent}:${chip.className}`);
+  assert.deepEqual(chips(cards[0], 'Thinking'), ['Low:chip ok', 'Medium:chip ok', 'High:chip ok', 'Extra High:chip no', 'Max:chip no']);
+  assert.deepEqual(chips(cards[0], 'Images'), ['Yes:chip ok']);
+  assert.deepEqual(chips(cards[0], 'Files'), ['No:chip no']);
+  assert.deepEqual(chips(cards[0], 'Tools'), ['Yes:chip ok']);
+  assert.match(cards[0].querySelector('.rank-meta').textContent, /Answered in 0\.9s/u);
 });
 
-test('the report Re-test button re-probes just that model', async () => {
-  const { byId, requests } = await loadTesting();
-  const card = [...byId.get('rankingReport').querySelectorAll('.rank-card')].find((node) => node.textContent.includes('beta'));
-  const again = [...card.querySelectorAll('button')].find((button) => button.classList.contains('rank-retest'));
-  assert.equal(again.getAttribute('aria-label'), 'Re-test only beta');
-  assert.equal(again.disabled, false);
-  again.dispatchEvent('click');
-  await waitFor(() => requests.some((request) => request.path === '/api/v1/tests/run/stream'));
-  const run = requests.find((request) => request.path === '/api/v1/tests/run/stream');
-  assert.deepEqual(run.body.models, ['prov-1:beta']);
-});
+test('running the tests names the model and the capability while it works, on the button and the row', async () => {
+  const { byId, requests } = await loadPage();
+  byId.get('testModelList').querySelectorAll('input')[1].checked = false;
+  const rows = [...byId.get('testModelList').querySelectorAll('.test-row')];
+  byId.get('runTests').dispatchEvent('click');
 
-test('while one model is being tested, other single-run actions stay locked', async () => {
-  const { byId, requests, finishRun } = await loadTesting({ holdFirstRun: true });
-  rowOf(byId, 'prov-1:alpha').querySelector('.test-single').dispatchEvent('click');
-  await waitFor(() => requests.filter((request) => request.path === '/api/v1/tests/run/stream').length === 1);
-  const betaButton = rowOf(byId, 'prov-1:beta').querySelector('.test-single');
-  assert.equal(betaButton.disabled, true, 'other rows are locked during a run');
-  // Even the main Run tests button refuses until this model finishes.
+  // The button and the rows react before anything comes back from the server.
   assert.equal(byId.get('runTests').disabled, true);
-  finishRun();
-  await waitFor(() => rowOf(byId, 'prov-1:alpha').textContent.includes('55 pts'));
-  assert.equal(byId.get('runTests').disabled, false);
-  assert.equal(requests.filter((request) => request.path === '/api/v1/tests/run/stream').length, 1, 'and nothing double-started');
+  assert.equal(byId.get('runTestsLabel').textContent, 'Testing…');
+  assert.equal(byId.get('testProgress').hidden, false);
+  assert.match(byId.get('testProgress').querySelector('.test-progress-title').textContent, /1 model to test/u);
+  assert.equal(rows[0].querySelector('.test-row-state').textContent, 'Queued');
+  assert.equal(rows[1].querySelector('.test-row-state').textContent, 'Waiting', 'an unticked model is not part of the run');
+
+  // Then the live status: which model, then which capability, then how far through.
+  await waitFor(() => rows[0].querySelector('.test-row-state').textContent === 'Image input', 4_000);
+  assert.equal(rows[0].classList.contains('testing'), true, 'the row being probed is marked');
+  assert.equal(byId.get('testProgress').querySelector('.test-progress-title').textContent, 'capable — Image input');
+  assert.equal(byId.get('testProgress').querySelector('.test-progress-detail').textContent, 'model 1 of 2 · step 7 of 9');
+
+  await waitFor(() => byId.get('runTests').disabled === false, 4_000);
+  assert.equal(byId.get('runTestsLabel').textContent, 'Run tests', 'the button reads normally again');
+  assert.equal(rows[0].querySelector('.test-row-state').textContent, '78 pts');
+  assert.equal(rows[0].classList.contains('done'), true);
+  // The outcome stays on screen, without the pulsing dot that means "still working".
+  assert.equal(byId.get('testProgress').hidden, false);
+  assert.match(byId.get('testProgress').querySelector('.test-progress-title').textContent, /Testing finished/u);
+  assert.equal(byId.get('testProgress').querySelectorAll('.stream-status-dot').length, 0);
+
+  const run = requests.find((request) => request.path === '/api/v1/tests/run/stream');
+  assert.deepEqual(run.body, { models: ['p1:capable'] }, 'only the ticked model is tested');
+  assert.equal([...byId.get('testModelList').querySelectorAll('input')].every((box) => box.disabled === false), true);
+  assert.equal(byId.get('rankingReport').querySelectorAll('.rank-card').length, 2);
+});
+
+test('the automatic-testing card reports a background run and can be switched off', async () => {
+  autoStatus = {
+    enabled: true, started: true, running: true, busy: true,
+    current: { key: 'p1:capable', providerName: 'Local', modelId: 'capable', label: 'Image input', stepIndex: 7, stepTotal: 9 },
+    queued: 1,
+    untested: [{ key: 'p1:plain', providerName: 'Local', modelId: 'plain' }],
+    lastFinishedAt: null, lastError: null, completedCount: 0, steps: 9
+  };
+  try {
+    const { byId, requests } = await loadPage();
+    await waitFor(() => byId.get('autoTestState').textContent.length > 0);
+
+    assert.equal(byId.get('autoTestToggle').checked, true, 'the switch reflects the stored setting');
+    assert.equal(byId.get('autoTestState').textContent, 'Testing capable');
+
+    // The live line names the model and the capability, the same way a manual run does.
+    const progress = byId.get('autoTestProgress');
+    assert.equal(progress.hidden, false);
+    assert.match(progress.querySelector('.test-progress-title').textContent, /Testing capable automatically — Image input/u);
+    assert.match(progress.querySelector('.test-progress-detail').textContent, /step 7 of 9/u);
+    assert.match(progress.querySelector('.test-progress-detail').textContent, /1 more waiting/u);
+    assert.equal(progress.querySelector('.test-progress-fill').style.width, '78%');
+
+    // The queued model is marked in the list rather than looking ready.
+    await waitFor(() => [...byId.get('testModelList').querySelectorAll('.test-row-state')].some((node) => node.textContent === 'Queued'));
+    const rows = [...byId.get('testModelList').querySelectorAll('.test-row')];
+    assert.equal(rows[0].querySelector('.test-row-state').textContent, 'Image input', 'the model being probed shows the capability');
+    assert.equal(rows[1].querySelector('.test-row-state').textContent, 'Queued');
+
+    // The manual run stands down instead of doubling up on the same provider.
+    byId.get('runTests').dispatchEvent('click');
+    assert.equal(requests.filter((request) => request.path === '/api/v1/tests/run/stream').length, 0);
+
+    byId.get('autoTestToggle').checked = false;
+    byId.get('autoTestToggle').dispatchEvent('change');
+    await waitFor(() => requests.some((request) => request.method === 'PUT' && request.path === '/api/v1/settings'));
+    const saved = requests.find((request) => request.method === 'PUT' && request.path === '/api/v1/settings');
+    assert.deepEqual(saved.body, { autoTesting: { enabled: false } });
+  } finally {
+    autoStatus = { enabled: true, started: true, running: false, busy: false, current: null, queued: 0, untested: [], lastFinishedAt: '2026-09-10T08:00:00.000Z', lastError: null, completedCount: 2, steps: 9 };
+  }
 });
