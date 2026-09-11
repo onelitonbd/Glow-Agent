@@ -1,5 +1,6 @@
 import { fetchUrl, listFiles, readFile, sqlQuery, webSearch, writeFile } from './workspace-tools.js';
 import { createFile, createFolder, deleteFile, deleteFolder, editFile, renameFile, renameFolder, runShell } from './developer-tools.js';
+import { readConversation, searchConversations } from './chat-memory.js';
 import { executeGithubTool } from './github-tools.js';
 import { MCP_TOOL_PREFIX, executeMcpTool } from './mcp-tools.js';
 
@@ -250,6 +251,36 @@ const toolCatalog = Object.freeze({
         maxChars: { type: 'integer', description: 'Maximum number of characters to return (default 4000).' }
       }
     }
+  }),
+  search_conversations: Object.freeze({
+    id: 'search_conversations',
+    name: 'Search conversations',
+    description: 'Search your past chat conversations by keyword and get a short list of matches — only titles and tiny snippets, never full messages. Use this when the user refers to something discussed earlier or in another chat instead of asking them to paste it. After a promising match, page through it with read_conversation.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['query'],
+      properties: {
+        query: { type: 'string', description: 'Keywords to look for, for example "termux setup" or "api key".' },
+        limit: { type: 'integer', description: 'Maximum conversations to return (default 5, max 10).' }
+      }
+    }
+  }),
+  read_conversation: Object.freeze({
+    id: 'read_conversation',
+    name: 'Read conversation',
+    description: 'Page through the messages of one past conversation a few at a time, like read_file pages a large file, so old chats can be reviewed without flooding your context. The response gives messageCount — use a later offset to jump near the end, and hasMore/nextOffset to continue. Copy conversationId from a search_conversations result (or the chat URL /chat/<id>).',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['conversationId'],
+      properties: {
+        conversationId: { type: 'string', description: 'The id of the conversation to read (from search_conversations).' },
+        offset: { type: 'integer', description: 'Message index to start from (default 0 = the beginning).' },
+        limit: { type: 'integer', description: 'Messages to return in this page (default 10, max 30).' },
+        maxChars: { type: 'integer', description: 'Maximum characters kept per message, longer ones are marked truncated (default 2000, max 8000).' }
+      }
+    }
   })
 });
 
@@ -395,6 +426,8 @@ function summary(tool, result) {
   if (tool.id === 'sql_query') return `SQL query returned ${result.rowCount} rows`;
   if (tool.id === 'web_search') return `Web search: "${result.query}" (${result.results.length} results)`;
   if (tool.id === 'fetch_url') return `Fetched ${result.url}`;
+  if (tool.id === 'search_conversations') return `Searched chats: "${result.query}" (${result.matchCount} match${result.matchCount === 1 ? '' : 'es'})`;
+  if (tool.id === 'read_conversation') return `Read ${result.returned} of ${result.messageCount} messages in "${result.title}"${result.hasMore ? ' — more available' : ''}`;
   return tool.name;
 }
 
@@ -466,6 +499,8 @@ export async function executeToolCall(call, allowedToolIds, { getSkill, db, root
   else if (id === 'sql_query') result = sqlQuery(db, argumentsObject.sql);
   else if (id === 'web_search') result = await webSearch(argumentsObject.query, argumentsObject.maxResults);
   else if (id === 'fetch_url') result = await fetchUrl(argumentsObject.url, argumentsObject.maxChars);
+  else if (id === 'search_conversations') result = searchConversations(db, argumentsObject.query, { limit: argumentsObject.limit });
+  else if (id === 'read_conversation') result = readConversation(db, argumentsObject.conversationId, { offset: argumentsObject.offset, limit: argumentsObject.limit, maxChars: argumentsObject.maxChars });
   else result = { error: 'This tool is not supported.' };
   return { toolId: id, result, summary: summary(tool, result) };
 }

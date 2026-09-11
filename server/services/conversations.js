@@ -114,6 +114,8 @@ function systemMessage(skills, { plugin = null, mcp = null, customPrompt = '', d
     // must still be told about the server's tools when no clone is configured.
     ...(mcpFailure ? [mcpFailure] : []),
     ...(mcpGuide ? [mcpGuide] : []),
+    'You can consult your past sessions when the user references earlier work: search_conversations finds relevant older chats by keyword (small snippets only), and read_conversation pages through one chat in small slices, so old context reaches you without flooding this conversation.',
+
     // Developer-tool guidance only appears when at least one of the gated groups is on.
     ...(developerTools && (developerTools.fileManagement !== false || developerTools.shell === true) ? [
       [

@@ -37,7 +37,8 @@ export function icon(name) {
     globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
     terminal: '<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>',
     link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
-    square: '<path d="M8.5 8.5h7v7h-7z"/>'
+    square: '<path d="M8.5 8.5h7v7h-7z"/>',
+    history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'
   };
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -76,7 +77,9 @@ export function toolIconName(toolId) {
     sql_query: 'database',
     web_search: 'search',
     fetch_url: 'globe',
-    read_skill: 'spark'
+    read_skill: 'spark',
+    search_conversations: 'history',
+    read_conversation: 'history'
   };
   if (direct[id]) return direct[id];
   if (id.startsWith('github_') || id.startsWith('mcp_') || id.startsWith('github')) return 'plug';

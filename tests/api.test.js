@@ -99,7 +99,8 @@ test('local API persists safe providers, skills, models, and a provider-backed r
   assert.deepEqual(tools.payload.data.map((tool) => tool.id), [
     'calculator', 'current_time', 'list_files', 'read_file', 'write_file',
     'edit_file', 'create_folder', 'create_file', 'delete_folder', 'delete_file', 'rename_folder', 'rename_file',
-    'run_shell', 'sql_query', 'web_search', 'fetch_url'
+    'run_shell', 'sql_query', 'web_search', 'fetch_url',
+    'search_conversations', 'read_conversation'
   ]);
   // Gated tools are still listed (with enabled flags) but only offered in chat when enabled.
   const flagged = Object.fromEntries(tools.payload.data.map((tool) => [tool.id, tool.enabled]));

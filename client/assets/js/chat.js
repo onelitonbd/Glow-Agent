@@ -91,6 +91,8 @@ const TOOL_NAMES = {
   sql_query: 'SQL query',
   web_search: 'Web search',
   fetch_url: 'Fetch URL',
+  search_conversations: 'Search conversations',
+  read_conversation: 'Read conversation',
   edit_file: 'Edit file',
   create_file: 'Create file',
   create_folder: 'Create folder',
