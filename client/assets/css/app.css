@@ -405,6 +405,15 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 /* The row being probed is the one you should be able to find without reading anything else. */
 .test-row-state { flex: 0 0 auto; max-width: 46%; overflow: hidden; color: var(--quiet); font: 10px var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .test-row.queued .test-row-state { color: var(--muted); }
+/* Per-model test action tucked at the row's right edge. */
+.test-row .test-single { flex: 0 0 auto; width: 31px; height: 31px; color: var(--muted); }
+.test-row .test-single:hover, .test-row .test-single:focus-visible { color: var(--accent); }
+.rank-retest { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 10px; font: 10.5px var(--mono); width: auto; }
+.rank-retest svg { width: 12px; height: 12px; }
+.rank-retest:disabled { opacity: .45; }
+.test-single.is-testing svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .test-single.is-testing svg { animation: none; } }
 .test-row.testing { border-color: rgba(198,255,107,.55); background: var(--accent-wash); }
 .test-row.testing .test-row-state { color: var(--accent); }
 .test-row.done { border-color: rgba(198,255,107,.3); }

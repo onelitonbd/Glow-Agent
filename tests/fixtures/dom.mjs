@@ -136,7 +136,9 @@ export class DomNode {
 
   dispatchEvent(event) {
     const type = typeof event === 'string' ? event : event.type;
-    const detail = typeof event === 'string' ? { type, preventDefault() {}, target: this } : { target: this, ...event };
+    const detail = typeof event === 'string'
+      ? { type, preventDefault() {}, stopPropagation() {}, target: this }
+      : { preventDefault() {}, stopPropagation() {}, target: this, ...event };
     let node = this;
     // Listeners fire on the target and then bubble to ancestors, like the real DOM.
     while (node) {
