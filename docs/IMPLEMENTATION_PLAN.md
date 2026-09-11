@@ -1,6 +1,6 @@
 # Glow Agent MVP implementation plan
 
-**Status:** Foundation, local data workflows, the first safe agentic-tool vertical slice, and live provider response streaming are implemented. Attachments, authenticated network access, and richer tools remain later phases.
+**Status:** Foundation, local data workflows, the first safe agentic-tool vertical slice, live provider response streaming, and the developer-tooling wave (workspace-confined file management plus a gated shell tool) are implemented. Attachments and authenticated network access remain later phases.
 
 ## Product boundary for this first working release
 
@@ -25,6 +25,9 @@ The initial release deliberately binds to `127.0.0.1`. It does not claim to be s
    - The server sends OpenAI-compatible function definitions only for the tools the user selected, validates call arguments, executes a small explicit allowlist, limits execution to four provider rounds, and records a safe tool-use summary alongside the assistant message.
 5. **Usable chat vertical slice**
    - Conversations and messages persist locally.
+   - Every conversation has its own deep link at `/chat/<id>`: the server serves the chat page for any id, and the client resolves it against the API — the address bar follows chat switches, the first message swaps `/` for the new chat's link in place, Back/Forward moves between chats, and a link to a deleted chat falls back to a fresh conversation with a notice.
+   - The send button becomes a red Stop button while a reply streams: aborting the fetch makes the server cut the upstream provider request at the next token, skip pending tool calls (a live shell command is killed, a pending approval card is settled as aborted), save the partial answer with a timeline `stopped` marker, and emit `aborted` instead of `completed`; the client shows the marker immediately and refreshes to the server-saved partial message.
+   - Cross-session memory comes from two small tools, not a context dump: `search_conversations` returns only titles, ids, and tiny snippets around each keyword hit, and `read_conversation` pages one chat a few messages at a time (offset/limit/maxChars with hard caps and truncation markers), letting the model consult old sessions without that history ever flooding the current conversation.
    - The browser sends a message to the same-origin server. The server resolves the selected provider/model, injects explicitly selected skill instructions as a system message, invokes selected tools when the provider requests them, and forwards OpenAI-compatible stream deltas to the browser. No client code receives the provider secret.
    - A Thinking disclosure is created only if the provider's stream includes reasoning text (`reasoning_content`, `reasoning`, or `analysis_content`); it is never fabricated client-side.
 6. **Verification and handover**
@@ -59,7 +62,7 @@ Mutating requests accept JSON only. JSON API responses use a `{ "data": ... }` e
 - SQL uses prepared statements. Inputs are bounded and validated at the server boundary.
 - The upstream OpenAI-compatible request is made only by the server. The UI works with safe provider metadata and IDs.
 - Credential strings are never logged, returned, persisted in browser storage, interpolated into HTML, or included in query strings.
-- Tool calls are limited to an explicit server-side allowlist; no shell, file, network, or arbitrary JavaScript execution is available to a model.
+- Tool calls are limited to an explicit server-side allowlist. The allowlist includes file management (list/read/create/edit/rename/delete) confined by a shared realpath guard to the dedicated assistant workspace folder (`data/workspace/`) so application code, skills, settings, and the database are unreachable, plus protected names (`.git`, `.env`, `*.sqlite`) refused everywhere, and a settings-gated shell tool (`run_shell`, off by default, unsandboxed, timeout-killed, output-capped, database-commands refused). An optional per-command approval mode pauses the chat stream on a user Approve/Deny card before any shell command runs; approvals are single-use, server-settled, and never resolvable by the model. No model-supplied arbitrary JavaScript is ever executed.
 - The project currently refuses non-loopback binding. LAN/public support will be a separate authenticated release rather than an unsafe environment toggle.
 
 ## Deferred, not omitted

@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { AppError } from '../lib/errors.js';
+import { AppError, notFound, validation } from '../lib/errors.js';
+import { approvals } from '../services/approvals.js';
 import {
   addSelectedModel,
   createProvider,
@@ -14,6 +15,7 @@ import {
 import { createSkill, deleteSkill, getSkill, listSkills, updateSkill } from '../services/skills.js';
 import {
   createConversation,
+  createStreamStop,
   deleteMessage,
   editMessage,
   getConversation,
@@ -22,7 +24,7 @@ import {
   respondToConversation,
   respondToConversationStream
 } from '../services/conversations.js';
-import { listTools } from '../services/tools.js';
+import { FILE_MANAGEMENT_TOOL_IDS, SHELL_TOOL_IDS, listTools } from '../services/tools.js';
 import { getSettings, updateSettings } from '../services/settings.js';
 import {
   capabilityReport,
@@ -81,7 +83,12 @@ function sseRoute(run) {
       'X-Accel-Buffering': 'no'
     });
     response.flushHeaders?.();
-    const emit = (event, data) => response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // Once the client is gone (browser closed, Stop tapped), writes would throw on a dead socket;
+    // anything emitted after that point is silently discarded. (Watching the response matters:
+    // the request's own "close" fires as soon as its body has fully arrived.)
+    let closed = false;
+    response.on('close', () => { closed = true; });
+    const emit = (event, data) => { if (!closed) response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
     try {
       await run(request, emit);
     } catch (error) {
@@ -115,7 +122,32 @@ export function createApiRouter({ db, config, autoTests = null }) {
   router.get('/health', (_request, response) => success(response, {
     status: 'ok', service: 'glow-agent', time: new Date().toISOString()
   }));
-  router.get('/tools', (_request, response) => success(response, listTools()));
+  router.get('/tools', (_request, response) => {
+    const { developerTools } = getSettings(db);
+    success(response, listTools().map((tool) => ({
+      ...tool,
+      enabled: FILE_MANAGEMENT_TOOL_IDS.includes(tool.id)
+        ? developerTools.fileManagement !== false
+        : SHELL_TOOL_IDS.includes(tool.id)
+          ? developerTools.shell === true
+          : true
+    })));
+  });
+
+  // One-shot approvals for gated tool calls. The chat stream emits a confirmation_required
+  // event carrying the approval id; this route is the ONLY way such an approval settles —
+  // the model never sees the id and its tool loop stays paused until a decision lands.
+  router.post('/approvals/:approvalId', (request, response, next) => {
+    try {
+      const raw = request.body?.decision;
+      const decision = raw === 'approve' ? 'approved' : raw === 'deny' ? 'denied' : null;
+      if (!decision) throw validation('Send decision: "approve" or "deny".');
+      if (!approvals.decide(request.params.approvalId, decision)) throw notFound('Pending approval');
+      success(response, { status: decision });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.route('/providers')
     .get((_request, response) => success(response, listProviders(db)))
@@ -256,7 +288,16 @@ export function createApiRouter({ db, config, autoTests = null }) {
     maxProviderRetries: config.maxProviderRetries
   });
   router.post('/conversations/:conversationId/respond/stream', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), sseRoute(async (request, emit) => {
-    await respondToConversationStream(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, emit, chatOptions());
+    // Tapping Stop closes this request's connection; treat any close as a stop: flags the
+    // provider/tool loops, aborts the live upstream fetch, and settles pending approvals.
+    const stop = createStreamStop();
+    // The response socket closes when the client disconnects (request "close" would fire far
+    // earlier — as soon as the request body has fully arrived).
+    request.res.on('close', () => {
+      stop.stop();
+      approvals.abortConversation(request.params.conversationId);
+    });
+    await respondToConversationStream(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, emit, { ...chatOptions(), stop });
   }));
   // Per-message actions behind the chat bubbles. Deleting a reply takes the question that produced
   // it; editing a question drops the reply it produced; regenerate re-answers a stored question,
@@ -269,7 +310,12 @@ export function createApiRouter({ db, config, autoTests = null }) {
       try { success(response, editMessage(db, request.params.conversationId, request.params.messageId, request.body ?? {})); } catch (error) { next(error); }
     });
   router.post('/conversations/:conversationId/messages/:messageId/regenerate/stream', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), sseRoute(async (request, emit) => {
-    await regenerateMessageStream(db, request.params.conversationId, request.params.messageId, request.body ?? {}, config.chatTimeoutMs, emit, chatOptions());
+    const stop = createStreamStop();
+    request.res.on('close', () => {
+      stop.stop();
+      approvals.abortConversation(request.params.conversationId);
+    });
+    await regenerateMessageStream(db, request.params.conversationId, request.params.messageId, request.body ?? {}, config.chatTimeoutMs, emit, { ...chatOptions(), stop });
   }));
 
   // ---- Plugins ----

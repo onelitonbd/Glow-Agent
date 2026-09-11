@@ -28,7 +28,17 @@ export function icon(name) {
     refresh: '<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M21 4v5h-5"/>',
     copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     calculator: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
-    plug: '<path d="M14 6.5a2.5 2.5 0 0 1 5 0V9h2v4h-2v3.5a2 2 0 0 1-2 2H4.5a2 2 0 0 1-2-2V14h2.5a2.5 2.5 0 0 0 0-5H2.5V6a2 2 0 0 1 2-2H9v2.5a2.5 2.5 0 0 1 5 0Z"/>'
+    plug: '<path d="M14 6.5a2.5 2.5 0 0 1 5 0V9h2v4h-2v3.5a2 2 0 0 1-2 2H4.5a2 2 0 0 1-2-2V14h2.5a2.5 2.5 0 0 0 0-5H2.5V6a2 2 0 0 1 2-2H9v2.5a2.5 2.5 0 0 1 5 0Z"/>',
+    file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a1 1 0 0 0 1 1h4"/>',
+    filePlus: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a1 1 0 0 0 1 1h4"/><path d="M9 15h6"/><path d="M12 12v6"/>',
+    folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    folderPlus: '<path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+    terminal: '<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    square: '<path d="M8.5 8.5h7v7h-7z"/>',
+    history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>'
   };
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -44,6 +54,36 @@ export function iconButton(iconName, label, className = '') {
   button.title = label;
   button.append(icon(iconName));
   return button;
+}
+
+// Shared tool-id → icon mapping so the chat timeline and the tools page agree on how each
+// capability looks (previously every non-calculator tool fell back to a clock or spark).
+export function toolIconName(toolId) {
+  const id = typeof toolId === 'string' ? toolId : '';
+  const direct = {
+    calculator: 'calculator',
+    current_time: 'clock',
+    list_files: 'folder',
+    read_file: 'file',
+    write_file: 'pencil',
+    edit_file: 'pencil',
+    create_file: 'filePlus',
+    create_folder: 'folderPlus',
+    delete_file: 'trash',
+    delete_folder: 'trash',
+    rename_file: 'pencil',
+    rename_folder: 'pencil',
+    run_shell: 'terminal',
+    sql_query: 'database',
+    web_search: 'search',
+    fetch_url: 'globe',
+    read_skill: 'spark',
+    search_conversations: 'history',
+    read_conversation: 'history'
+  };
+  if (direct[id]) return direct[id];
+  if (id.startsWith('github_') || id.startsWith('mcp_') || id.startsWith('github')) return 'plug';
+  return 'spark';
 }
 
 let toastTimer;

@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { renderMarkdown } from './markdown.js';
-import { element, icon, iconButton, showToast } from './ui.js';
+import { element, icon, iconButton, showToast, toolIconName } from './ui.js';
 
 const state = {
   conversations: [],
@@ -91,6 +91,16 @@ const TOOL_NAMES = {
   sql_query: 'SQL query',
   web_search: 'Web search',
   fetch_url: 'Fetch URL',
+  search_conversations: 'Search conversations',
+  read_conversation: 'Read conversation',
+  edit_file: 'Edit file',
+  create_file: 'Create file',
+  create_folder: 'Create folder',
+  delete_file: 'Delete file',
+  delete_folder: 'Delete folder',
+  rename_file: 'Rename file',
+  rename_folder: 'Rename folder',
+  run_shell: 'Shell command',
   github_list_repos: 'GitHub list repos',
   github_clone: 'GitHub clone repo',
   github_list_files: 'GitHub list files',
@@ -101,13 +111,6 @@ const TOOL_NAMES = {
   github_commit: 'GitHub commit',
   github_push: 'GitHub push'
 };
-
-function toolIconName(toolId) {
-  if (toolId === 'calculator') return 'calculator';
-  if (toolId === 'current_time') return 'clock';
-  if (toolId.startsWith('github_') || toolId.startsWith('mcp_')) return 'plug';
-  return 'spark';
-}
 
 // MCP tool ids are discovered at runtime (mcp_<server tool>), so they get a readable label
 // instead of a lookup in the static catalog.
@@ -146,6 +149,54 @@ function renderToolResult(toolId, summary) {
   return row;
 }
 
+// Live approval card for a gated tool call. It exists only in the streaming assistant timeline
+// (never persisted); after the stream closes, the persisted tool_result summary tells the story.
+function renderApprovalCard(entry) {
+  const pending = !entry.outcome;
+  const card = element('div', `approval-card${entry.outcome ? ` is-${entry.outcome}` : ''}`);
+  const head = element('div', 'approval-head');
+  const badge = element('span', 'tool-call-icon'); badge.setAttribute('aria-hidden', 'true'); badge.append(icon('terminal'));
+  const title = element('span', 'approval-title', pending
+    ? 'Shell command needs your approval'
+    : entry.outcome === 'approved'
+      ? 'Approved — running'
+      : entry.outcome === 'denied'
+        ? 'Denied — not run'
+        : 'Not run — approval ended');
+  head.append(badge, title);
+  const pre = element('pre', 'approval-command');
+  pre.textContent = entry.command || '';
+  card.append(head, pre);
+  if (pending) {
+    const row = element('div', 'approval-actions');
+    const approve = element('button', 'button small', 'Approve');
+    approve.type = 'button';
+    const deny = element('button', 'button small danger', 'Deny');
+    deny.type = 'button';
+    approve.addEventListener('click', () => decideApproval(entry, 'approve', [approve, deny]));
+    deny.addEventListener('click', () => decideApproval(entry, 'deny', [approve, deny]));
+    row.append(approve, deny);
+    card.append(row);
+  }
+  return card;
+}
+
+async function decideApproval(entry, decision, buttons) {
+  buttons.forEach((button) => { button.disabled = true; });
+  const previous = entry.outcome;
+  entry.outcome = decision === 'approve' ? 'approved' : 'denied';
+  renderLog();
+  try {
+    await api.approvals.decide(entry.approvalId, decision);
+  } catch (error) {
+    // Roll the card back so the user can act again (for example after an expired approval is
+    // replaced by a fresh proposal from the model).
+    entry.outcome = previous;
+    showToast(error.message, 'danger');
+    renderLog();
+  }
+}
+
 function renderTimeline(message) {
   const fragment = document.createDocumentFragment();
   const timeline = Array.isArray(message.timeline) ? message.timeline : [];
@@ -167,6 +218,12 @@ function renderTimeline(message) {
     } else if (entry.type === 'tool_result') {
       fragment.append(renderToolResult(entry.toolId, entry.summary));
       index += 1;
+    } else if (entry.type === 'confirmation') {
+      fragment.append(renderApprovalCard(entry));
+      index += 1;
+    } else if (entry.type === 'stopped') {
+      fragment.append(renderStoppedMarker());
+      index += 1;
     } else {
       index += 1;
     }
@@ -179,6 +236,14 @@ function renderStreamStatus(text, tone) {
   const dot = element('span', 'stream-status-dot');
   dot.setAttribute('aria-hidden', 'true');
   row.append(dot, element('span', '', text));
+  return row;
+}
+
+// Persisted on stopped replies so history shows the answer was ended early, on purpose.
+function renderStoppedMarker() {
+  const row = element('div', 'message-stopped');
+  row.setAttribute('role', 'note');
+  row.append(icon('square'), element('span', '', 'Stopped'));
   return row;
 }
 
@@ -660,12 +725,12 @@ async function regenerate(messageId, model = {}) {
   }
   state.conversation = { ...conversation, messages: messages.slice(0, index + 1) };
   renderLog();
-  await runStream((onEvent) => api.conversations.streamRegenerate(conversation.id, questionId, {
+  await runStream((onEvent, signal) => api.conversations.streamRegenerate(conversation.id, questionId, {
     providerId,
     modelId,
     toolIds: state.tools.map((tool) => tool.id),
     ...(state.thinkingLevel ? { thinkingLevel: state.thinkingLevel } : {})
-  }, onEvent));
+  }, onEvent, { signal }));
 }
 
 function renderLog() {
@@ -673,6 +738,8 @@ function renderLog() {
   const tableOffsets = [...chatLog.querySelectorAll('.markdown-table-scroll')].map((table) => table.scrollLeft);
   chatLog.replaceChildren();
   title.textContent = state.conversation?.title || 'New conversation';
+  // The tab reads like the page, which matters once a chat has its own deep link.
+  document.title = state.conversation?.title ? `${state.conversation.title} — Glow Agent` : 'Glow Agent';
   const messages = state.conversation?.messages || [];
   if (messages.length === 0) {
     const empty = element('div', 'chat-empty');
@@ -748,10 +815,8 @@ function renderConversationList() {
     button.type = 'button';
     button.addEventListener('click', async () => {
       try {
-        state.conversation = await api.conversations.get(conversation.id);
+        await openConversation(conversation.id);
         historyDrawer.close();
-        renderConversationList();
-        renderLog();
       } catch (error) {
         showToast(error.message, 'danger');
       }
@@ -1151,6 +1216,7 @@ async function loadWorkspace() {
 
 function startNewConversation() {
   state.conversation = null;
+  syncChatUrl(null);
   messageInput.value = '';
   renderLog();
   renderConversationList();
@@ -1161,8 +1227,67 @@ async function ensureConversation() {
   if (state.conversation) return state.conversation;
   state.conversation = await api.conversations.create();
   state.conversations.unshift(state.conversation);
+  // The chat exists only now, so its address replaces the fresh "/" entry instead of adding a
+  // navigation step the user never saw.
+  syncChatUrl(state.conversation.id, { replace: true });
   renderConversationList();
   return state.conversation;
+}
+
+// ---- Deep links: every saved conversation has its own /chat/<id> address --------------------
+
+function chatIdFromLocation() {
+  const path = window.location?.pathname || '';
+  const match = /^\/chat\/([\w-]+)\/?$/u.exec(path);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function syncChatUrl(id, { replace = false } = {}) {
+  const target = id ? `/chat/${encodeURIComponent(id)}` : '/';
+  if ((window.location?.pathname || '/') === target) return;
+  try {
+    const historyApi = window.history;
+    if (replace) historyApi?.replaceState?.(null, '', target);
+    else historyApi?.pushState?.(null, '', target);
+  } catch { /* History can be unavailable in embedded contexts; the chat still works. */ }
+}
+
+async function openConversation(id, { pushUrl = true } = {}) {
+  state.conversation = await api.conversations.get(id);
+  if (pushUrl) syncChatUrl(id);
+  renderConversationList();
+  renderLog();
+}
+
+// Boot deep link: /chat/<id> loads that conversation straight away; a gone or unknown id falls
+// back to a fresh chat with a notice (the URL is corrected in place).
+async function restoreFromUrl() {
+  const id = chatIdFromLocation();
+  if (!id) return;
+  try {
+    state.conversation = await api.conversations.get(id);
+  } catch (error) {
+    showToast(`${error.message || 'That chat could not be opened.'} A new chat was started instead.`, 'danger');
+    syncChatUrl(null, { replace: true });
+  }
+  renderConversationList();
+  renderLog();
+}
+
+async function copyChatLink() {
+  if (!state.conversation?.id) {
+    showToast('Send a message first — the chat gets its own link once it is saved.', 'danger');
+    return;
+  }
+  const origin = window.location?.origin || '';
+  const url = `${origin}/chat/${encodeURIComponent(state.conversation.id)}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Chat link copied.');
+  } catch {
+    // Clipboard access can be refused; showing the link still lets the user copy it.
+    showToast(`Chat link: ${url}`);
+  }
 }
 
 function appendStreamDelta(event, payload) {
@@ -1201,39 +1326,114 @@ function appendStreamDelta(event, payload) {
     timeline.push({ type: 'tool_call', name: payload.name });
   } else if (event === 'tool_result') {
     timeline.push({ type: 'tool_result', toolId: payload.toolId, summary: payload.summary });
+  } else if (event === 'confirmation_required') {
+    timeline.push({ type: 'confirmation', approvalId: payload.approvalId, toolId: payload.toolId, command: payload.command, outcome: null });
+  } else if (event === 'confirmation_resolved') {
+    const entry = timeline.find((item) => item.type === 'confirmation' && item.approvalId === payload.approvalId);
+    // A local tap may already have flipped the card; the stream outcome is the source of truth.
+    if (entry && payload.outcome !== 'approved' && payload.outcome !== 'denied') entry.outcome = payload.outcome;
+    else if (entry && !entry.outcome) entry.outcome = payload.outcome;
   }
   renderLog();
 }
 
-const STREAM_EVENTS = new Set(['started', 'status', 'thinking', 'token', 'tool_call', 'tool_result']);
+const STREAM_EVENTS = new Set(['started', 'status', 'thinking', 'token', 'tool_call', 'tool_result', 'confirmation_required', 'confirmation_resolved']);
+
+// While a reply streams, the send button is red and becomes the Stop button: it aborts the
+// fetch (the server sees the disconnect, keeps the partial answer, and marks it stopped).
+const STOP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 8.5h7v7h-7z"/></svg>';
+
+function setStopState(on) {
+  if (!sendButton.dataset.defaultIcon) sendButton.dataset.defaultIcon = sendButton.innerHTML;
+  sendButton.classList.toggle('is-stop', on);
+  sendButton.setAttribute('aria-label', on ? 'Stop response' : 'Send message');
+  sendButton.title = on ? 'Stop response' : 'Send message';
+  sendButton.innerHTML = on ? STOP_ICON : sendButton.dataset.defaultIcon;
+}
 
 // Every way of getting an answer — a new message, a regenerate, a different model — streams
 // through here, so the live status line and the error recovery behave the same everywhere.
 async function runStream(start) {
   state.busy = true;
-  sendButton.disabled = true;
+  state.streamController = new AbortController();
+  setStopState(true);
   renderLog();
   try {
     const result = await start((eventName, payload) => {
       if (STREAM_EVENTS.has(eventName)) appendStreamDelta(eventName, payload);
-    });
+    }, state.streamController.signal);
     state.conversation = result.conversation;
     await loadWorkspace();
     renderLog();
   } catch (error) {
-    showToast(error.message, 'danger');
-    if (state.conversation) {
-      try { state.conversation = await api.conversations.get(state.conversation.id); renderLog(); } catch { /* Preserve the current UI after an upstream failure. */ }
+    if (error?.name === 'AbortError') {
+      // The user hit Stop: show the marker immediately, then trade the live copy for the
+      // server's persisted partial reply once it lands.
+      markLiveStreamStopped();
+    } else {
+      showToast(error.message, 'danger');
+      if (state.conversation) {
+        try { state.conversation = await api.conversations.get(state.conversation.id); renderLog(); } catch { /* Preserve the current UI after an upstream failure. */ }
+      }
     }
   } finally {
     state.busy = false;
-    sendButton.disabled = false;
+    const stopped = state.streamController?.signal.aborted === true;
+    state.streamController = null;
+    setStopState(false);
     renderLog();
+    if (stopped) await refreshAfterStop();
   }
+}
+
+function stopResponse() {
+  if (!state.streamController || state.streamController.signal.aborted) return;
+  state.streamController.abort();
+  markLiveStreamStopped();
+}
+
+// Draw the stopped marker on the in-flight bubble the very moment of the tap — the server-side
+// copy of the same marker replaces it when the refresh lands.
+function markLiveStreamStopped() {
+  const assistant = state.conversation?.messages?.find((message) => message.id === 'streaming-assistant');
+  if (!assistant) return;
+  assistant.status = '';
+  const timeline = assistant.timeline || (assistant.timeline = []);
+  if (!timeline.some((entry) => entry.type === 'stopped')) timeline.push({ type: 'stopped' });
+  renderLog();
+}
+
+// The server persists the partial answer (with its stopped marker) as soon as it notices the
+// disconnect; poll briefly until it is visible, falling back to the live copy if it never lands.
+async function refreshAfterStop() {
+  if (!state.conversation?.id) return;
+  const hasStoppedMarker = (conversation) => {
+    const last = conversation.messages?.at(-1);
+    return last?.role === 'assistant' && Array.isArray(last.timeline) && last.timeline.some((entry) => entry?.type === 'stopped');
+  };
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 60 : 160));
+    try {
+      const updated = await api.conversations.get(state.conversation.id);
+      if (hasStoppedMarker(updated)) {
+        state.conversation = updated;
+        await loadWorkspace();
+        renderLog();
+        return;
+      }
+    } catch { /* Keep polling a little longer. */ }
+  }
+  markLiveStreamStopped();
 }
 
 composer.addEventListener('submit', (event) => {
   event.preventDefault();
+  if (state.busy) {
+    // While a reply streams only an explicit button tap means "stop" — a stray Enter key must
+    // not surprise-abort the answer.
+    if (event.submitter === sendButton) stopResponse();
+    return;
+  }
   const message = messageInput.value.trim();
   // A file on its own is a complete question — "what is this?" is often just the picture.
   if (!message && state.attachments.length === 0) return;
@@ -1252,7 +1452,7 @@ composer.addEventListener('submit', (event) => {
   state.attachments = [];
   renderAttachTray();
   syncAttachTrigger();
-  runStream(async (onEvent) => {
+  runStream(async (onEvent, signal) => {
     const conversation = await ensureConversation();
     const pendingUserMessage = {
       id: `pending-${Date.now()}`,
@@ -1275,7 +1475,7 @@ composer.addEventListener('submit', (event) => {
       toolIds: state.tools.map((tool) => tool.id),
       ...(state.thinkingLevel ? { thinkingLevel: state.thinkingLevel } : {}),
       ...(attachments.length ? { attachments } : {})
-    }, onEvent);
+    }, onEvent, { signal });
   });
 });
 
@@ -1297,6 +1497,30 @@ document.addEventListener('glow-theme-change', syncThemeToggle);
 document.getElementById('openHistory').addEventListener('click', () => { renderConversationList(); historyDrawer.showModal(); });
 document.getElementById('closeHistory').addEventListener('click', () => historyDrawer.close());
 document.getElementById('newConversation').addEventListener('click', startNewConversation);
+document.getElementById('copyChatLink').addEventListener('click', copyChatLink);
+// In a real browser this click is followed by the form's own submit (guarded there too; the
+// second abort is a no-op). A direct listener keeps the button dependable everywhere.
+sendButton.addEventListener('click', (event) => {
+  if (state.busy) {
+    event.preventDefault();
+    stopResponse();
+  }
+});
+
+// Back/forward between chats: the URL is the source of truth, so follow where it points.
+window.addEventListener?.('popstate', async () => {
+  if (state.busy) return showToast('Wait for the reply to finish before switching chats.', 'danger');
+  const id = chatIdFromLocation();
+  try {
+    if (!id) state.conversation = null;
+    else if (state.conversation?.id !== id) await openConversation(id, { pushUrl: false });
+  } catch (error) {
+    showToast(error.message, 'danger');
+    state.conversation = null;
+  }
+  renderConversationList();
+  renderLog();
+});
 document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close()));
 document.querySelectorAll('.coming-soon').forEach((button) => button.addEventListener('click', () => {
   historyDrawer.close();
@@ -1306,3 +1530,6 @@ messageInput.addEventListener('input', () => { messageInput.style.height = 'auto
 syncThemeToggle();
 renderLog();
 loadWorkspace();
+// Runs alongside the workspace load: a deep-linked chat renders as soon as it arrives, and the
+// conversation list highlights it once the list itself lands.
+restoreFromUrl();

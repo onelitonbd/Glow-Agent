@@ -1,5 +1,5 @@
 import { api } from './api.js';
-import { element, showToast } from './ui.js';
+import { element, icon, showToast } from './ui.js';
 
 const MAX_POLLS = 400;
 const state = { models: [], report: null, running: false, status: new Map(), auto: null, poll: null, ticks: 0 };
@@ -60,7 +60,20 @@ function renderModels() {
     const copy = element('span', 'test-row-copy');
     copy.append(element('b', 'data-name', model.modelId), element('span', 'data-subtitle', model.providerName));
     const statusNode = element('span', 'test-row-state', 'Ready');
-    row.append(box, copy, statusNode);
+    // Individual testing: one tap probes only this model, without touching the checkbox picks.
+    const singleButton = element('button', 'icon-button test-single');
+    singleButton.type = 'button';
+    singleButton.title = `Test only ${model.modelId}`;
+    singleButton.setAttribute('aria-label', `Test only ${model.modelId}`);
+    singleButton.dataset.key = model.key;
+    singleButton.append(icon('refresh'));
+    // The row is a checkbox label; without this, tapping the button would also flip the box.
+    singleButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      testSingleModel(model.key, model.modelId);
+    });
+    row.append(box, copy, statusNode, singleButton);
     state.status.set(model.key, { row, node: statusNode, phase: 'ready' });
     modelList.append(row);
   });
@@ -121,6 +134,63 @@ function setRunning(running) {
   runLabel.textContent = running ? 'Testing…' : 'Run tests';
   runButton.classList.toggle('is-busy', running);
   modelList.querySelectorAll('input').forEach((box) => { box.disabled = running; });
+  document.querySelectorAll('.test-single, .rank-retest').forEach((button) => { button.disabled = running; });
+}
+
+// The stream events read the same whether one model or every checked model is being probed.
+function handleRunEvents(event, payload) {
+  if (event === 'model-start') {
+    setRowStatus(payload.key, 'testing', 'Testing…');
+    showProgress({ text: `Testing ${payload.modelId}`, total: payload.total, index: payload.index });
+    state.status.get(payload.key)?.row.scrollIntoView?.({ block: 'nearest' });
+  } else if (event === 'progress') {
+    setRowStatus(payload.key, 'testing', payload.label);
+    showProgress({
+      text: `${payload.modelId} — ${payload.label}`,
+      stepIndex: payload.stepIndex,
+      stepTotal: payload.stepTotal,
+      index: payload.index,
+      total: payload.total
+    });
+  } else if (event === 'model') {
+    if (payload.error) {
+      setRowStatus(payload.key, 'failed', `Failed — ${payload.error}`);
+      showProgress({ text: `${payload.modelId} failed: ${payload.error}`, tone: 'warn', index: payload.index, total: payload.total });
+    } else {
+      setRowStatus(payload.key, 'done', `${payload.score} pts`);
+      showProgress({ text: `${payload.modelId} finished with ${payload.score} points.`, index: payload.index, total: payload.total });
+    }
+  }
+}
+
+// One model, on demand. The server upserts its result and answers with the full merged ranking,
+// so the report below always ends showing the latest state of every model — not just this run.
+async function testSingleModel(key, modelId) {
+  if (state.running) return;
+  if (state.auto?.running) {
+    showToast('The automatic test is running. It will finish in a moment.', 'danger');
+    return;
+  }
+  setRunning(true);
+  setRowStatus(key, 'queued', 'Queued');
+  showProgress({ text: `Testing ${modelId}…`, total: 1 });
+  try {
+    const report = await api.tests.streamRun([key], handleRunEvents);
+    state.report = report;
+    renderReport();
+    const entry = report.entries?.find((item) => item.key === key);
+    showProgress({
+      text: `${modelId} finished — ${entry ? `${entry.score} points` : 'saved'}; report updated.`,
+      live: false
+    });
+    showToast(`${modelId} tested — report updated with the latest result.`);
+  } catch (error) {
+    if (state.status.get(key)?.phase !== 'done') setRowStatus(key, 'failed', 'Stopped');
+    showProgress({ text: error.message, tone: 'warn', live: false });
+    showToast(error.message, 'danger');
+  } finally {
+    setRunning(false);
+  }
 }
 
 function renderReport() {
@@ -182,6 +252,20 @@ function renderReport() {
     });
 
     card.append(element('p', 'rank-meta', `Answered in ${Math.round((entry.results?.baseline?.ms || 0) / 100) / 10}s · tested ${new Date(entry.testedAt).toLocaleString()}`));
+    // Re-test straight from the report: refresh just this model's row in the latest ranking.
+    const testAgain = element('button', 'button secondary rank-retest');
+    testAgain.type = 'button';
+    testAgain.title = `Re-test only ${entry.modelId}`;
+    testAgain.setAttribute('aria-label', `Re-test only ${entry.modelId}`);
+    testAgain.dataset.key = entry.key;
+    testAgain.append(icon('refresh'), element('span', '', 'Re-test'));
+    const stillSelected = state.models.some((model) => model.key === entry.key);
+    if (!stillSelected) {
+      testAgain.disabled = true;
+      testAgain.title = 'Re-testing needs the model to be selected on the Models page first';
+    }
+    testAgain.addEventListener('click', () => testSingleModel(entry.key, entry.modelId));
+    card.append(testAgain);
     ranking.append(card);
   });
 }
@@ -202,30 +286,7 @@ runButton.addEventListener('click', async () => {
   keys.forEach((key) => setRowStatus(key, 'queued', 'Queued'));
   showProgress({ text: `Starting — ${keys.length} model${keys.length === 1 ? '' : 's'} to test.`, total: keys.length });
   try {
-    const report = await api.tests.streamRun(keys, (event, payload) => {
-      if (event === 'model-start') {
-        setRowStatus(payload.key, 'testing', 'Testing…');
-        showProgress({ text: `Testing ${payload.modelId}`, total: payload.total, index: payload.index });
-        state.status.get(payload.key)?.row.scrollIntoView?.({ block: 'nearest' });
-      } else if (event === 'progress') {
-        setRowStatus(payload.key, 'testing', payload.label);
-        showProgress({
-          text: `${payload.modelId} — ${payload.label}`,
-          stepIndex: payload.stepIndex,
-          stepTotal: payload.stepTotal,
-          index: payload.index,
-          total: payload.total
-        });
-      } else if (event === 'model') {
-        if (payload.error) {
-          setRowStatus(payload.key, 'failed', `Failed — ${payload.error}`);
-          showProgress({ text: `${payload.modelId} failed: ${payload.error}`, tone: 'warn', index: payload.index, total: payload.total });
-        } else {
-          setRowStatus(payload.key, 'done', `${payload.score} pts`);
-          showProgress({ text: `${payload.modelId} finished with ${payload.score} points.`, index: payload.index, total: payload.total });
-        }
-      }
-    });
+    const report = await api.tests.streamRun(keys, handleRunEvents);
     state.report = report;
     renderReport();
     showProgress({ text: `Testing finished — ${report.entries.length} model${report.entries.length === 1 ? '' : 's'} ranked.`, live: false });

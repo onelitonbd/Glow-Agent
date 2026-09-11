@@ -38,6 +38,27 @@
         <button class="button full" id="saveTitleSettings" type="button">Save settings</button>
       </div>
     </section>
+    <section aria-labelledby="devToolsLabel">
+      <div class="section-head"><h2 class="section-label" id="devToolsLabel">Developer tools</h2></div>
+      <div class="card settings-card">
+        <div class="setting-row">
+          <span class="setting-copy"><b class="data-name">File management</b><span class="data-subtitle">Let the model create, edit, rename and delete files and folders inside the assistant workspace</span></span>
+          <button class="switch" id="devFileManagement" type="button" role="switch" aria-checked="false" aria-label="File management tools"></button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-copy"><b class="data-name">Shell commands</b><span class="data-subtitle">Let the model run one-off shell commands in the workspace</span></span>
+          <button class="switch" id="devShell" type="button" role="switch" aria-checked="false" aria-label="Shell command tool"></button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-copy"><b class="data-name">Approve each command</b><span class="data-subtitle">Show every proposed shell command for your Approve/Deny tap before it runs</span></span>
+          <button class="switch" id="devConfirmShell" type="button" role="switch" aria-checked="false" aria-label="Approve each shell command"></button>
+        </div>
+        <p class="hint">File tools live in the assistant's own workspace folder (<b>data/workspace/</b> inside the app) — the model can list, read, create, edit, rename and delete there, but the app's code, skills, settings and database are out of reach; deletions are permanent. <strong>Shell is unsandboxed</strong> — a command runs as this device's own user from the app folder, exactly as if you typed it in Termux. Turn it on only if you accept that risk; commands that mention database files are still refused. With <b>Approve each command</b> on, nothing runs until you tap Approve — the safest way to use shell.
+</p>
+        <p class="hint" id="devToolsStatus" aria-live="polite"></p>
+        <button class="button full" id="saveDeveloperTools" type="button">Save developer tools</button>
+      </div>
+    </section>
     <section aria-labelledby="promptSettingsLabel">
       <div class="section-head"><h2 class="section-label" id="promptSettingsLabel">System prompt</h2></div>
       <div class="card settings-card">

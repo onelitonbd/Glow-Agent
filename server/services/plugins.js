@@ -8,6 +8,7 @@ import { requiredString } from '../lib/validate.js';
 import { now } from '../db/database.js';
 import { McpClient } from './mcp.js';
 import { buildMcpToolset, isMutatingTool } from './mcp-tools.js';
+import { resolveSafePath } from './file-guard.js';
 
 const execFileP = promisify(execFile);
 
@@ -741,12 +742,16 @@ function repoDirectory(workspaceDirectory, config) {
   return dir;
 }
 
+// Repository file tools share the workspace guard: symlinks inside a clone cannot escape it,
+// and .git metadata (which also stores credentials-adjacent config) is never touchable.
 function resolveRepoPath(root, relPath) {
   const safeRelative = safeString(relPath);
   if (!safeRelative) throw validation('A file path is required.');
-  const target = resolve(root, safeRelative);
-  if (!withinParent(root, target)) throw validation('Path is outside the repository.');
-  return target;
+  try {
+    return resolveSafePath(root, safeRelative);
+  } catch (error) {
+    throw validation(error.message === 'Path is outside the workspace.' ? 'Path is outside the repository.' : error.message);
+  }
 }
 
 function githubToken(config) {

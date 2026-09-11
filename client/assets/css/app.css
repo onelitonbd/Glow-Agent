@@ -121,6 +121,24 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .data-subtitle { margin-top: 3px; color: var(--muted); font: 11px var(--mono); }
 .data-meta { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font: 10px var(--mono); }
 .data-meta i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.tool-disabled { opacity: 0.55; }
+.tool-disabled .data-meta i { background: var(--muted); box-shadow: none; }
+
+/* Live Approve/Deny card for gated tool calls (shell). Shown inline in the streaming message. */
+.approval-card { display: grid; gap: 10px; margin: 8px 0; padding: 12px; border: 1px solid rgba(255, 196, 107, .45); border-radius: 12px; background: rgba(255, 196, 107, .07); }
+.approval-head { display: flex; align-items: center; gap: 9px; }
+.approval-head .tool-call-icon { background: rgba(255, 196, 107, .16); color: #ffc46b; animation: tool-pulse 1s ease-in-out infinite; }
+.approval-card.is-approved .tool-call-icon,
+.approval-card.is-denied .tool-call-icon,
+.approval-card.is-expired .tool-call-icon,
+.approval-card.is-aborted .tool-call-icon { animation: none; }
+.approval-title { font: 800 12px var(--sans); color: var(--text); }
+.approval-command { margin: 0; padding: 9px 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); color: var(--text-soft); font: 11px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.approval-actions { display: flex; gap: 8px; }
+.approval-card.is-approved { border-color: rgba(198, 255, 107, .45); background: var(--accent-wash); }
+.approval-card.is-approved .tool-call-icon { background: rgba(198, 255, 107, .16); color: var(--accent); }
+.approval-card.is-denied, .approval-card.is-expired, .approval-card.is-aborted { border-color: rgba(255, 158, 158, .3); background: var(--danger-wash); }
+.approval-card.is-denied .tool-call-icon, .approval-card.is-expired .tool-call-icon, .approval-card.is-aborted .tool-call-icon { background: rgba(255, 158, 158, .14); color: var(--danger); }
 .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
 .card-actions .button { min-height: 40px; }
 .overflow-menu { position: absolute; top: calc(100% - 70px); right: 0; z-index: 3; display: grid; gap: 2px; width: 142px; padding: 5px; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; background: var(--surface-raised); box-shadow: 0 15px 35px rgba(0,0,0,.4); }
@@ -269,6 +287,11 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .composer .icon-button { width: 33px; height: 33px; }
 .composer .icon-button.selected { border-color: rgba(198,255,107,.42); background: var(--accent-wash); color: var(--accent); }
 .composer .send { border: 0; background: var(--accent); color: var(--accent-ink); }
+/* Stop mode: an unmistakable red while a reply is streaming. */
+.composer .send.is-stop { background: var(--danger); color: #fff; }
+.composer .send.is-stop:hover { filter: brightness(1.06); }
+.message-stopped { display: flex; align-items: center; gap: 7px; margin-top: 8px; color: var(--muted); font: 10.5px var(--mono); }
+.message-stopped svg { width: 10px; height: 10px; flex: 0 0 auto; fill: currentColor; stroke: none; }
 .drawer { position: fixed; inset: 0 auto 0 0; width: min(86vw, 365px); height: 100dvh; margin: 0; padding: calc(19px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom)); border: 0; border-right: 1px solid var(--line); background: var(--surface-soft); color: var(--text); box-shadow: 20px 0 50px rgba(0,0,0,.4); }
 .drawer[open] { display: flex; flex-direction: column; }
 .drawer::backdrop { background: rgba(3,4,6,.65); backdrop-filter: blur(8px); }
@@ -382,6 +405,15 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 /* The row being probed is the one you should be able to find without reading anything else. */
 .test-row-state { flex: 0 0 auto; max-width: 46%; overflow: hidden; color: var(--quiet); font: 10px var(--mono); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .test-row.queued .test-row-state { color: var(--muted); }
+/* Per-model test action tucked at the row's right edge. */
+.test-row .test-single { flex: 0 0 auto; width: 31px; height: 31px; color: var(--muted); }
+.test-row .test-single:hover, .test-row .test-single:focus-visible { color: var(--accent); }
+.rank-retest { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 10px; font: 10.5px var(--mono); width: auto; }
+.rank-retest svg { width: 12px; height: 12px; }
+.rank-retest:disabled { opacity: .45; }
+.test-single.is-testing svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .test-single.is-testing svg { animation: none; } }
 .test-row.testing { border-color: rgba(198,255,107,.55); background: var(--accent-wash); }
 .test-row.testing .test-row-state { color: var(--accent); }
 .test-row.done { border-color: rgba(198,255,107,.3); }
