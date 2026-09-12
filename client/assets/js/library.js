@@ -284,9 +284,9 @@ async function uploadFiles(files) {
 
 searchInput?.addEventListener('input', () => { state.search = searchInput.value.trim(); render(); });
 
-document.querySelectorAll('.lib-filters button').forEach(btn => {
+document.querySelectorAll('.lib-chips .chip').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.lib-filters button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.lib-chips .chip').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.filter = btn.dataset.filter || 'all';
     render();

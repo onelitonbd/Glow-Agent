@@ -18,14 +18,15 @@
   <link rel="apple-touch-icon" sizes="192x192" href="/assets/icons/icon-192.png">
   <meta name="description" content="Library of photos, PDFs and files uploaded to Glow Agent.">
   <script src="/assets/js/theme.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css">
+  <link rel="stylesheet" href="/assets/css/app.css?v=3">
   <title>Library — Glow Agent</title>
   <style>
-    .lib-toolbar {
+    /* Use only app.css variables, make filters look like real chips */
+    .lib-bar {
       display: flex;
       gap: 8px;
-      align-items: center;
       margin: 16px 4px 12px;
+      align-items: center;
     }
     .lib-search {
       flex: 1;
@@ -37,12 +38,8 @@
       border: 1px solid var(--line);
       border-radius: 12px;
       background: var(--surface);
-      color: var(--quiet);
     }
-    .lib-search:focus-within {
-      border-color: rgba(198,255,107,.5);
-      box-shadow: 0 0 0 3px var(--accent-wash);
-    }
+    .lib-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
     .lib-search input {
       flex: 1;
       border: 0;
@@ -50,217 +47,88 @@
       background: transparent;
       color: var(--text);
       font: 14px var(--font);
-      min-width: 0;
     }
     .lib-search input::placeholder { color: var(--quiet); }
-    .lib-view {
-      display: flex;
-      gap: 4px;
-      padding: 3px;
+    .lib-view { display: flex; gap: 6px; }
+    .lib-view .icon-button.active { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+    .lib-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 4px 16px; }
+    .lib-chips .chip {
+      cursor: pointer;
       border: 1px solid var(--line);
-      border-radius: 12px;
-      background: var(--surface);
-    }
-    .lib-view button {
-      width: 36px;
-      height: 32px;
-      display: grid;
-      place-items: center;
-      border: 0;
-      border-radius: 8px;
-      background: transparent;
-      color: var(--muted);
-    }
-    .lib-view button.active {
-      background: var(--accent);
-      color: var(--accent-ink);
-    }
-    .lib-filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin: 0 4px 14px;
-    }
-    .lib-filters button {
-      min-height: 30px;
-      padding: 0 12px;
-      border: 1px solid var(--line);
-      border-radius: 99px;
       background: var(--surface);
       color: var(--muted);
-      font: 600 11px var(--mono);
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 700;
       letter-spacing: .04em;
-      text-transform: uppercase;
+      transition: all .15s ease;
+      user-select: none;
     }
-    .lib-filters button.active {
-      border-color: rgba(198,255,107,.45);
-      background: var(--accent-wash);
-      color: var(--accent);
-    }
-    :root[data-theme="light"] .lib-filters button.active {
-      border-color: rgba(75,127,23,.35);
-      background: rgba(75,127,23,.12);
-    }
-    .lib-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 10px;
-    }
+    .lib-chips .chip:hover { border-color: rgba(198,255,107,.3); color: var(--text); }
+    .lib-chips .chip.active { border-color: var(--accent); background: var(--accent-wash); color: var(--accent); }
+    :root[data-theme="light"] .lib-chips .chip.active { background: rgba(75,127,23,.12); }
+    .lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
     .lib-card {
       border: 1px solid var(--line);
       border-radius: 16px;
       background: var(--surface);
       overflow: hidden;
-      transition: border-color .15s ease, transform .15s ease;
     }
-    .lib-card:hover { border-color: rgba(198,255,107,.35); transform: translateY(-1px); }
-    .lib-card-preview {
-      aspect-ratio: 1.1;
-      background: var(--surface-soft);
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-    }
+    .lib-card:hover { border-color: rgba(198,255,107,.35); }
+    .lib-card-preview { aspect-ratio: 1.1; background: var(--surface-soft); display: grid; place-items: center; overflow: hidden; }
     .lib-card-preview img { width: 100%; height: 100%; object-fit: cover; }
     .lib-card-preview .ph {
-      width: 48px;
-      height: 48px;
-      display: grid;
-      place-items: center;
-      border-radius: 12px;
-      background: var(--surface-raised);
-      color: var(--accent);
+      width: 48px; height: 48px; display: grid; place-items: center;
+      border-radius: 12px; background: var(--surface-raised); color: var(--accent);
     }
     .lib-card-preview .ph.pdf { background: rgba(255,158,158,.14); color: var(--danger); }
     .lib-card-preview .ph.doc { background: rgba(169,156,255,.14); color: var(--violet); }
     .lib-card-body { padding: 10px 12px 12px; }
-    .lib-card-name {
-      font-size: 13px;
-      font-weight: 700;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .lib-card-meta {
-      display: flex;
-      gap: 6px;
-      margin-top: 4px;
-      color: var(--quiet);
-      font: 10px var(--mono);
-      text-transform: uppercase;
-    }
-    .lib-card-actions {
-      display: flex;
-      gap: 6px;
-      margin-top: 10px;
-    }
+    .lib-card-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lib-card-meta { display: flex; gap: 6px; margin-top: 4px; color: var(--quiet); font: 10px var(--mono); text-transform: uppercase; }
+    .lib-card-actions { display: flex; gap: 6px; margin-top: 10px; }
     .lib-card-actions a, .lib-card-actions button {
-      flex: 1;
-      min-height: 32px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid var(--line);
-      border-radius: 9px;
-      background: var(--surface-soft);
-      color: var(--text-soft);
-      font: 600 11px var(--mono);
-      text-decoration: none;
+      flex: 1; min-height: 32px; display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft);
+      color: var(--text-soft); font: 600 11px var(--mono); text-decoration: none;
     }
-    .lib-card-actions a.primary {
-      background: var(--accent);
-      color: var(--accent-ink);
-      border-color: transparent;
-    }
+    .lib-card-actions a.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
     .lib-list { display: grid; gap: 8px; }
     .lib-row {
-      display: grid;
-      grid-template-columns: 44px 1fr auto;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: var(--surface);
+      display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center;
+      padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
     }
     .lib-row:hover { border-color: rgba(198,255,107,.3); }
     .lib-row-icon {
-      width: 44px;
-      height: 44px;
-      display: grid;
-      place-items: center;
-      border-radius: 10px;
-      background: var(--surface-soft);
-      color: var(--muted);
-      overflow: hidden;
+      width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px;
+      background: var(--surface-soft); color: var(--muted); overflow: hidden;
     }
     .lib-row-icon img { width: 100%; height: 100%; object-fit: cover; }
     .lib-row-icon.image { background: var(--accent-wash); color: var(--accent); }
     .lib-row-icon.pdf { background: rgba(255,158,158,.14); color: var(--danger); }
     .lib-row-icon.doc { background: rgba(169,156,255,.14); color: var(--violet); }
-    .lib-row-name {
-      font-size: 13.5px;
-      font-weight: 700;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .lib-row-sub {
-      display: flex;
-      gap: 6px;
-      margin-top: 2px;
-      color: var(--quiet);
-      font: 10.5px var(--mono);
-      flex-wrap: wrap;
-    }
+    .lib-row-name { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lib-row-sub { display: flex; gap: 6px; margin-top: 2px; color: var(--quiet); font: 10.5px var(--mono); flex-wrap: wrap; }
     .lib-row-actions { display: flex; gap: 6px; }
     .lib-row-actions a, .lib-row-actions button {
-      width: 32px;
-      height: 32px;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 9px;
-      background: var(--surface-soft);
-      color: var(--muted);
-      text-decoration: none;
+      width: 32px; height: 32px; display: grid; place-items: center;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); color: var(--muted); text-decoration: none;
     }
     .lib-stats {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin: 0 4px 12px;
-      color: var(--quiet);
-      font: 10.5px var(--mono);
+      display: flex; gap: 8px; align-items: center; margin: 0 4px 12px;
+      color: var(--quiet); font: 10.5px var(--mono);
     }
     .lib-stats b { color: var(--text-soft); }
     .lib-stats::before {
-      content: "";
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-wash);
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash);
     }
     .preview-dialog { width: min(100%, 560px); max-width: 560px; }
-    .preview-media {
-      margin: 12px 0;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      overflow: hidden;
-      background: var(--surface-soft);
-    }
+    .preview-media { margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface-soft); }
     .preview-media img { width: 100%; max-height: 60vh; object-fit: contain; display: block; background: #0c0e11; }
     .preview-link {
-      display: flex;
-      gap: 8px;
-      padding: 10px 11px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--surface-soft);
-      font: 11px var(--mono);
-      word-break: break-all;
-      align-items: center;
+      display: flex; gap: 8px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 10px;
+      background: var(--surface-soft); font: 11px var(--mono); word-break: break-all; align-items: center;
     }
     .preview-link a { color: var(--accent); }
     @media (max-width: 380px) { .lib-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -279,23 +147,23 @@
       <p>Every photo, PDF and file you send to the AI is saved here with its own direct link.</p>
     </section>
 
-    <div class="lib-toolbar">
+    <div class="lib-bar">
       <label class="lib-search" aria-label="Search library">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.7" cy="10.7" r="5.7"/><path d="m15 15 4 4"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;flex:0 0 auto"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
         <input id="searchInput" type="search" placeholder="Search by name…" autocomplete="off">
       </label>
       <div class="lib-view" role="group" aria-label="View mode">
-        <button id="gridBtn" type="button" class="active" aria-label="Grid view"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
-        <button id="listBtn" type="button" aria-label="List view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <button id="gridBtn" type="button" class="icon-button active" aria-label="Grid view"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+        <button id="listBtn" type="button" class="icon-button" aria-label="List view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       </div>
     </div>
 
-    <div class="lib-filters" role="group" aria-label="Filter by type">
-      <button data-filter="all" class="active" type="button">All</button>
-      <button data-filter="image" type="button">Photos</button>
-      <button data-filter="pdf" type="button">PDFs</button>
-      <button data-filter="doc" type="button">Docs</button>
-      <button data-filter="file" type="button">Files</button>
+    <div class="lib-chips" role="group" aria-label="Filter by type">
+      <button data-filter="all" class="chip active" type="button">All</button>
+      <button data-filter="image" class="chip" type="button">Photos</button>
+      <button data-filter="pdf" class="chip" type="button">PDFs</button>
+      <button data-filter="doc" class="chip" type="button">Docs</button>
+      <button data-filter="file" class="chip" type="button">Files</button>
     </div>
 
     <div class="lib-stats" id="stats" hidden></div>
@@ -327,6 +195,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="/assets/js/library.js"></script>
+  <script type="module" src="/assets/js/library.js?v=3"></script>
 </body>
 </html>
