@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0d0f13">
   <meta name="description" content="Glow Agent is a local-first, OpenAI-compatible AI workspace.">
+  <meta name="application-name" content="Glow Agent">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Glow Agent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="72x72" href="/assets/icons/icon-72.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="/assets/icons/icon-96.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/assets/icons/icon-512.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="/assets/icons/icon-152.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="/assets/icons/icon-192.png">
   <script src="/assets/js/theme.js"></script>
   <link rel="stylesheet" href="/assets/css/app.css">
   <title>Glow Agent</title>
@@ -46,6 +58,19 @@
   <input type="file" id="imagePicker" accept="image/*" hidden>
   <input type="file" id="filePicker" hidden>
   <dialog class="dialog" id="thinkingDialog" aria-labelledby="thinkingDialogTitle"><div class="dialog-handle" aria-hidden="true"></div><header class="dialog-head"><div><h2 id="thinkingDialogTitle">Thinking level</h2><p class="dialog-kicker">HOW HARD THE MODEL THINKS</p></div><button class="icon-button" data-close-dialog="thinkingDialog" type="button" aria-label="Close thinking levels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></header><div id="thinkingOptions" class="model-options"></div><p class="hint" id="thinkingHint"></p></dialog>
+  <script src="/assets/js/pwa.js"></script>
+  <script>
+    // Register service worker for PWA installability
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+          console.log('Glow Agent SW registered', reg.scope);
+        }).catch(err => {
+          console.log('Glow Agent SW registration failed', err);
+        });
+      });
+    }
+  </script>
   <script type="module" src="/assets/js/chat.js"></script>
 </body>
 </html>

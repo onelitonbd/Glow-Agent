@@ -7,7 +7,7 @@ import { executeToolCall, openAiToolDefinitions, readSkillTool, serializeToolRes
 import { approvals } from './approvals.js';
 import { listSkills } from './skills.js';
 import { githubToolDefinitions } from './github-tools.js';
-import { activeMcpPlugins, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
+import { activeMcpPlugins, activeLocalClonePlugins, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
 import { getSettings } from './settings.js';
 import { THINKING_LEVELS, modelCapabilities } from './model-tests.js';
 
@@ -80,47 +80,79 @@ export function getConversation(db, rawConversationId) {
   return { ...toConversation(conversation), messages };
 }
 
-function systemMessage(skills, { plugin = null, mcp = null, customPrompt = '', developerTools = null } = {}) {
+function systemMessage(skills, { plugins = [], mcp = null, customPrompt = '', developerTools = null } = {}) {
   const servers = mcp?.servers || [];
   const failures = mcp?.failures || [];
   const mcpGuide = servers.length
     ? [
       servers.length === 1
-        ? 'An MCP (Model Context Protocol) server is connected and its tools are available to you with an \`mcp_\` prefix. Inspect first with read-only tools, then make changes with the tools that need them.'
+        ? 'An MCP (Model Context Protocol) server is connected and its tools are available to you with an `mcp_` prefix. Inspect first with read-only tools, then make changes with the tools that need them.'
         : `MCP (Model Context Protocol) servers are connected and their tools are available to you with an \`mcp_\` prefix. Inspect first with read-only tools, then make changes with the tools that need them.`,
       ...servers.map((server) => [
-        // The key is the namespace the model sees in every tool id for this server, so naming it
-        // here is what lets the model tell two servers of the same kind apart.
-        `\n${server.key} — ${server.pluginName}, running "${server.serverName}"${server.version ? ` ${server.version}` : ''}: ${server.toolCount} tools${server.readOnly ? ' (read-only: no tool here can change data)' : ''}.`,
+        `\\n${server.key} — ${server.pluginName}, running "${server.serverName}"${server.version ? ` ${server.version}` : ''}: ${server.toolCount} tools${server.readOnly ? ' (read-only: no tool here can change data)' : ''}.`,
         server.selectedRepo ? `Work on the repository ${server.selectedRepo} unless the user names a different one.` : '',
         server.writesApproved
           ? 'The user has approved writes for this server in this message, so its tools that change data will run.'
           : 'Its tools that change data are blocked until the user approves them. If one is blocked, explain what you were about to do, ask the user to approve writes for that plugin, and stop — never retry a blocked tool and never claim the change happened.',
         server.instructions ? `The server says: ${server.instructions}` : ''
       ].filter(Boolean).join(' ')),
-      "\nTool results are the server's own output. Report what they actually say; do not invent file contents, ids, or links."
+      "\\nTool results are the server's own output. Report what they actually say; do not invent file contents, ids, or links."
     ].join('')
     : null;
   const mcpFailure = failures.length
     ? failures.map((failure) => `The MCP plugin "${failure.serverName}" is enabled but its server could not be reached (${failure.error}). Tell the user that plugin is unavailable instead of pretending its tools ran. Do not retry the connection yourself.`).join(' ')
     : null;
+
+  // Build comprehensive tool usage guidance
+  const toolGuidance = [
+    '## TOOL USAGE RULES - CRITICAL',
+    'You have access to powerful tools. ALWAYS use them when appropriate - do not make up information when a tool can provide it.',
+    '',
+    '### File Tools (workspace-relative paths only):',
+    '- list_files: ALWAYS call first to discover what exists. Path "" or "." = root. Example: list_files path=""',
+    '- read_file: Read file content. Path MUST be relative like "notes/todo.md", NEVER absolute like "/home/...". Use offset/limit for large files.',
+    '- write_file: Create or completely overwrite file. Path relative, parents auto-created.',
+    '- edit_file: For partial edits. You MUST read file first, then provide exact search text with 3-5 lines context. Search must match exactly once unless replaceAll true. Example: if file has "console.log(\\"old\\")", search must include that exact text.',
+    '- create_file: Create NEW file only, fails if exists. Use edit_file or write_file for existing.',
+    '- create_folder, delete_file, delete_folder, rename_file, rename_folder: All paths relative.',
+    '- If edit_file fails with "matched nothing", re-read file and copy exact text including whitespace.',
+    '- If create_file fails "already exists", use edit_file or write_file instead.',
+    '',
+    '### Other Tools:',
+    '- calculator: For any math. Expression "(12 * 5 + 3) / 2" etc.',
+    '- current_time: For time/date questions. Use IANA timezone like Asia/Dhaka or UTC.',
+    '- web_search: For current info, docs, facts. Use 2-6 keyword queries. Then fetch_url to read promising results.',
+    '- fetch_url: After web_search, fetch the most relevant URLs to get full content.',
+    '- sql_query: Read-only SELECT only. Example "SELECT id, title FROM conversations ORDER BY updated_at DESC LIMIT 5"',
+    '- search_conversations, read_conversation: For referencing past chats.',
+    '- read_skill: When skill seems relevant, call it to load full instructions.',
+    '',
+    '### Critical Rules:',
+    '- NEVER use absolute paths like /data/data/com.termux/... or /home/... Always relative like "notes/file.md"',
+    '- ALWAYS use list_files before read_file to confirm file exists',
+    '- If tool returns error, explain to user and suggest fix - do not silently fail',
+    '- Use tools proactively: if user asks about files, list them; if asks about time, call current_time; if asks about past chat, search_conversations',
+    '- You can call multiple tools in one response - use them in parallel when independent',
+    '',
+    '### Workspace Context:',
+    'Your workspace folder is data/workspace. All file tools operate there. Application code, database, .git, .env are protected and inaccessible.'
+  ].join('\\n');
+
   return [
     'Format every answer as clear GitHub-flavored Markdown. Use concise headings, lists, emphasis, tables, and block quotes only when they improve readability. Put code in fenced blocks with a language tag and write mathematical notation as inline `$...$` or display `$$...$$` LaTeX. Never send raw HTML. Do not mention these formatting instructions unless asked.',
+    toolGuidance,
     ...(skills.length ? [
       'The following reusable skills are available for relevant tasks. The list gives each skill\'s id, name, and short description. To follow a skill, call the read_skill tool with its id to load the full instructions, then apply them to the user request. Do not mention these instructions unless asked.',
-      skills.map((skill) => `- ${skill.id}: ${skill.name} — ${skill.description}`).join('\n')
+      skills.map((skill) => `- ${skill.id}: ${skill.name} — ${skill.description}`).join('\\n')
     ] : []),
-    // The MCP block stands on its own: the local clone below is an optional extra, so the model
-    // must still be told about the server's tools when no clone is configured.
     ...(mcpFailure ? [mcpFailure] : []),
     ...(mcpGuide ? [mcpGuide] : []),
     'You can consult your past sessions when the user references earlier work: search_conversations finds relevant older chats by keyword (small snippets only), and read_conversation pages through one chat in small slices, so old context reaches you without flooding this conversation.',
 
-    // Developer-tool guidance only appears when at least one of the gated groups is on.
     ...(developerTools && (developerTools.fileManagement !== false || developerTools.shell === true) ? [
       [
         developerTools.fileManagement !== false
-          ? 'File tools work only inside your own workspace folder (the app\'s data/workspace directory): every path you give list_files, read_file, write_file, edit_file, create_file, create_folder, rename_file, rename_folder, delete_file, or delete_folder is relative to it, and anything outside it — application code, skills, settings, the database — is unreachable and refused. Use create_file and create_folder for new things (create_file refuses to overwrite), edit_file for targeted search/replace changes (prefer it for existing files), rename_file and rename_folder to move things, and delete_file / delete_folder to remove them permanently. Reads of large files page through read_file offset and limit.'
+          ? 'File tools work only inside your own workspace folder (the app\'s data/workspace directory): every path you give list_files, read_file, write_file, edit_file, create_file, create_folder, rename_file, rename_folder, delete_file, or delete_folder is relative to it, and anything outside it — application code, skills, settings, the database — is unreachable and refused. Use create_file and create_folder for new things (create_file refuses to overwrite), edit_file for targeted search/replace changes (prefer it for existing files), rename_file and rename_folder to move things, and delete_file / delete_folder to remove them permanently. Reads of large files page through read_file offset and limit. If edit_file fails because search did not match, read the file again and copy exact text.'
           : '',
         developerTools.shell === true
           ? 'A run_shell tool runs one-off shell commands from the app folder (not your workspace folder): unsandboxed, non-interactive (no editors or TUIs), killed at its timeout, with output truncated at 16 KB per stream, and refused when it references database files. Long-running servers do not survive the timeout; keep commands short-lived and inspect the exit code and stderr before declaring success.'
@@ -130,14 +162,13 @@ function systemMessage(skills, { plugin = null, mcp = null, customPrompt = '', d
           : ''
       ].filter(Boolean).join(' ')
     ] : []),
-    ...(plugin ? [
-      'A local clone of the selected repository is also available in the workspace. Use github_list_files / github_read_file to inspect it, github_write_file to edit or create files, github_rename_file and github_delete_file to move or remove files, then github_commit to stage and commit locally. Push to GitHub with github_push, but note that pushing always requires the user to confirm first — if push is blocked for confirmation, tell the user and stop rather than retrying. Although the plugin may not be cloned yet, call github_clone first if you need to refresh it. Prefer the MCP tools for GitHub itself and use the clone for bulk file work.'
+    ...(plugins.length ? [
+      'A local clone of the selected GitHub repository is also available in the workspace. Use github_list_files / github_read_file to inspect it, github_write_file to edit or create files, github_rename_file and github_delete_file to move or remove files, then github_commit to stage and commit locally. Push to GitHub with github_push, but note that pushing always requires the user to confirm first — if push is blocked for confirmation, tell the user and stop rather than retrying. Although the plugin may not be cloned yet, call github_clone first if you need to refresh it. Prefer the MCP tools for GitHub itself and use the clone for bulk file work.'
     ] : []),
-    // The user's own standing instructions go last, so they are the last thing the model reads.
     ...(customPrompt ? [
-      `The user has set these standing instructions for every reply in this workspace. Follow them in addition to everything above:\n${customPrompt}`
+      `The user has set these standing instructions for every reply in this workspace. Follow them in addition to everything above:\\n${customPrompt}`
     ] : [])
-  ].join('\n');
+  ].join('\\n');
 }
 
 function skillResolver(db) {
@@ -148,8 +179,6 @@ function skillResolver(db) {
   };
 }
 
-// ---- Per-call user approvals (Phase 3: proof-of-consent before dangerous tool runs) ---------
-
 const APPROVAL_GATED_TOOLS = new Set(['run_shell']);
 
 function needsApproval(context, toolId) {
@@ -159,30 +188,46 @@ function needsApproval(context, toolId) {
 }
 
 function approvalCommand(call) {
+  // Handle both string and object arguments
   try {
-    const args = JSON.parse(call.function?.arguments || '{}');
+    let args = call.function?.arguments;
+    if (typeof args === 'string') {
+      args = JSON.parse(args || '{}');
+    } else if (typeof args !== 'object') {
+      args = {};
+    }
     if (typeof args?.command === 'string' && args.command.trim()) return args.command.trim();
-  } catch { /* fall through to the raw argument text below */ }
-  return typeof call.function?.arguments === 'string' ? call.function.arguments : '';
+  } catch { }
+  // Fallback to raw text
+  const raw = call.function?.arguments;
+  if (typeof raw === 'string') return raw.slice(0, 500);
+  if (raw && typeof raw === 'object' && typeof raw.command === 'string') return raw.command;
+  return '';
 }
 
 function compactCommand(command) {
   const firstLine = String(command).split('\n')[0];
-  return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+  return firstLine.length > 60 ? `${firstLine.slice(0, 60)}...` : firstLine;
 }
 
-// Runs one tool call, pausing for an explicit user decision first when the settings call for an
-// approval card. Only the live stream can collect a decision, so on the plain JSON endpoint a
-// gated call is refused with a clear tool result instead of hanging the request. The model is
-// never told the approval id and can never settle it — only the /approvals route can.
 async function executeWithApproval(context, db, call, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, stopSignal = null, isStopped = null } = {}) {
-  const toolId = typeof call.function?.name === 'string' ? call.function.name : '';
+  const toolId = typeof call.function?.name === 'string' ? call.function.name : (typeof call.name === 'string' ? call.name : '');
   const toolArgs = [
     call,
     new Set(context.tools.map((tool) => tool.id)),
-    { getSkill: skillResolver(db), db, rootDirectory, workspaceDirectory, fetchTimeoutMs, plugin: context.plugin, mcp: context.mcp, developerTools: context.developerTools, stopSignal }
+    { 
+      getSkill: skillResolver(db), 
+      db, 
+      rootDirectory, 
+      workspaceDirectory, 
+      fetchTimeoutMs, 
+      plugin: context.plugin, 
+      plugins: context.plugins,
+      mcp: context.mcp, 
+      developerTools: context.developerTools, 
+      stopSignal 
+    }
   ];
-  // Never start a tool the user has already told us to abandon.
   if (isStopped?.()) {
     return {
       toolId,
@@ -227,8 +272,6 @@ function normalizeAssistantContent(content) {
   return '';
 }
 
-// A question that carried an attachment has to go back to the provider as content parts, exactly
-// as it was first sent — a plain string would drop the image the model was asked about.
 function toProviderContent(row) {
   const attachments = parseJsonArray(row.attachments, []);
   if (attachments.length === 0) return row.content;
@@ -262,8 +305,6 @@ function persistMessage(db, { conversationId, role, content, providerId = null, 
   return { id, role, content, providerId, modelId: selectedModelId, reasoning, toolEvents, timeline: timeline || null, attachments, createdAt };
 }
 
-// The rows behind a conversation in display order. `rowid` breaks ties when two messages land in
-// the same millisecond, which is what makes "everything after this message" unambiguous.
 function messageRows(db, conversationId) {
   return db.prepare('SELECT rowid, * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC').all(conversationId);
 }
@@ -287,9 +328,6 @@ function touchConversation(db, conversationId) {
   db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now(), conversationId);
 }
 
-// Deleting a reply takes the question that produced it with it, so the log never keeps a question
-// nobody answered. `withQuestion: false` keeps the question (used by Regenerate, which re-answers
-// it instead).
 export function deleteMessage(db, rawConversationId, rawMessageId, body = {}) {
   const { conversation, message } = existingMessage(db, rawConversationId, rawMessageId);
   let question = null;
@@ -307,7 +345,6 @@ export function deleteMessage(db, rawConversationId, rawMessageId, body = {}) {
   return getConversation(db, conversation.id);
 }
 
-// Correcting a question also drops the answer it produced; the caller re-answers the edited text.
 export function editMessage(db, rawConversationId, rawMessageId, body = {}) {
   const { conversation, message } = existingMessage(db, rawConversationId, rawMessageId);
   if (message.role !== 'user') throw validation('Only your own messages can be edited.');
@@ -318,10 +355,6 @@ export function editMessage(db, rawConversationId, rawMessageId, body = {}) {
   return getConversation(db, conversation.id);
 }
 
-// ---- Attachments ----
-// The composer offers an image or a document only when the capability probe says this model takes
-// one, so the check here is a backstop for a hand-built request rather than the main gate. An
-// untested model is allowed through: no evidence yet is not a rejection.
 export const MAX_ATTACHMENTS = 4;
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
@@ -346,7 +379,6 @@ export function parseAttachments(db, body, { providerId, selectedModelId }) {
   if (raw.length === 0) return [];
   if (raw.length > MAX_ATTACHMENTS) throw validation(`At most ${MAX_ATTACHMENTS} attachments per message.`);
   const capabilities = modelCapabilities(db, providerId, selectedModelId);
-  const counts = { image: 0, file: 0 };
   return raw.map((entry, index) => {
     if (!entry || typeof entry !== 'object') throw validation(`Attachment ${index + 1} is not readable.`);
     const parsed = parseDataUrl(entry.dataUrl);
@@ -356,9 +388,6 @@ export function parseAttachments(db, body, { providerId, selectedModelId }) {
       throw validation(`Attachment ${index + 1} is ${Math.round(parsed.bytes / 1024 / 1024)} MB. The limit is ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB.`);
     }
     const kind = attachmentKind(parsed.mimeType);
-    counts[kind] += 1;
-    // A proved rejection is the only thing that blocks: `works` and `accepted` both mean the
-    // provider took this part before, and an untested model has not been given the chance.
     const verdict = kind === 'image' ? capabilities.images : capabilities.files;
     if (capabilities.tested && !verdict.usable) {
       throw validation(`${selectedModelId} does not accept ${kind === 'image' ? 'images' : 'file attachments'} — the capability test was refused. Pick another model or send it as text.`);
@@ -381,37 +410,41 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
   const selectedModelId = modelId(body.modelId);
   const selected = db.prepare('SELECT 1 FROM provider_models WHERE provider_id = ? AND model_id = ?').get(providerId, selectedModelId);
   if (!selected) throw validation('Select this model for the provider before starting a chat.');
-  // Optional thinking level. It is sent as `reasoning_effort`; a model that ignores the parameter
-  // simply answers as usual, which is why an untested level is allowed rather than blocked.
   const thinkingLevel = body.thinkingLevel === undefined || body.thinkingLevel === null || body.thinkingLevel === ''
     ? null
     : String(body.thinkingLevel);
   const thinkingRung = thinkingLevel ? THINKING_LEVELS.find((level) => level.id === thinkingLevel) : null;
   if (thinkingLevel && !thinkingRung) throw validation('That thinking level is not one this workspace offers.');
-  // Attachments travel with the question. A regenerate re-sends the stored question, so it keeps
-  // the files that were already saved with it instead of taking new ones from the body.
   const attachments = existingUserMessage
     ? parseJsonArray(existingUserMessage.attachments, [])
     : parseAttachments(db, body, { providerId, selectedModelId });
   const skills = listSkills(db);
   const settings = getSettings(db);
-  // Built-in tools are always offered; developer-tool groups only when their setting is on.
-  // read_skill is added only when skills exist so the model can load instructions on demand.
   const baseTools = toolsForSettings(settings.developerTools);
   const tools = skills.length ? [...baseTools, readSkillTool()] : baseTools;
-  // A connected, enabled GitHub plugin with a selected repo exposes GitHub tools and a repo
-  // workspace. The model can list/clone/read/edit/commit files and (on confirmation) push.
-  const plugin = activeGithubPlugin(db, body.pluginId, workspaceDirectory);
-  if (plugin) {
+  
+  // Auto-discover GitHub plugins with local clone enabled - FIXED: no longer requires explicit pluginId
+  let githubPlugins = [];
+  try {
+    githubPlugins = activeLocalClonePlugins(db, workspaceDirectory);
+  } catch {}
+  // Also check explicit pluginId for backward compatibility
+  if (body.pluginId) {
+    const explicit = activeGithubPluginLegacy(db, body.pluginId, workspaceDirectory);
+    if (explicit && !githubPlugins.find(p => p.pluginId === explicit.pluginId)) {
+      githubPlugins.push(explicit);
+    }
+  }
+  
+  if (githubPlugins.length > 0) {
     tools.push(...githubToolDefinitions());
   }
-  // An enabled MCP plugin opens one live session per request; that server's tools/list result
-  // becomes part of the model's tool set for this message.
+  
   const mcp = await openMcpContexts(db);
   if (mcp?.definitions?.length) {
     tools.push(...mcp.definitions);
   }
-  // Regenerate/Edit re-answer a message that is already stored, so no new user row is written.
+  
   const userMessage = existingUserMessage
     ? {
       id: existingUserMessage.id,
@@ -426,14 +459,15 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
     }
     : persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId, attachments });
   const messages = conversationMessages(db, conversation.id);
-  const system = systemMessage(skills, { plugin, mcp, customPrompt: settings.systemPrompt.text, developerTools: settings.developerTools });
+  const system = systemMessage(skills, { plugins: githubPlugins, mcp, customPrompt: settings.systemPrompt.text, developerTools: settings.developerTools });
   if (system) messages.unshift({ role: 'system', content: system });
-  // Only the first question of a chat names it. Counting the other questions (rather than the
-  // rows) means a regenerate of that first question can still write the title.
   const otherQuestions = db.prepare(`SELECT COUNT(*) AS count FROM messages WHERE conversation_id = ? AND role = 'user' AND id <> ?`)
     .get(conversation.id, userMessage.id).count;
   return {
-    conversation, content, providerId, selectedModelId, tools, plugin, mcp, userMessage, messages,
+    conversation, content, providerId, selectedModelId, tools, 
+    plugin: githubPlugins[0] || null, // For backward compat, first plugin
+    plugins: githubPlugins, // New: array of all qualifying plugins
+    mcp, userMessage, messages,
     attachments,
     developerTools: settings.developerTools,
     capabilities: modelCapabilities(db, providerId, selectedModelId),
@@ -443,26 +477,18 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
   };
 }
 
-// The local clone is now optional: MCP tools work on GitHub directly, so this only returns a
-// context when the plugin turns "Local clone" on. `needsClone` marks the first message.
-function activeGithubPlugin(db, rawPluginId, workspaceDirectory) {
+function activeGithubPluginLegacy(db, rawPluginId, workspaceDirectory) {
   if (!rawPluginId) return null;
   const pluginId = String(rawPluginId);
   const row = db.prepare('SELECT * FROM plugins WHERE id = ?').get(pluginId);
   if (!row || row.type !== 'mcp' || !Number(row.enabled)) return null;
   const config = (() => { try { return JSON.parse(row.config) || {}; } catch { return {}; } })();
   if (config.github?.localClone !== true || !config.selectedRepo) return null;
-  return { pluginId, needsClone: !config.cloned, workspaceDirectory };
+  return { pluginId, needsClone: !config.cloned, workspaceDirectory, selectedRepo: config.selectedRepo };
 }
 
-// Opens one MCP session per enabled plugin and merges their tools into a single tool set and a
-// single name map. A server that cannot be reached must not block the message: the failure is
-// recorded so the system prompt tells the model to say so.
 async function openMcpContexts(db) {
   const active = activeMcpPlugins(db);
-  // A key is reserved in stored order, whether or not that server connects, so the tool ids the
-  // model sees stay stable across messages. Duplicates only appear when the same preset is
-  // installed twice, which keeps the common case a plain `mcp_github_...`.
   const totals = new Map();
   for (const entry of active) totals.set(entry.key, (totals.get(entry.key) || 0) + 1);
   const seen = new Map();
@@ -511,8 +537,6 @@ async function openMcpContexts(db) {
   };
 }
 
-// Every MCP session is torn down when the request ends, and each one-shot write approval is
-// consumed so the next message has to be approved again.
 async function closeMcpContexts(db, mcp) {
   if (!mcp) return;
   for (const context of mcp.contexts || []) {
@@ -522,17 +546,11 @@ async function closeMcpContexts(db, mcp) {
   for (const failure of mcp.failures || []) clearWriteApproval(db, failure.pluginId);
 }
 
-// Clones the selected repo into the local workspace the first time a message is sent with the
-// plugin enabled. After a successful clone the plugin's `cloned` flag is set so it is not
-// re-cloned on every message; subsequent messages re-use (and auto-refresh) the local copy on
-// demand (see the github tools). If clone fails we still let the model work; the clone tool
-// remains available to retry.
 async function ensureRepositoryCloned(db, plugin, workspaceDirectory) {
-  if (plugin.needsClone && workspaceDirectory) {
+  if (plugin?.needsClone && workspaceDirectory) {
     try {
       await cloneGithubRepo(db, plugin.pluginId, workspaceDirectory);
     } catch {
-      // Cloning may fail offline or without a token; the model can retry via github_clone.
     }
   }
 }
@@ -575,21 +593,16 @@ async function providerCompletionWithRetry({ provider, credentials, selectedMode
   throw failureError('PROVIDER_RETRY_EXHAUSTED', 'The provider could not be reached after repeated attempts.');
 }
 
-// A one-line, safe-for-the-UI reason for a failed provider call.
 function shortStatus(error) {
   return String(error?.message || 'connection failed').replace(/\s+/gu, ' ').trim().slice(0, 120);
 }
 
-// The prompt that names a chat. The model sees both sides of the first exchange, so the title can
-// describe what the conversation is actually about instead of just echoing the question.
 const TITLE_SYSTEM_PROMPT = [
   'You name chat conversations.',
   'Read the first exchange below and write one title of 8 to 10 words that says what the conversation is about.',
   'Reply with the title only: no quotes, no leading or trailing punctuation, no explanation, no line breaks.'
 ].join(' ');
 
-// Models wrap titles in quotes and end them with a full stop even when told not to; both are
-// stripped so the saved title reads like a title.
 function normalizeTitle(value) {
   const text = String(value ?? '')
     .trim()
@@ -600,13 +613,11 @@ function normalizeTitle(value) {
   return text ? text.slice(0, 120) : null;
 }
 
-// Asks the configured model for a title. A title is cosmetic, so any failure falls back to the
-// first words of the question — it must never cost the user their answer.
 async function generateConversationTitle(db, context, assistantContent, { emit, fetchTimeoutMs } = {}) {
   if (!context.isFirstExchange) return null;
   const settings = getSettings(db).titleGeneration;
   if (!settings.enabled || !settings.providerId || !settings.modelId) return null;
-  emit?.('status', { tone: 'info', text: `Naming this chat with ${settings.modelId}…` });
+  emit?.('status', { tone: 'info', text: `Naming this chat with ${settings.modelId}...` });
   try {
     const { provider, credentials } = providerCredentials(db, settings.providerId);
     const response = await providerFetch(upstreamUrl(provider.baseUrl, '/chat/completions'), credentials, {
@@ -625,7 +636,7 @@ async function generateConversationTitle(db, context, assistantContent, { emit, 
     if (!response?.ok) return null;
     const payload = await response.json();
     const title = normalizeTitle(payload?.choices?.[0]?.message?.content);
-    if (title) emit?.('status', { tone: 'info', text: `Chat named “${title}”.` });
+    if (title) emit?.('status', { tone: 'info', text: `Chat named "${title}".` });
     return title;
   } catch {
     return null;
@@ -658,10 +669,36 @@ function collectToolCalls(target, delta) {
     const index = Number.isInteger(partial.index) ? partial.index : target.length;
     target[index] ||= { id: '', type: 'function', function: { name: '', arguments: '' } };
     const call = target[index];
-    if (typeof partial.id === 'string') call.id += partial.id;
+    if (typeof partial.id === 'string' && partial.id) call.id = (call.id || '') + partial.id;
+    else if (typeof partial.id === 'string') call.id += partial.id;
     if (typeof partial.type === 'string') call.type = partial.type;
-    if (typeof partial.function?.name === 'string') call.function.name += partial.function.name;
-    if (typeof partial.function?.arguments === 'string') call.function.arguments += partial.function.arguments;
+    
+    // Handle function name - can be string concatenation or full name
+    if (typeof partial.function?.name === 'string' && partial.function.name) {
+      call.function.name = (call.function.name || '') + partial.function.name;
+    }
+    
+    // Handle arguments - can be string (needs concat) or object (merge)
+    const args = partial.function?.arguments;
+    if (typeof args === 'string') {
+      call.function.arguments = (call.function.arguments || '') + args;
+    } else if (args && typeof args === 'object' && !Array.isArray(args)) {
+      // Some providers send arguments as object directly
+      // Convert existing string args to object if needed, then merge
+      try {
+        let existing = {};
+        if (call.function.arguments && typeof call.function.arguments === 'string' && call.function.arguments.trim()) {
+          existing = JSON.parse(call.function.arguments);
+        } else if (call.function.arguments && typeof call.function.arguments === 'object') {
+          existing = call.function.arguments;
+        }
+        const merged = { ...existing, ...args };
+        call.function.arguments = JSON.stringify(merged);
+      } catch {
+        // If parsing fails, just stringify the object args
+        call.function.arguments = JSON.stringify(args);
+      }
+    }
   }
 }
 
@@ -708,9 +745,6 @@ function failureError(code, message) {
   return new AppError(502, code, message, { expose: true });
 }
 
-// A user stop: the chat stream routes flag this when the client disconnects (tapping Stop closes
-// the fetch). The flag is checked between tokens, rounds, and tool calls, and the signal
-// immediately aborts any upstream provider fetch or shell child that is mid-flight.
 export function createStreamStop() {
   const controller = new AbortController();
   return {
@@ -725,29 +759,21 @@ export function createStreamStop() {
   };
 }
 
-// A stopped round keeps the text already produced and reports no tool calls: half-collected
-// tool call definitions arriving mid-stop must never be executed.
 const stoppedResult = (content, reasoning) => ({ content, reasoning, toolCalls: [], stopped: true });
 
-// Throws an AppError while carrying any content produced so far so a mid-stream interruption
-// can be resumed instead of being thrown away and treated as a brand-new request.
 function streamFailure(shift, code, message) {
   const error = failureError(code, message);
   error.partial = shift();
   throw error;
 }
 
-// A provider round is allowed to be retried. On a retry after a partial stream, the partial
-// assistant text is pushed back into the conversation so the model continues from where it
-// stopped instead of restarting. Incomplete tool calls are not resumed (they are regenerated).
 async function streamProviderRoundWithRetry({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, maxRetries, reasoningEffort = null, stop = null }) {
   let attempt = 0;
   while (attempt <= maxRetries) {
-    emit('status', { tone: 'info', text: attempt === 0 ? 'Waiting for the model…' : `Waiting for the model — attempt ${attempt + 1}…` });
+    emit('status', { tone: 'info', text: attempt === 0 ? 'Waiting for the model...' : `Waiting for the model — attempt ${attempt + 1}...` });
     try {
       return await streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, reasoningEffort, stop });
     } catch (error) {
-      // Never queue a retry behind a user stop, even when it landed mid-failure.
       if (stop?.stopped) return stoppedResult(error.partial?.content || '', error.partial?.reasoning || '');
       if (attempt >= maxRetries) throw error;
       const partial = error.partial;
@@ -755,7 +781,7 @@ async function streamProviderRoundWithRetry({ provider, credentials, selectedMod
         messages.push({ role: 'assistant', content: partial.content });
         messages.push({ role: 'user', content: 'Continue your previous response exactly from where it stopped. Do not repeat any text you already wrote; continue with the next part of your answer.' });
       }
-      emit('status', { tone: 'warn', text: `The model failed (${shortStatus(error)}). Retrying ${attempt + 1} of ${maxRetries}…` });
+      emit('status', { tone: 'warn', text: `The model failed (${shortStatus(error)}). Retrying ${attempt + 1} of ${maxRetries}...` });
       await new Promise((resolve) => setTimeout(resolve, Math.min(400 * (attempt + 1), 2_500)));
       if (stop?.stopped) return stoppedResult('', '');
       attempt += 1;
@@ -767,7 +793,6 @@ async function streamProviderRoundWithRetry({ provider, credentials, selectedMod
 async function streamProviderRound({ provider, credentials, selectedModelId, messages, tools, timeoutMs, emit, reasoningEffort = null, stop = null }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  // Stop must cut even a silent provider fetch, not just the token loop.
   const fetchSignal = stop ? AbortSignal.any([controller.signal, stop.signal]) : controller.signal;
   let content = '';
   let reasoning = '';
@@ -869,6 +894,10 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   let assistantContent = '';
   let reasoning = '';
   if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
+  // Also clone for all github plugins
+  for (const p of context.plugins || []) {
+    if (p.needsClone) await ensureRepositoryCloned(db, p, workspaceDirectory);
+  }
   try {
     for (let round = 0; round < maxToolRounds; round += 1) {
       const response = await providerCompletionWithRetry({ provider, credentials, selectedModelId: context.selectedModelId, messages: context.messages, tools: context.tools, timeoutMs, maxRetries: maxProviderRetries, reasoningEffort: context.reasoningEffort });
@@ -892,7 +921,7 @@ export async function respondToConversation(db, rawConversationId, body, timeout
       if (providerMessage?.content) timeline.push({ type: 'content', text: normalizeAssistantContent(providerMessage.content) });
       context.messages.push({ role: 'assistant', content: providerMessage.content ?? null, tool_calls: toolCalls });
       for (const call of toolCalls) {
-        timeline.push({ type: 'tool_call', name: typeof call.function?.name === 'string' ? call.function.name : '' });
+        timeline.push({ type: 'tool_call', name: typeof call.function?.name === 'string' ? call.function.name : (typeof call.name === 'string' ? call.name : '') });
         const execution = await executeWithApproval(context, db, call, null, { rootDirectory, workspaceDirectory, fetchTimeoutMs });
         toolEvents.push({ toolId: execution.toolId, summary: execution.summary });
         timeline.push({ type: 'tool_result', toolId: execution.toolId, summary: execution.summary });
@@ -905,8 +934,6 @@ export async function respondToConversation(db, rawConversationId, body, timeout
   }
 }
 
-// Shared by "answer my new message" and "answer this stored message again": everything from the
-// live status line through the tool rounds to persisting the reply.
 async function streamConversation(db, context, timeoutMs, emit, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20, stop = null } = {}) {
   const { provider, credentials } = providerCredentials(db, context.providerId);
   for (const server of context.mcp?.servers || []) {
@@ -916,9 +943,12 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
     emit('status', { tone: 'warn', text: `MCP unavailable — ${failure.serverName}: ${failure.error}` });
   }
   emit('started', { conversationId: context.conversation.id });
-  emit('status', { tone: 'info', text: `Connecting to ${provider.name}…` });
+  emit('status', { tone: 'info', text: `Connecting to ${provider.name}...` });
   if (context.thinkingLabel) emit('status', { tone: 'info', text: `Thinking level: ${context.thinkingLabel}.` });
   if (context.plugin) await ensureRepositoryCloned(db, context.plugin, workspaceDirectory);
+  for (const p of context.plugins || []) {
+    if (p.needsClone) await ensureRepositoryCloned(db, p, workspaceDirectory);
+  }
   const toolEvents = [];
   const timeline = [];
   const timelineEmit = (event, data) => {
@@ -956,12 +986,9 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
       }
       if (wasStopped) break;
     }
-    // Derive the persisted content/reasoning from the emitted timeline so a resumed stream keeps
-    // the partial text that was already shown live, rather than only the last retry's segment.
     const assistantContent = timeline.filter((entry) => entry.type === 'content').map((entry) => entry.text).join('');
     const reasoning = timeline.filter((entry) => entry.type === 'thinking').map((entry) => entry.text).join('');
     if (wasStopped) {
-      // A stopped reply saves exactly what the user saw, marked, instead of pretending it finished.
       timeline.push({ type: 'stopped' });
       const result = await finishResponse(db, context, assistantContent, reasoning, toolEvents, timeline, { emit, fetchTimeoutMs, allowEmpty: true });
       emit('aborted', result);
@@ -980,9 +1007,6 @@ export async function respondToConversationStream(db, rawConversationId, body, t
   return streamConversation(db, context, timeoutMs, emit, options);
 }
 
-// Re-answers a stored user message — with the same model (Regenerate) or a different one (Try with
-// another model). The reply it produced is removed first, so the question stays where it is and
-// only the answer is replaced.
 export async function regenerateMessageStream(db, rawConversationId, rawMessageId, body, timeoutMs, emit, options = {}) {
   const { conversation, message } = existingMessage(db, rawConversationId, rawMessageId);
   if (message.role !== 'user') throw validation('Choose one of your own messages to answer again.');

@@ -15,74 +15,74 @@ const toolCatalog = Object.freeze({
   calculator: Object.freeze({
     id: 'calculator',
     name: 'Calculator',
-    description: 'Evaluate a basic arithmetic expression without using JavaScript eval.',
+    description: 'Evaluate a basic arithmetic expression safely. Use for any math. Example: expression "(12 * 5 + 3) / 2" returns 31.5. Only numbers, parentheses, decimals, +, -, *, / allowed.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['expression'],
-      properties: { expression: { type: 'string', description: 'Arithmetic using numbers, parentheses, +, -, *, and /.' } }
+      properties: { expression: { type: 'string', description: 'Arithmetic expression, e.g. "12 * (5 + 1)" or "3.14 * 2"' } }
     }
   }),
   current_time: Object.freeze({
     id: 'current_time',
     name: 'Current time',
-    description: 'Get the current date and time for an IANA time zone.',
+    description: 'Get current date and time for an IANA timezone. Use when user asks about time, date, timezone. Example timeZone "Asia/Dhaka" or "UTC". Defaults to UTC.',
     parameters: {
       type: 'object',
       additionalProperties: false,
-      properties: { timeZone: { type: 'string', description: 'IANA time zone such as Asia/Dhaka. Defaults to UTC.' } }
+      properties: { timeZone: { type: 'string', description: 'IANA timezone like Asia/Dhaka, America/New_York, UTC. Defaults to UTC.' } }
     }
   }),
   read_skill: Object.freeze({
     id: 'read_skill',
     name: 'Read skill',
-    description: 'Load the full instructions of a reusable skill by its id so you can follow them to answer the user request. Skill ids are listed in the available skills catalog.',
+    description: 'Load full instructions of a reusable skill by its id. Skill ids, names, descriptions are in system prompt. ALWAYS call this when a skill seems relevant before answering.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['skillId'],
-      properties: { skillId: { type: 'string', description: 'The id of the skill to read, as listed in the available skills catalog.' } }
+      properties: { skillId: { type: 'string', description: 'Skill id from available skills catalog in system prompt.' } }
     }
   }),
   list_files: Object.freeze({
     id: 'list_files',
     name: 'List files',
-    description: 'List files and folders inside your workspace folder. Use it to find files before reading them. Lists one directory by default; set recursive to true to walk the whole tree.',
+    description: 'List files and folders in workspace. ALWAYS use first to discover files before reading. Path is RELATIVE to workspace root ("" or "." for root, "notes" for subfolder). Set recursive true to walk full tree up to 400 entries. Example path "" lists root.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
-        path: { type: 'string', description: 'Directory path relative to the workspace root. Defaults to the root.' },
-        recursive: { type: 'boolean', description: 'When true, walk the full subtree (up to 400 entries). Defaults to false (only the directory itself).' }
+        path: { type: 'string', description: 'Directory path RELATIVE to workspace root. Use "" or "." for root, e.g. "notes".' },
+        recursive: { type: 'boolean', description: 'When true, walk full subtree up to 400 entries. Default false.' }
       }
     }
   }),
   read_file: Object.freeze({
     id: 'read_file',
     name: 'Read file',
-    description: 'Read a text file from your workspace folder as UTF-8 text. Use a path relative to the workspace root. Large files are returned in pages: use offset and limit to continue reading.',
+    description: 'Read a text file from workspace as UTF-8. Path MUST be relative to workspace root, e.g. "notes/todo.md". Use list_files first. For large files use offset/limit to page, e.g. offset 0 limit 10000 then offset 10000.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['path'],
       properties: {
-        path: { type: 'string', description: 'File path relative to the workspace root, for example notes/todo.md.' },
-        offset: { type: 'integer', description: 'Character position to start reading from (default 0).' },
-        limit: { type: 'integer', description: 'Maximum characters to return (default and maximum 262144).' }
+        path: { type: 'string', description: 'File path RELATIVE to workspace root, e.g. "notes/todo.md". Never absolute like /home/...' },
+        offset: { type: 'integer', description: 'Char position to start from (default 0).' },
+        limit: { type: 'integer', description: 'Max chars to return (default 262144, max 262144).' }
       }
     }
   }),
   write_file: Object.freeze({
     id: 'write_file',
     name: 'Write file',
-    description: 'Create or overwrite a text file in your workspace folder. Parent folders are created automatically.',
+    description: 'Create or overwrite a text file in workspace. Path RELATIVE (e.g. "notes/todo.md"). Parent folders auto-created. Use to create new files or completely replace existing ones. For partial edits prefer edit_file.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['path', 'content'],
       properties: {
-        path: { type: 'string', description: 'File path relative to the workspace root.' },
-        content: { type: 'string', description: 'The text content to write.' }
+        path: { type: 'string', description: 'File path RELATIVE to workspace root, e.g. "notes/todo.md".' },
+        content: { type: 'string', description: 'Full text content to write.' }
       }
     }
   }),
@@ -90,27 +90,27 @@ const toolCatalog = Object.freeze({
     id: 'edit_file',
     name: 'Edit file',
     group: 'fileManagement',
-    description: 'Make targeted search-and-replace edits to an existing text file in your workspace folder. Every search text must match exactly once unless replaceAll is true; the first failing edit stops the call so you know how far it got. Prefer this over write_file when changing part of a file.',
+    description: 'Make targeted search-and-replace edits to existing file. Path RELATIVE. Each edit needs exact search text that appears exactly once unless replaceAll true. Include 3-5 lines surrounding context to make search unique. Example search "function hello() {\\n  console.log(\\"old\\");\\n}" replace "function hello() {\\n  console.log(\\"new\\");\\n}". File only saved if ALL edits succeed. Read file first.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['path', 'edits'],
       properties: {
-        path: { type: 'string', description: 'File path relative to the workspace root.' },
+        path: { type: 'string', description: 'File path RELATIVE to workspace root, e.g. "src/app.js".' },
         edits: {
           type: 'array',
-          description: 'Ordered list of search/replace operations (max 25).',
+          description: 'Ordered list of search/replace ops (max 25). Each needs unique search text.',
           items: {
             type: 'object',
             additionalProperties: false,
             required: ['search', 'replace'],
             properties: {
-              search: { type: 'string', description: 'Exact text to find, including surrounding context to make it unique.' },
+              search: { type: 'string', description: 'Exact text to find, with 3-5 lines context.' },
               replace: { type: 'string', description: 'Replacement text (may be empty to delete).' }
             }
           }
         },
-        replaceAll: { type: 'boolean', description: 'Allow each search text to match and replace multiple occurrences. Defaults to false.' }
+        replaceAll: { type: 'boolean', description: 'If true, replace ALL occurrences. Default false.' }
       }
     }
   }),
@@ -118,26 +118,26 @@ const toolCatalog = Object.freeze({
     id: 'create_folder',
     name: 'Create folder',
     group: 'fileManagement',
-    description: 'Create a new folder in your workspace folder, including any missing parent folders. Succeeds without changes if the folder already exists.',
+    description: 'Create new folder in workspace. Path RELATIVE e.g. "src/components". Creates parents automatically. Succeeds if exists.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['path'],
-      properties: { path: { type: 'string', description: 'Folder path relative to the workspace root.' } }
+      properties: { path: { type: 'string', description: 'Folder path RELATIVE to workspace root, e.g. "src/components".' } }
     }
   }),
   create_file: Object.freeze({
     id: 'create_file',
     name: 'Create file',
     group: 'fileManagement',
-    description: 'Create a new text file in your workspace folder. Fails if the file already exists: use edit_file to modify an existing file or write_file to replace it completely.',
+    description: 'Create NEW text file (fails if exists). Path RELATIVE. Use edit_file or write_file to modify existing. Example path "notes/ideas.md", content "# Ideas\\n..."',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['path', 'content'],
       properties: {
-        path: { type: 'string', description: 'File path relative to the workspace root.' },
-        content: { type: 'string', description: 'The text content for the new file.' }
+        path: { type: 'string', description: 'File path RELATIVE to workspace root. Must not exist yet.' },
+        content: { type: 'string', description: 'Text content for new file.' }
       }
     }
   }),
@@ -145,14 +145,14 @@ const toolCatalog = Object.freeze({
     id: 'delete_folder',
     name: 'Delete folder',
     group: 'fileManagement',
-    description: 'Permanently delete a folder from your workspace folder. Only empty folders are deleted unless recursive is true. The workspace root itself can never be deleted.',
+    description: 'Permanently delete folder from workspace. Path RELATIVE. Only empty unless recursive true. NEVER delete root "." or "". Example path "old_notes" or with recursive true.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['path'],
       properties: {
-        path: { type: 'string', description: 'Folder path relative to the workspace root.' },
-        recursive: { type: 'boolean', description: 'Delete the folder and everything inside it. Defaults to false.' }
+        path: { type: 'string', description: 'Folder path RELATIVE to workspace root.' },
+        recursive: { type: 'boolean', description: 'If true, delete folder and all contents. Default false.' }
       }
     }
   }),
@@ -160,26 +160,26 @@ const toolCatalog = Object.freeze({
     id: 'delete_file',
     name: 'Delete file',
     group: 'fileManagement',
-    description: 'Permanently delete a single file from your workspace folder.',
+    description: 'Permanently delete single file from workspace. Path RELATIVE e.g. "notes/old.md". Irreversible.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['path'],
-      properties: { path: { type: 'string', description: 'File path relative to the workspace root.' } }
+      properties: { path: { type: 'string', description: 'File path RELATIVE to workspace root, e.g. "notes/old.md".' } }
     }
   }),
   rename_folder: Object.freeze({
     id: 'rename_folder',
     name: 'Rename folder',
     group: 'fileManagement',
-    description: 'Rename or move a folder within your workspace folder. The destination must not already exist; missing destination parents are created.',
+    description: 'Rename or move folder within workspace. Both from and to RELATIVE. Destination must not exist; parents auto-created. Example from "old" to "new".',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['from', 'to'],
       properties: {
-        from: { type: 'string', description: 'Current folder path relative to the workspace root.' },
-        to: { type: 'string', description: 'New folder path relative to the workspace root.' }
+        from: { type: 'string', description: 'Current folder path RELATIVE to workspace root.' },
+        to: { type: 'string', description: 'New folder path RELATIVE to workspace root.' }
       }
     }
   }),
@@ -187,14 +187,14 @@ const toolCatalog = Object.freeze({
     id: 'rename_file',
     name: 'Rename file',
     group: 'fileManagement',
-    description: 'Rename or move a file within your workspace folder. The destination must not already exist; missing destination parents are created.',
+    description: 'Rename or move file within workspace. Both from and to RELATIVE. Destination must not exist. Example from "notes/old.md" to "notes/new.md".',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['from', 'to'],
       properties: {
-        from: { type: 'string', description: 'Current file path relative to the workspace root.' },
-        to: { type: 'string', description: 'New file path relative to the workspace root.' }
+        from: { type: 'string', description: 'Current file path RELATIVE to workspace root.' },
+        to: { type: 'string', description: 'New file path RELATIVE to workspace root.' }
       }
     }
   }),
@@ -202,83 +202,83 @@ const toolCatalog = Object.freeze({
     id: 'run_shell',
     name: 'Shell command',
     group: 'shell',
-    description: 'Run a one-off shell command from the app folder (outside your workspace folder; unsandboxed, as the local user). Use non-interactive commands only; the process group is killed at the timeout. Pipe large output through head/tail — captured output is truncated at 16 KB per stream. Commands referencing *.sqlite database files are refused. Only available when the user enables shell access in settings.',
+    description: 'Run one-off shell command from app folder (unsandboxed, as local user). Use ONLY non-interactive commands (no editors). Run with sh -c. Timeout kills process group. Output truncated at 16KB per stream. Use head/tail for large output. NEVER reference *.sqlite files. Only when user enables shell in settings. Example command "ls -la" or "node -v".',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['command'],
       properties: {
-        command: { type: 'string', description: 'The shell command line, run with sh -c from the workspace root.' },
-        timeoutMs: { type: 'integer', description: 'Kill the command after this many milliseconds (default 30000, max 120000).' }
+        command: { type: 'string', description: 'Shell command line, e.g. "ls -la" or "cat package.json | head -20".' },
+        timeoutMs: { type: 'integer', description: 'Kill after ms (default 30000, max 120000).' }
       }
     }
   }),
   sql_query: Object.freeze({
     id: 'sql_query',
     name: 'SQL query',
-    description: 'Run a read-only SELECT query against the local Glow Agent database.',
+    description: 'Run read-only SELECT query against local Glow Agent DB. Only SELECT/WITH, single statement. Use to inspect conversations, providers, etc. Example "SELECT id, title FROM conversations ORDER BY updated_at DESC LIMIT 5"',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['sql'],
-      properties: { sql: { type: 'string', description: 'A read-only SELECT statement. Write statements are blocked.' } }
+      properties: { sql: { type: 'string', description: 'Read-only SELECT. Example "SELECT * FROM conversations LIMIT 10"' } }
     }
   }),
   web_search: Object.freeze({
     id: 'web_search',
     name: 'Web search',
-    description: 'Search the web with DuckDuckGo and return a list of result titles, URLs, and short snippets.',
+    description: 'Search web via DuckDuckGo. Returns titles, URLs, snippets. Use for current info, docs, facts. Query concise 2-6 keywords. Example query "Node.js 22 release notes". Returns up to maxResults (default 5, max 8).',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['query'],
       properties: {
-        query: { type: 'string', description: 'The search query.' },
-        maxResults: { type: 'integer', description: 'Maximum number of results to return (default 5).' }
+        query: { type: 'string', description: 'Search query, e.g. "React hooks tutorial"' },
+        maxResults: { type: 'integer', description: 'Max results (default 5, max 8).' }
       }
     }
   }),
   fetch_url: Object.freeze({
     id: 'fetch_url',
     name: 'Fetch URL',
-    description: 'Fetch a web page and return its readable text content (HTML tags removed).',
+    description: 'Fetch web page and return readable text (HTML stripped). Use after web_search to read promising result. Only http/https public hosts. Example url "https://example.com/docs". maxChars controls length (default 4000, max 20000).',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['url'],
       properties: {
-        url: { type: 'string', description: 'The http or https URL to fetch.' },
-        maxChars: { type: 'integer', description: 'Maximum number of characters to return (default 4000).' }
+        url: { type: 'string', description: 'http or https URL, e.g. "https://example.com"' },
+        maxChars: { type: 'integer', description: 'Max chars (default 4000, max 20000).' }
       }
     }
   }),
   search_conversations: Object.freeze({
     id: 'search_conversations',
     name: 'Search conversations',
-    description: 'Search your past chat conversations by keyword and get a short list of matches — only titles and tiny snippets, never full messages. Use this when the user refers to something discussed earlier or in another chat instead of asking them to paste it. After a promising match, page through it with read_conversation.',
+    description: 'Search past chats by keyword. Returns only titles and snippets, not full messages. Use when user references earlier work like "that termux setup". After finding match, use read_conversation. Example query "termux setup"',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['query'],
       properties: {
-        query: { type: 'string', description: 'Keywords to look for, for example "termux setup" or "api key".' },
-        limit: { type: 'integer', description: 'Maximum conversations to return (default 5, max 10).' }
+        query: { type: 'string', description: 'Keywords, e.g. "termux setup" or "api key".' },
+        limit: { type: 'integer', description: 'Max conversations (default 5, max 10).' }
       }
     }
   }),
   read_conversation: Object.freeze({
     id: 'read_conversation',
     name: 'Read conversation',
-    description: 'Page through the messages of one past conversation a few at a time, like read_file pages a large file, so old chats can be reviewed without flooding your context. The response gives messageCount — use a later offset to jump near the end, and hasMore/nextOffset to continue. Copy conversationId from a search_conversations result (or the chat URL /chat/<id>).',
+    description: 'Page through one past conversation. Like read_file but for chat history. Use conversationId from search_conversations or URL /chat/<id>. Returns messageCount, hasMore, nextOffset. Example conversationId "abc-123", offset 0, limit 10.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['conversationId'],
       properties: {
-        conversationId: { type: 'string', description: 'The id of the conversation to read (from search_conversations).' },
-        offset: { type: 'integer', description: 'Message index to start from (default 0 = the beginning).' },
-        limit: { type: 'integer', description: 'Messages to return in this page (default 10, max 30).' },
-        maxChars: { type: 'integer', description: 'Maximum characters kept per message, longer ones are marked truncated (default 2000, max 8000).' }
+        conversationId: { type: 'string', description: 'Id from search_conversations result.' },
+        offset: { type: 'integer', description: 'Start index (default 0).' },
+        limit: { type: 'integer', description: 'Messages per page (default 10, max 30).' },
+        maxChars: { type: 'integer', description: 'Max chars per message (default 2000, max 8000).' }
       }
     }
   })
@@ -290,8 +290,6 @@ export function listTools() {
     .map((tool) => ({ id: tool.id, name: tool.name, description: tool.description, parameters: tool.parameters, group: tool.group || null }));
 }
 
-// The tools actually offered to the model for a request: developer-tool groups drop out when
-// the user has not enabled them in settings.
 export function toolsForSettings(developerTools = {}) {
   const fileManagement = developerTools.fileManagement !== false;
   const shell = developerTools.shell === true;
@@ -302,20 +300,22 @@ export function toolsForSettings(developerTools = {}) {
   });
 }
 
-// read_skill is an internal mechanism that lets the model load skill instructions on demand,
-// so it is not exposed as a user-selectable capability in the public tool list.
 export function readSkillTool() {
   const tool = toolCatalog.read_skill;
   return { id: tool.id, name: tool.name, description: tool.description, parameters: tool.parameters };
 }
 
 export function openAiToolDefinitions(tools) {
-  return tools.map((tool) => ({ type: 'function', function: { name: tool.id, description: tool.description, parameters: tool.parameters } }));
+  return tools.map((tool) => ({
+    type: 'function',
+    function: {
+      name: tool.id,
+      description: tool.description,
+      parameters: tool.parameters
+    }
+  }));
 }
 
-// Tool results enter the provider context as JSON text. An uncapped result (a big file read, a
-// long listing) could blow the context window, so oversized results shrink to a preview the
-// model can page through with read_file instead.
 export const TOOL_RESULT_LIMIT = 32_000;
 
 export function serializeToolResult(result) {
@@ -323,16 +323,16 @@ export function serializeToolResult(result) {
   if (json.length <= TOOL_RESULT_LIMIT) return json;
   if (result && typeof result === 'object' && typeof result.content === 'string') {
     const keep = Math.max(1_000, TOOL_RESULT_LIMIT - 500);
-    const shrunk = { ...result, content: `${result.content.slice(0, keep)}\n…[truncated — call the tool again with an offset to continue]`, truncated: true };
+    const shrunk = { ...result, content: `${result.content.slice(0, keep)}\n...[truncated - call tool again with offset to continue]`, truncated: true };
     const shrunkJson = JSON.stringify(shrunk);
     if (shrunkJson.length <= TOOL_RESULT_LIMIT * 1.25) return shrunkJson;
   }
-  return JSON.stringify({ truncated: true, note: 'The tool result was too large to return in full; a JSON preview follows.', preview: json.slice(0, TOOL_RESULT_LIMIT) });
+  return JSON.stringify({ truncated: true, note: 'Tool result too large, preview follows.', preview: json.slice(0, TOOL_RESULT_LIMIT) });
 }
 
 function calculator(expression) {
   if (typeof expression !== 'string' || expression.length === 0 || expression.length > 200 || !/^[\d+\-*/().\s]+$/u.test(expression)) {
-    return { error: 'Expression must use up to 200 characters of numbers, parentheses, decimals, and +, -, *, or /.' };
+    return { error: 'Expression must use up to 200 chars of numbers, parentheses, decimals, and +, -, *, /.' };
   }
   let index = 0;
   const source = expression.replace(/\s+/gu, '');
@@ -343,7 +343,7 @@ function calculator(expression) {
     return true;
   };
   const safe = (number) => {
-    if (!Number.isFinite(number) || Math.abs(number) > 1e15) throw new Error('Result is outside the calculator safety range.');
+    if (!Number.isFinite(number) || Math.abs(number) > 1e15) throw new Error('Result outside safety range.');
     return number;
   };
   const factor = () => {
@@ -351,11 +351,11 @@ function calculator(expression) {
     if (consume('-')) return safe(-factor());
     if (consume('(')) {
       const value = expressionRule();
-      if (!consume(')')) throw new Error('A closing parenthesis is missing.');
+      if (!consume(')')) throw new Error('Missing closing parenthesis.');
       return value;
     }
     const match = source.slice(index).match(/^(?:\d+(?:\.\d*)?|\.\d+)/u);
-    if (!match) throw new Error('Expected a number or opening parenthesis.');
+    if (!match) throw new Error('Expected number or opening parenthesis.');
     index += match[0].length;
     return safe(Number(match[0]));
   };
@@ -364,7 +364,7 @@ function calculator(expression) {
     while (peek() === '*' || peek() === '/') {
       const operator = peek(); index += 1;
       const next = factor();
-      if (operator === '/' && next === 0) throw new Error('Division by zero is not allowed.');
+      if (operator === '/' && next === 0) throw new Error('Division by zero not allowed.');
       value = safe(operator === '*' ? value * next : value / next);
     }
     return value;
@@ -380,7 +380,7 @@ function calculator(expression) {
   };
   try {
     const result = expressionRule();
-    if (index !== source.length) throw new Error('Expression contains an unexpected token.');
+    if (index !== source.length) throw new Error('Unexpected token in expression.');
     return { expression, result: Number(result.toPrecision(15)) };
   } catch (error) {
     return { error: error.message };
@@ -389,7 +389,7 @@ function calculator(expression) {
 
 function currentTime(timeZone) {
   const zone = typeof timeZone === 'string' && timeZone.trim() ? timeZone.trim() : 'UTC';
-  if (zone.length > 100) return { error: 'Time zone is too long.' };
+  if (zone.length > 100) return { error: 'Time zone too long.' };
   try {
     const formatter = new Intl.DateTimeFormat('en-GB', {
       dateStyle: 'full', timeStyle: 'long', timeZone: zone, hour12: false
@@ -397,7 +397,7 @@ function currentTime(timeZone) {
     const resolvedTimeZone = formatter.resolvedOptions().timeZone;
     return { timeZone: resolvedTimeZone, localTime: formatter.format(new Date()), isoTime: new Date().toISOString() };
   } catch {
-    return { error: 'Use a valid IANA time zone, such as Asia/Dhaka or Europe/London.' };
+    return { error: 'Use valid IANA timezone, e.g. Asia/Dhaka or Europe/London.' };
   }
 }
 
@@ -418,7 +418,7 @@ function summary(tool, result) {
   if (tool.id === 'rename_folder') return `Renamed folder: ${result.from} → ${result.to}`;
   if (tool.id === 'run_shell') {
     const firstLine = String(result.command || '').split('\n')[0];
-    const compact = firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+    const compact = firstLine.length > 60 ? `${firstLine.slice(0, 60)}...` : firstLine;
     if (result.killedByStop) return `Shell command killed when the response was stopped: ${compact}`;
     if (result.timedOut) return `Shell command timed out and was killed: ${compact}`;
     return `Shell command exited ${result.exitCode}: ${compact}`;
@@ -431,76 +431,231 @@ function summary(tool, result) {
   return tool.name;
 }
 
-export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, workspaceDirectory, plugin, mcp, developerTools = null, stopSignal = null } = {}) {
-  // File tools live in the assistant's own workspace folder: the app directory itself — code,
-  // skills, settings, the database — is unreachable through them. (Caller-side shortcuts that
-  // only pass rootDirectory simply confine the tools to that root instead.)
+// Robust argument parser: handles stringified JSON, plain objects, and common model mistakes
+function parseToolArguments(rawArgs, toolId) {
+  if (rawArgs === undefined || rawArgs === null || rawArgs === '') {
+    return {};
+  }
+  // Already an object (some providers like Ollama, Groq, Anthropic via compat)
+  if (typeof rawArgs === 'object' && !Array.isArray(rawArgs)) {
+    return rawArgs;
+  }
+  if (typeof rawArgs !== 'string') {
+    throw new Error(`Arguments for ${toolId} must be JSON object, got ${typeof rawArgs}`);
+  }
+  const trimmed = rawArgs.trim();
+  if (!trimmed) return {};
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Not an object');
+    }
+    return parsed;
+  } catch (e) {
+    // Try to salvage common mistakes: single quotes, trailing commas, etc.
+    // First try to fix single quotes to double (naive but helps)
+    try {
+      // Replace single-quoted keys/values with double quotes if it looks like JSON with single quotes
+      const fixed = trimmed
+        .replace(/'/g, '"')
+        .replace(/,\s*}/g, '}')
+        .replace(/,\s*]/g, ']');
+      const parsed = JSON.parse(fixed);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {}
+    throw new Error(`Tool arguments must be valid JSON object. Parse error: ${e.message}. Received: ${trimmed.slice(0, 200)}`);
+  }
+}
+
+export async function executeToolCall(call, allowedToolIds, { getSkill, db, rootDirectory, workspaceDirectory, plugin, plugins, mcp, developerTools = null, stopSignal = null } = {}) {
   const workspaceRoot = workspaceDirectory || rootDirectory;
-  const id = typeof call?.function?.name === 'string' ? call.function.name : '';
-  // MCP tools come from the connected MCP server; the `mcp` context carries the live session
-  // and the name map built from that server's tools/list response.
+  const id = typeof call?.function?.name === 'string' ? call.function.name : (typeof call?.name === 'string' ? call.name : '');
+  
   if (mcp && id.startsWith(MCP_TOOL_PREFIX) && allowedToolIds.has(id)) {
     return executeMcpTool(call, mcp);
   }
-  if (plugin && id.startsWith('github_') && allowedToolIds.has(id)) {
-    return executeGithubTool(call, { db, pluginId: plugin.pluginId, workspaceDirectory: plugin.workspaceDirectory });
+  
+  // GitHub tools: support both single plugin and array of plugins (auto-discovery)
+  if (id.startsWith('github_') && allowedToolIds.has(id)) {
+    // If explicit plugin provided, use it
+    if (plugin) {
+      return executeGithubTool(call, { db, pluginId: plugin.pluginId, workspaceDirectory: plugin.workspaceDirectory });
+    }
+    // If plugins array provided (auto-discovered), use first available
+    if (Array.isArray(plugins) && plugins.length > 0) {
+      const first = plugins[0];
+      return executeGithubTool(call, { db, pluginId: first.pluginId, workspaceDirectory: first.workspaceDirectory || workspaceRoot });
+    }
+    // Fallback: try to find any plugin with localClone via db if available
+    if (db) {
+      try {
+        const { activeLocalClonePlugins } = await import('./plugins.js');
+        const clones = activeLocalClonePlugins(db);
+        if (clones.length > 0) {
+          return executeGithubTool(call, { db, pluginId: clones[0].id, workspaceDirectory: workspaceRoot });
+        }
+      } catch {}
+    }
+    return { toolId: id || 'unknown', result: { error: 'GitHub plugin with local clone not configured. Enable it in Plugins settings.' }, summary: 'GitHub tool unavailable - no local clone' };
   }
+  
   const tool = Object.hasOwn(toolCatalog, id) ? toolCatalog[id] : null;
   if (!tool || !allowedToolIds.has(id)) {
     return { toolId: id || 'unknown', result: { error: 'This tool is not available.' }, summary: 'An unavailable tool call was blocked.' };
   }
+  
   let argumentsObject;
   try {
-    argumentsObject = JSON.parse(call.function.arguments || '{}');
-    if (!argumentsObject || Array.isArray(argumentsObject) || typeof argumentsObject !== 'object') throw new Error();
-  } catch {
-    const result = { error: 'Tool arguments must be a JSON object.' };
+    argumentsObject = parseToolArguments(call.function?.arguments ?? call.arguments, id);
+  } catch (error) {
+    const result = { error: error.message };
     return { toolId: id, result, summary: summary(tool, result) };
   }
+  
   if (id === 'read_skill') {
     if (typeof getSkill !== 'function') {
-      const result = { error: 'Skill loading is not available for this request.' };
+      const result = { error: 'Skill loading not available for this request.' };
       return { toolId: id, result, summary: summary(tool, result) };
     }
-    const skill = getSkill(argumentsObject.skillId);
+    const skillId = argumentsObject.skillId || argumentsObject.id;
+    if (!skillId || typeof skillId !== 'string') {
+      const result = { error: 'skillId is required and must be string. Use id from skills catalog in system prompt.' };
+      return { toolId: id, result, summary: summary(tool, result) };
+    }
+    const skill = getSkill(skillId);
     if (!skill) {
-      const result = { error: 'Skill not found. Use an id listed in the available skills catalog.' };
+      const result = { error: `Skill not found: ${skillId}. Use id listed in available skills catalog.` };
       return { toolId: id, result, summary: summary(tool, result) };
     }
     const result = { skillId: skill.id, name: skill.name, description: skill.description, instructions: skill.instructions };
     return { toolId: id, result, summary: summary(tool, result) };
   }
-  // Defense in depth: even a call that arrives when the tool is in the allowed set (for
-  // example a replayed or stale conversation) is refused when the settings gate is off.
+  
   if (developerTools) {
     if (FILE_MANAGEMENT_TOOL_IDS.includes(id) && developerTools.fileManagement === false) {
-      const result = { error: 'File-management tools are disabled in settings.' };
+      const result = { error: 'File-management tools disabled in settings. Enable in Other settings -> Developer tools.' };
       return { toolId: id, result, summary: summary(tool, result) };
     }
     if (SHELL_TOOL_IDS.includes(id) && developerTools.shell !== true) {
-      const result = { error: 'Shell access is disabled in settings.' };
+      const result = { error: 'Shell access disabled in settings. Enable in Other settings -> Developer tools -> Shell access.' };
       return { toolId: id, result, summary: summary(tool, result) };
     }
   }
+  
   let result;
-  if (id === 'calculator') result = calculator(argumentsObject.expression);
-  else if (id === 'current_time') result = currentTime(argumentsObject.timeZone);
-  else if (id === 'list_files') result = listFiles(workspaceRoot, argumentsObject.path, { recursive: argumentsObject.recursive === true });
-  else if (id === 'read_file') result = readFile(workspaceRoot, argumentsObject.path, { offset: argumentsObject.offset, limit: argumentsObject.limit });
-  else if (id === 'write_file') result = writeFile(workspaceRoot, argumentsObject.path, argumentsObject.content);
-  else if (id === 'edit_file') result = editFile(workspaceRoot, argumentsObject.path, argumentsObject.edits, { replaceAll: argumentsObject.replaceAll === true });
-  else if (id === 'create_file') result = createFile(workspaceRoot, argumentsObject.path, argumentsObject.content);
-  else if (id === 'create_folder') result = createFolder(workspaceRoot, argumentsObject.path);
-  else if (id === 'delete_file') result = deleteFile(workspaceRoot, argumentsObject.path);
-  else if (id === 'delete_folder') result = deleteFolder(workspaceRoot, argumentsObject.path, { recursive: argumentsObject.recursive === true });
-  else if (id === 'rename_file') result = renameFile(workspaceRoot, argumentsObject.from, argumentsObject.to);
-  else if (id === 'rename_folder') result = renameFolder(workspaceRoot, argumentsObject.from, argumentsObject.to);
-  else if (id === 'run_shell') result = await runShell(rootDirectory, argumentsObject.command, { timeoutMs: argumentsObject.timeoutMs, killSignal: stopSignal });
-  else if (id === 'sql_query') result = sqlQuery(db, argumentsObject.sql);
-  else if (id === 'web_search') result = await webSearch(argumentsObject.query, argumentsObject.maxResults);
-  else if (id === 'fetch_url') result = await fetchUrl(argumentsObject.url, argumentsObject.maxChars);
-  else if (id === 'search_conversations') result = searchConversations(db, argumentsObject.query, { limit: argumentsObject.limit });
-  else if (id === 'read_conversation') result = readConversation(db, argumentsObject.conversationId, { offset: argumentsObject.offset, limit: argumentsObject.limit, maxChars: argumentsObject.maxChars });
-  else result = { error: 'This tool is not supported.' };
+  try {
+    if (id === 'calculator') {
+      if (!argumentsObject.expression) {
+        result = { error: 'expression is required, e.g. "12 * (5 + 1)"' };
+      } else {
+        result = calculator(argumentsObject.expression);
+      }
+    } else if (id === 'current_time') {
+      result = currentTime(argumentsObject.timeZone);
+    } else if (id === 'list_files') {
+      result = listFiles(workspaceRoot, argumentsObject.path, { recursive: argumentsObject.recursive === true });
+    } else if (id === 'read_file') {
+      if (!argumentsObject.path) {
+        result = { error: 'path is required, e.g. "notes/todo.md". Use list_files first to discover files.' };
+      } else {
+        result = readFile(workspaceRoot, argumentsObject.path, { offset: argumentsObject.offset, limit: argumentsObject.limit });
+      }
+    } else if (id === 'write_file') {
+      if (!argumentsObject.path) {
+        result = { error: 'path is required' };
+      } else if (argumentsObject.content === undefined) {
+        result = { error: 'content is required' };
+      } else {
+        result = writeFile(workspaceRoot, argumentsObject.path, argumentsObject.content);
+      }
+    } else if (id === 'edit_file') {
+      if (!argumentsObject.path) {
+        result = { error: 'path is required' };
+      } else if (!Array.isArray(argumentsObject.edits) || argumentsObject.edits.length === 0) {
+        result = { error: 'edits array is required with at least one {search, replace}. Read file first to get exact text.' };
+      } else {
+        result = editFile(workspaceRoot, argumentsObject.path, argumentsObject.edits, { replaceAll: argumentsObject.replaceAll === true });
+      }
+    } else if (id === 'create_file') {
+      if (!argumentsObject.path || argumentsObject.content === undefined) {
+        result = { error: 'path and content required' };
+      } else {
+        result = createFile(workspaceRoot, argumentsObject.path, argumentsObject.content);
+      }
+    } else if (id === 'create_folder') {
+      if (!argumentsObject.path) {
+        result = { error: 'path is required' };
+      } else {
+        result = createFolder(workspaceRoot, argumentsObject.path);
+      }
+    } else if (id === 'delete_file') {
+      if (!argumentsObject.path) {
+        result = { error: 'path is required' };
+      } else {
+        result = deleteFile(workspaceRoot, argumentsObject.path);
+      }
+    } else if (id === 'delete_folder') {
+      if (!argumentsObject.path) {
+        result = { error: 'path is required' };
+      } else {
+        result = deleteFolder(workspaceRoot, argumentsObject.path, { recursive: argumentsObject.recursive === true });
+      }
+    } else if (id === 'rename_file') {
+      if (!argumentsObject.from || !argumentsObject.to) {
+        result = { error: 'from and to paths required, both relative' };
+      } else {
+        result = renameFile(workspaceRoot, argumentsObject.from, argumentsObject.to);
+      }
+    } else if (id === 'rename_folder') {
+      if (!argumentsObject.from || !argumentsObject.to) {
+        result = { error: 'from and to required' };
+      } else {
+        result = renameFolder(workspaceRoot, argumentsObject.from, argumentsObject.to);
+      }
+    } else if (id === 'run_shell') {
+      if (!argumentsObject.command) {
+        result = { error: 'command is required, e.g. "ls -la"' };
+      } else {
+        result = await runShell(rootDirectory, argumentsObject.command, { timeoutMs: argumentsObject.timeoutMs, killSignal: stopSignal });
+      }
+    } else if (id === 'sql_query') {
+      if (!argumentsObject.sql) {
+        result = { error: 'sql is required, must be SELECT' };
+      } else {
+        result = sqlQuery(db, argumentsObject.sql);
+      }
+    } else if (id === 'web_search') {
+      if (!argumentsObject.query) {
+        result = { error: 'query is required, e.g. "Node.js 22 features"' };
+      } else {
+        result = await webSearch(argumentsObject.query, argumentsObject.maxResults);
+      }
+    } else if (id === 'fetch_url') {
+      if (!argumentsObject.url) {
+        result = { error: 'url is required, e.g. "https://example.com"' };
+      } else {
+        result = await fetchUrl(argumentsObject.url, argumentsObject.maxChars);
+      }
+    } else if (id === 'search_conversations') {
+      if (!argumentsObject.query) {
+        result = { error: 'query is required' };
+      } else {
+        result = searchConversations(db, argumentsObject.query, { limit: argumentsObject.limit });
+      }
+    } else if (id === 'read_conversation') {
+      if (!argumentsObject.conversationId) {
+        result = { error: 'conversationId is required from search_conversations' };
+      } else {
+        result = readConversation(db, argumentsObject.conversationId, { offset: argumentsObject.offset, limit: argumentsObject.limit, maxChars: argumentsObject.maxChars });
+      }
+    } else {
+      result = { error: 'Tool not supported: ' + id };
+    }
+  } catch (error) {
+    result = { error: `Tool ${id} execution failed: ${error.message}` };
+  }
+  
   return { toolId: id, result, summary: summary(tool, result) };
 }

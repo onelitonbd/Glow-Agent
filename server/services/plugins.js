@@ -642,6 +642,30 @@ export function activeMcpPlugins(db) {
     .filter((entry) => entry.config.connected === true);
 }
 
+// Auto-discovered GitHub plugins that have local clone enabled - FIXED: no longer requires explicit pluginId in request
+// These expose github_* tools automatically, so model can use them without client having to name a plugin
+export function activeLocalClonePlugins(db, workspaceDirectory = null) {
+  return db.prepare("SELECT * FROM plugins WHERE type = 'mcp' AND enabled = 1 ORDER BY created_at ASC").all()
+    .map((row) => {
+      const config = safeConfig(row.config);
+      return { row, config };
+    })
+    .filter(({ config }) => {
+      const github = config.github && typeof config.github === 'object' ? config.github : {};
+      return github.localClone === true && safeString(config.selectedRepo);
+    })
+    .map(({ row, config }) => ({
+      pluginId: row.id,
+      id: row.id,
+      name: row.name,
+      selectedRepo: safeString(config.selectedRepo),
+      cloned: config.cloned === true,
+      needsClone: !config.cloned,
+      workspaceDirectory: workspaceDirectory || '',
+      config
+    }));
+}
+
 // Builds the runtime MCP context for one chat request: a live session, the tool definitions the
 // model may call, and the write gate. The caller MUST call dispose() when the request ends.
 // `serverKey` namespaces this server's tool ids (mcp_<key>_<tool>). Callers that connect several

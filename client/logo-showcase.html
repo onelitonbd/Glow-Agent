@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f13">
+  <meta name="description" content="Glow Agent logo concepts - choose production logo">
+  <meta name="application-name" content="Glow Agent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
+  <script src="/assets/js/theme.js"></script>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <title>Logo Concepts — Glow Agent</title>
+  <style>
+    .logo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 4px; }
+    .logo-card { border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; }
+    .logo-card img { width: 100%; aspect-ratio: 1; object-fit: cover; background: #0d0f13; display: block; }
+    .logo-card-body { padding: 12px; }
+    .logo-card h3 { margin: 0 0 6px; font-size: 14px; font-weight: 800; }
+    .logo-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .logo-card .badge { display: inline-block; margin-top: 8px; padding: 3px 8px; border-radius: 99px; background: var(--accent-wash); color: var(--accent); font: 10px var(--mono); font-weight: 600; }
+    .logo-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-wash); }
+    .logo-card.selected .badge { background: var(--accent); color: var(--accent-ink); }
+    .final-section { margin: 24px 4px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+    .icon-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    .icon-row img { border-radius: 12px; background: #0d0f13; }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <a class="icon-button" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></a>
+      <h1 class="app-title">Logo Concepts</h1>
+      <a class="header-link" href="/">Chat</a>
+    </header>
+
+    <section class="intro">
+      <p class="eyebrow">Production ready PWA logos</p>
+      <p>Glow Agent is a local-first, mobile-first AI workspace. Accent #c6ff6b lime on dark #0d0f13. Choose your favorite for Chrome install.</p>
+    </section>
+
+    <div class="logo-grid">
+      <article class="logo-card selected" data-logo="final-dark">
+        <img src="/assets/logos/final-production-logo-dark.png" alt="Final G glowing dark">
+        <div class="logo-card-body">
+          <h3>Final: Glowing G (Dark)</h3>
+          <p>Ultra minimal bold G with neon lime glow. Clean vector, perfect for app stores. High contrast, instantly recognizable as Glow. Recommended for PWA.</p>
+          <span class="badge">RECOMMENDED • PWA</span>
+        </div>
+      </article>
+
+      <article class="logo-card" data-logo="spark">
+        <img src="/assets/logos/final-spark-logo.png" alt="Spark logo">
+        <div class="logo-card-body">
+          <h3>Final: Spark</h3>
+          <p>4-pointed spark star with lime glow aura. Matches existing UI spark icon. Minimal, magical AI agent feel. Great for small sizes.</p>
+          <span class="badge">ALTERNATIVE • UI MATCH</span>
+        </div>
+      </article>
+
+      <article class="logo-card" data-logo="concept-a">
+        <img src="/assets/logos/logo-concept-a-glowing-g.png" alt="Concept A orb G">
+        <div class="logo-card-body">
+          <h3>Concept A: G Orb</h3>
+          <p>Glowing lime G inside glassy orb with reflection. Premium 3D feel, soft shadow. More detailed, premium.</p>
+          <span class="badge">CONCEPT A</span>
+        </div>
+      </article>
+
+      <article class="logo-card" data-logo="concept-b">
+        <img src="/assets/logos/logo-concept-b-spark.png" alt="Concept B spark">
+        <div class="logo-card-body">
+          <h3>Concept B: Spark Detailed</h3>
+          <p>Detailed spark with inner particles and curved glow lines. Neural ink aesthetic, intricate.</p>
+          <span class="badge">CONCEPT B</span>
+        </div>
+      </article>
+
+      <article class="logo-card" data-logo="concept-c">
+        <img src="/assets/logos/logo-concept-c-ink-drop.png" alt="Concept C ink drop">
+        <div class="logo-card-body">
+          <h3>Concept C: Ink Drop</h3>
+          <p>Fluid ink drop with lime core and violet #a99cff shell. Organic, artistic, represents neural ink design exploration.</p>
+          <span class="badge">CONCEPT C • ARTISTIC</span>
+        </div>
+      </article>
+
+      <article class="logo-card" data-logo="concept-d">
+        <img src="/assets/logos/logo-concept-d-circuit-g.png" alt="Concept D circuit G">
+        <div class="logo-card-body">
+          <h3>Concept D: Circuit G</h3>
+          <p>Letter G formed by circuit traces and nodes. Techy, developer-focused, represents workspace and connections.</p>
+          <span class="badge">CONCEPT D • TECH</span>
+        </div>
+      </article>
+    </div>
+
+    <section class="final-section">
+      <h2 class="section-label">Current PWA Icons (from selected logo)</h2>
+      <p class="hint" style="margin-top:8px">These are what Chrome will show when installing. Maskable versions have 20% padding for safe zone.</p>
+      <div class="icon-row">
+        <img src="/assets/icons/icon-72.png" width="72" height="72" alt="72">
+        <img src="/assets/icons/icon-96.png" width="96" height="96" alt="96">
+        <img src="/assets/icons/icon-192.png" width="72" height="72" alt="192">
+        <img src="/assets/icons/icon-512.png" width="96" height="96" alt="512">
+        <img src="/assets/icons/icon-192-maskable.png" width="72" height="72" alt="192 maskable">
+        <img src="/assets/icons/icon-512-maskable.png" width="96" height="96" alt="512 maskable">
+      </div>
+      <p class="hint" style="margin-top:12px">Installable: Chrome → Menu → Install app or Add to Home Screen. Works offline via service worker.</p>
+      <div style="display:flex; gap:8px; margin-top:16px">
+        <button class="button" id="useDark">Use Glowing G (Recommended)</button>
+        <button class="button secondary" id="useSpark">Use Spark</button>
+      </div>
+    </section>
+
+    <p class="app-footer">GLOW AGENT • PWA READY • CHOOSE YOUR LOGO</p>
+  </main>
+
+  <script>
+    document.querySelectorAll('.logo-card').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.logo-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+      });
+    });
+
+    async function switchLogo(src) {
+      const sizes = [72,96,128,144,152,192,384,512];
+      // This would need server endpoint to regenerate icons - for now just show toast
+      alert('To switch logo, run:\\nconvert '+src+' -resize 512x512 client/assets/icons/icon-512.png\\nAnd regenerate other sizes. See logo-showcase.html source.');
+    }
+
+    document.getElementById('useDark').addEventListener('click', () => switchLogo('client/assets/logos/final-production-logo-dark.png'));
+    document.getElementById('useSpark').addEventListener('click', () => switchLogo('client/assets/logos/final-spark-logo.png'));
+  </script>
+</body>
+</html>

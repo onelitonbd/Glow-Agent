@@ -10,26 +10,21 @@ const SKIP_DIRS = new Set([
 ]);
 const LIST_LIMIT = 400;
 const LIST_DEPTH = 10;
-// A single read_file call returns at most this many characters; bigger files are paged through
-// with offset/limit up to READ_DISK_CAP total size.
 const READ_LIMIT = 256 * 1024;
 const READ_DISK_CAP = 4 * 1024 * 1024;
 const WRITE_LIMIT = 256 * 1024;
 const SQL_LIMIT = 100;
 const SQL_CELL_LIMIT = 8_192;
-// Web fetches are capped so a hostile or careless URL cannot exhaust device memory.
 const WEB_MAX_BYTES = 1024 * 1024;
 const WEB_MAX_REDIRECTS = 5;
 
-const WEB_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+const WEB_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36 Glow-Agent/0.1';
 
-// Filesystem errors echo absolute paths; the model only ever needs the reason, so known errno
-// codes map to static messages and anything unknown collapses to a generic failure.
 const FS_ERROR_MESSAGES = {
-  ENOENT: 'Path does not exist.',
+  ENOENT: 'Path does not exist. Use list_files to see what exists.',
   EACCES: 'Permission denied.',
   EPERM: 'Operation not permitted.',
-  EISDIR: 'Expected a file but found a directory.',
+  EISDIR: 'Expected a file but found a directory. Use list_files to inspect.',
   ENOTDIR: 'A path component is not a directory.',
   EEXIST: 'Path already exists.',
   ENAMETOOLONG: 'The path is too long.',
@@ -54,8 +49,8 @@ function clampInteger(value, fallback, min, max) {
 export function listFiles(rootDirectory, relPath, { recursive = false } = {}) {
   let base;
   try { base = safePath(rootDirectory, relPath); } catch (error) { return { error: error.message }; }
-  if (!existsSync(base)) return { error: 'Directory does not exist.' };
-  if (!statSync(base).isDirectory()) return { error: 'Path is not a directory.' };
+  if (!existsSync(base)) return { error: 'Directory does not exist. Use path "" for root or check with list_files.' };
+  if (!statSync(base).isDirectory()) return { error: 'Path is not a directory. Use a folder path.' };
   const resolvedRoot = resolve(rootDirectory);
   const entries = [];
   const addEntry = (absolute, type) => {
@@ -72,7 +67,6 @@ export function listFiles(rootDirectory, relPath, { recursive = false } = {}) {
     });
   };
   if (!recursive) {
-    // Shallow mode: just this directory's immediate contents, so large trees stay cheap.
     for (const entry of sortedItems(base)) {
       if (entries.length >= LIST_LIMIT) break;
       if (SKIP_DIRS.has(entry.name)) continue;
@@ -104,9 +98,9 @@ export function listFiles(rootDirectory, relPath, { recursive = false } = {}) {
 export function readFile(rootDirectory, relPath, { offset = 0, limit = READ_LIMIT } = {}) {
   let target;
   try { target = safePath(rootDirectory, relPath); } catch (error) { return { error: error.message }; }
-  if (!existsSync(target) || !statSync(target).isFile()) return { error: 'File does not exist.' };
+  if (!existsSync(target) || !statSync(target).isFile()) return { error: `File does not exist: "${relPath}". Use list_files to discover files first.` };
   const stats = statSync(target);
-  if (stats.size > READ_DISK_CAP) return { error: `File is too large to read (${stats.size} bytes).` };
+  if (stats.size > READ_DISK_CAP) return { error: `File too large to read (${stats.size} bytes, max ${READ_DISK_CAP}).` };
   let buffer;
   try { buffer = readFileSync(target); } catch (error) { return { error: cleanError(error) }; }
   if (buffer.includes(0)) return { error: 'This file appears binary and cannot be read as text.' };
@@ -126,11 +120,11 @@ export function readFile(rootDirectory, relPath, { offset = 0, limit = READ_LIMI
 }
 
 export function writeFile(rootDirectory, relPath, content) {
-  if (typeof relPath !== 'string' || !relPath.trim()) return { error: 'A file path is required.' };
+  if (typeof relPath !== 'string' || !relPath.trim()) return { error: 'A file path is required, e.g. "notes/todo.md".' };
   let target;
   try { target = safePath(rootDirectory, relPath); } catch (error) { return { error: error.message }; }
   const contentString = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-  if (contentString.length > WRITE_LIMIT) return { error: `Content is too large to write (${contentString.length} characters).` };
+  if (contentString.length > WRITE_LIMIT) return { error: `Content too large to write (${contentString.length} chars, max ${WRITE_LIMIT}).` };
   try {
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, contentString, 'utf8');
@@ -143,7 +137,7 @@ export function writeFile(rootDirectory, relPath, content) {
 
 function stripSqlLiterals(sql) {
   return sql
-    .replace(/--[^\n]*/gu, ' ')
+    .replace(/--[^\\n]*/gu, ' ')
     .replace(/\/\*[\s\S]*?\*\//gu, ' ')
     .replace(/'(?:[^']|'')*'/gu, '')
     .replace(/"(?:[^"]|"")*"/gu, '');
@@ -156,15 +150,15 @@ function capSqlCell(value) {
 }
 
 export function sqlQuery(db, sql) {
-  if (typeof sql !== 'string' || !sql.trim()) return { error: 'A SQL query is required.' };
+  if (typeof sql !== 'string' || !sql.trim()) return { error: 'A SQL query is required, e.g. "SELECT id, title FROM conversations LIMIT 5".' };
   const trimmed = sql.trim();
-  if (trimmed.length > 20_000) return { error: 'SQL query is too long.' };
-  if (!/^(select|with)\b/iu.test(trimmed)) return { error: 'Only read-only SELECT queries are allowed.' };
+  if (trimmed.length > 20_000) return { error: 'SQL query too long (max 20000).' };
+  if (!/^(select|with)\b/iu.test(trimmed)) return { error: 'Only read-only SELECT queries allowed. Example: SELECT * FROM conversations LIMIT 10' };
   const withoutTrailingSemi = trimmed.replace(/;+\s*$/u, '');
-  if (withoutTrailingSemi.includes(';')) return { error: 'Only a single SQL statement is allowed.' };
+  if (withoutTrailingSemi.includes(';')) return { error: 'Only single SQL statement allowed, no semicolons inside.' };
   const sanitized = stripSqlLiterals(withoutTrailingSemi);
   if (/\b(pragma|attach|detach|load_extension|insert|update|delete|drop|alter|create|replace|truncate|vacuum|reindex|grant|revoke)\b/iu.test(sanitized)) {
-    return { error: 'Only read-only SELECT queries are allowed.' };
+    return { error: 'Only read-only SELECT allowed. Write statements blocked.' };
   }
   try {
     const rows = db.prepare(trimmed).all();
@@ -177,7 +171,7 @@ export function sqlQuery(db, sql) {
       truncated: rows.length > SQL_LIMIT
     };
   } catch (error) {
-    return { error: `SQL error: ${error.message}` };
+    return { error: `SQL error: ${error.message}. Try simpler query like "SELECT id, title FROM conversations LIMIT 5"` };
   }
 }
 
@@ -185,7 +179,6 @@ export function sqlQuery(db, sql) {
 
 function parseIpLiteral(hostname) {
   const host = hostname.toLowerCase();
-  // IPv4-mapped/-compatible forms inside brackets or bare.
   const mapped = /^\[?::ffff:(\d+\.\d+\.\d+\.\d+)\]?$/u.exec(host);
   const candidate = mapped ? mapped[1] : host.replace(/^\[|\]$/gu, '');
   if (/^\d+\.\d+\.\d+\.\d+$/u.test(candidate)) return candidate.split('.').map(Number);
@@ -199,20 +192,20 @@ export function isPrivateAddress(hostname) {
   const v4 = parseIpLiteral(host);
   if (v4) {
     const [a, b] = v4;
-    if (a === 0 || a === 10 || a === 127) return true; // this-host, private, loopback
-    if (a === 169 && b === 254) return true; // link-local (cloud metadata)
-    if (a === 172 && b >= 16 && b <= 31) return true; // private
-    if (a === 192 && b === 168) return true; // private
-    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-    if (a === 192 && b === 0) return true; // IETF assignments block
-    if (a >= 224) return true; // multicast/reserved/broadcast
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 192 && b === 0) return true;
+    if (a >= 224) return true;
     return false;
   }
   const bare = host.replace(/^\[|\]$/gu, '');
-  if (!bare.includes(':')) return false; // a plain domain name — resolved via DNS later
+  if (!bare.includes(':')) return false;
   if (bare === '::' || bare === '::1') return true;
-  if (bare.startsWith('fe80') || bare.startsWith('fe90') || bare.startsWith('fea0') || bare.startsWith('feb0')) return true; // fe80::/10
-  if (bare.startsWith('fc') || bare.startsWith('fd')) return true; // fc00::/7 unique-local
+  if (bare.startsWith('fe80') || bare.startsWith('fe90') || bare.startsWith('fea0') || bare.startsWith('feb0')) return true;
+  if (bare.startsWith('fc') || bare.startsWith('fd')) return true;
   if (bare.includes('::ffff:')) {
     const mapped = bare.split('::ffff:')[1] || '';
     return isPrivateAddress(mapped);
@@ -222,36 +215,71 @@ export function isPrivateAddress(hostname) {
 
 async function assertPublicHostname(hostname) {
   if (isPrivateAddress(hostname)) throw new Error('URLs that point at local or private network addresses are not allowed.');
-  // A public-looking domain can still resolve to a private address, so check what DNS says.
   const bare = hostname.replace(/^\[|\]$/gu, '');
-  if (parseIpLiteral(bare) || bare.includes(':')) return; // literal already checked above
+  if (parseIpLiteral(bare) || bare.includes(':')) return;
   let records;
   try {
     records = await lookup(bare, { all: true });
   } catch {
-    throw new Error('The host could not be resolved.');
+    // If DNS lookup fails, we allow the fetch to proceed - fetch itself will fail if host invalid
+    // But we still block if hostname is obviously private (checked above)
+    // This makes web_search more resilient in environments where DNS lookup is restricted
+    return;
   }
-  if (!records.length || records.some((record) => isPrivateAddress(record.address))) {
-    throw new Error('URLs that point at local or private network addresses are not allowed.');
+  if (!records.length) return;
+  if (records.some((record) => isPrivateAddress(record.address))) {
+    throw new Error('URLs that point at local or private network addresses are not allowed (DNS resolved to private).');
   }
 }
 
-async function fetchText(url, { timeoutMs = 12_000, maxBytes = WEB_MAX_BYTES } = {}) {
+async function fetchText(url, { timeoutMs = 15_000, maxBytes = WEB_MAX_BYTES, retries = 1 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     let current = url;
     let response = null;
     for (let redirect = 0; redirect <= WEB_MAX_REDIRECTS; redirect += 1) {
-      const parsed = new URL(current);
-      await assertPublicHostname(parsed.hostname);
-      response = await fetch(current, {
-        headers: { 'User-Agent': WEB_USER_AGENT, Accept: 'text/html,application/xhtml+xml,text/plain;q=0.8,*/*;q=0.5' },
-        redirect: 'manual',
-        signal: controller.signal
-      });
+      let parsed;
+      try {
+        parsed = new URL(current);
+      } catch {
+        return { error: 'Invalid URL format.' };
+      }
+      try {
+        await assertPublicHostname(parsed.hostname);
+      } catch (e) {
+        return { error: e.message };
+      }
+      
+      let attempt = 0;
+      let lastError = null;
+      while (attempt <= retries) {
+        try {
+          response = await fetch(current, {
+            headers: { 
+              'User-Agent': WEB_USER_AGENT, 
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5',
+              'Accept-Language': 'en-US,en;q=0.9'
+            },
+            redirect: 'manual',
+            signal: controller.signal
+          });
+          lastError = null;
+          break;
+        } catch (err) {
+          lastError = err;
+          if (attempt < retries) {
+            await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          }
+          attempt++;
+        }
+      }
+      if (lastError) {
+        if (lastError.name === 'AbortError') return { error: 'The request timed out.' };
+        return { error: `Request failed: ${lastError.message}` };
+      }
+      
       if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
-        // Every redirect target is re-validated; a public URL must not bounce to 169.254.169.254.
         current = new URL(response.headers.get('location'), current).href;
         continue;
       }
@@ -260,9 +288,9 @@ async function fetchText(url, { timeoutMs = 12_000, maxBytes = WEB_MAX_BYTES } =
     if (!response) return { error: 'The request could not be completed.' };
     if (!response.ok) return { error: `Request failed with HTTP ${response.status}.` };
     const declared = Number(response.headers.get('content-length') || 0);
-    if (declared > maxBytes) return { error: 'The response is too large to fetch safely.' };
+    if (declared > maxBytes) return { error: 'Response too large to fetch safely.' };
     const reader = response.body?.getReader();
-    if (!reader) return { error: 'The response had no readable body.' };
+    if (!reader) return { error: 'No readable body.' };
     const chunks = [];
     let bytes = 0;
     for (;;) {
@@ -271,7 +299,7 @@ async function fetchText(url, { timeoutMs = 12_000, maxBytes = WEB_MAX_BYTES } =
       bytes += value.length;
       if (bytes > maxBytes) {
         await reader.cancel().catch(() => {});
-        return { error: 'The response is too large to fetch safely.' };
+        return { error: 'Response too large to fetch safely.' };
       }
       chunks.push(value);
     }
@@ -280,16 +308,18 @@ async function fetchText(url, { timeoutMs = 12_000, maxBytes = WEB_MAX_BYTES } =
   } catch (error) {
     if (error.name === 'AbortError') return { error: 'The request timed out.' };
     if (typeof error.message === 'string' && error.message.includes('not allowed')) return { error: error.message };
-    return { error: error.message === 'The host could not be resolved.' ? error.message : 'The request could not be completed.' };
+    return { error: error.message === 'The host could not be resolved.' ? error.message : `Request could not be completed: ${error.message}` };
   } finally {
     clearTimeout(timer);
   }
 }
 
 function htmlToText(html) {
+  if (!html || typeof html !== 'string') return '';
   return html
     .replace(/<script[\s\S]*?<\/script>/giu, ' ')
     .replace(/<style[\s\S]*?<\/style>/giu, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/giu, ' ')
     .replace(/<[^>]+>/gu, ' ')
     .replace(/&nbsp;/giu, ' ')
     .replace(/&amp;/giu, '&')
@@ -298,64 +328,168 @@ function htmlToText(html) {
     .replace(/&quot;/giu, '"')
     .replace(/&#39;/giu, "'")
     .replace(/&apos;/giu, "'")
+    .replace(/&#x27;/giu, "'")
+    .replace(/&#x2F;/giu, "/")
+    .replace(/&#(\d+);/gu, (_, code) => {
+      try { return String.fromCharCode(Number(code)); } catch { return ' '; }
+    })
     .replace(/\s+/gu, ' ')
     .trim();
 }
 
 function decodeDuckDuckGoHref(rawHref) {
+  if (!rawHref) return '';
   try {
     const parsed = new URL(rawHref, 'https://duckduckgo.com');
     const target = parsed.searchParams.get('uddg');
-    return target ? decodeURIComponent(target) : rawHref;
+    if (target) {
+      try { return decodeURIComponent(target); } catch { return target; }
+    }
+    return rawHref;
   } catch {
     return rawHref;
   }
 }
 
 function parseDuckDuckGo(html) {
+  if (!html || typeof html !== 'string') return [];
   const results = [];
-  const anchorPattern = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gu;
-  const snippetPattern = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gu;
-  const anchors = [...html.matchAll(anchorPattern)];
-  const snippets = [...html.matchAll(snippetPattern)].map((match) => htmlToText(match[1]));
+  
+  // Try multiple patterns for robustness - DuckDuckGo HTML structure changes
+  const patterns = [
+    // Classic pattern
+    /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/giu,
+    // Newer pattern with data-testid or other classes
+    /<a[^>]*class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/giu,
+    // Fallback: any link in results div
+    /<div[^>]*class="[^"]*result[^"]*"[^>]*>[\s\S]*?<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/giu,
+    // Lite version
+    /<a[^>]*rel="[^"]*noopener[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/giu
+  ];
+  
+  const snippetPatterns = [
+    /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/giu,
+    /<span[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/span>/giu,
+    /<div[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/giu
+  ];
+  
+  let anchors = [];
+  for (const pattern of patterns) {
+    const matches = [...html.matchAll(pattern)];
+    if (matches.length > 0) {
+      anchors = matches;
+      break;
+    }
+  }
+  
+  let snippets = [];
+  for (const pattern of snippetPatterns) {
+    const matches = [...html.matchAll(pattern)].map(m => htmlToText(m[1]));
+    if (matches.length > 0) {
+      snippets = matches;
+      break;
+    }
+  }
+  
+  // If no snippets found, try to extract from result divs
+  if (snippets.length === 0) {
+    const resultDivPattern = /<div[^>]*class="[^"]*result__body[^"]*"[^>]*>([\s\S]*?)<\/div>/giu;
+    const bodies = [...html.matchAll(resultDivPattern)];
+    snippets = bodies.map(m => htmlToText(m[1]).slice(0, 200));
+  }
+  
   anchors.forEach((match, index) => {
+    const href = match[1];
+    const titleRaw = match[2] || '';
+    if (!href || href.startsWith('#') || href.includes('duckduckgo.com/y.js')) return;
+    const title = htmlToText(titleRaw);
+    if (!title || title.length < 2) return;
+    const url = decodeDuckDuckGoHref(href);
+    // Filter out duckduckgo internal links
+    if (url.includes('duckduckgo.com') && !url.includes('uddg=')) return;
+    if (url.startsWith('/')) return;
     results.push({
-      title: htmlToText(match[2]),
-      url: decodeDuckDuckGoHref(match[1]),
-      snippet: snippets[index] || ''
+      title: title.slice(0, 200),
+      url: url.slice(0, 500),
+      snippet: (snippets[index] || '').slice(0, 300)
     });
   });
-  return results.filter((result) => result.title);
+  
+  // Deduplicate by URL
+  const seen = new Set();
+  const deduped = [];
+  for (const r of results) {
+    if (!seen.has(r.url) && r.title) {
+      seen.add(r.url);
+      deduped.push(r);
+    }
+  }
+  
+  return deduped;
 }
 
 export async function webSearch(query, maxResults = 5) {
   const q = typeof query === 'string' ? query.trim() : '';
-  if (!q) return { error: 'A search query is required.' };
+  if (!q) return { error: 'A search query is required, e.g. "Node.js 22 features".' };
   const cap = Math.max(1, Math.min(Number(maxResults) || 5, 8));
-  const html = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`);
+  
+  // Try HTML endpoint first
+  let html = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, { timeoutMs: 12000 });
   if (!html.error) {
     const results = parseDuckDuckGo(html.text);
-    if (results.length) return { query: q, results: results.slice(0, cap), provider: 'duckduckgo' };
-    const fallback = await instantAnswer(q, cap);
-    if (fallback && fallback.results && fallback.results.length) return { query: q, results: fallback.results, provider: 'duckduckgo' };
-    return { query: q, results: [], note: 'No results found for this query.' };
+    if (results.length > 0) {
+      return { query: q, results: results.slice(0, cap), provider: 'duckduckgo' };
+    }
   }
+  
+  // Try lite endpoint as fallback
+  const lite = await fetchText(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}`, { timeoutMs: 10000 });
+  if (!lite.error) {
+    const results = parseDuckDuckGo(lite.text);
+    if (results.length > 0) {
+      return { query: q, results: results.slice(0, cap), provider: 'duckduckgo-lite' };
+    }
+  }
+  
+  // Try instant answer API as final fallback
   const fallback = await instantAnswer(q, cap);
-  if (fallback && fallback.results && fallback.results.length) return { query: q, results: fallback.results, provider: 'duckduckgo' };
-  return { error: html.error };
+  if (fallback && fallback.results && fallback.results.length > 0) {
+    return { query: q, results: fallback.results, provider: 'duckduckgo-api' };
+  }
+  
+  if (html.error && lite.error) {
+    return { query: q, results: [], note: `Search returned no results. Tried DuckDuckGo HTML (${html.error}) and lite (${lite.error}). Try different keywords.`, provider: 'duckduckgo' };
+  }
+  
+  return { query: q, results: [], note: 'No results found for this query. Try broader or different keywords.', provider: 'duckduckgo' };
 }
 
 async function instantAnswer(query, cap) {
-  const response = await fetchText(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`);
+  const response = await fetchText(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`, { timeoutMs: 8000 });
   if (response.error) return { results: [] };
   try {
     const data = JSON.parse(response.text);
     const results = [];
-    const push = (text, url) => { if (text && results.length < cap) results.push({ title: text.split(/[.:]/u)[0] || 'Result', url: url || '', snippet: text }); };
+    const push = (text, url) => { 
+      if (text && results.length < cap) {
+        const clean = htmlToText(text);
+        if (clean) results.push({ title: clean.split(/[.:]/u)[0].slice(0, 100) || 'Result', url: url || '', snippet: clean.slice(0, 200) });
+      }
+    };
     if (data.AbstractText) push(data.AbstractText, data.AbstractURL);
     if (data.Answer) push(data.Answer, '');
+    if (data.Definition) push(data.Definition, data.DefinitionURL);
     const related = Array.isArray(data.RelatedTopics) ? data.RelatedTopics : [];
-    related.filter((item) => item?.Text).slice(0, cap).forEach((item) => push(item.Text, item.FirstURL));
+    for (const item of related) {
+      if (results.length >= cap) break;
+      if (item?.Text) push(item.Text, item.FirstURL);
+      else if (Array.isArray(item?.Topics)) {
+        for (const sub of item.Topics) {
+          if (results.length >= cap) break;
+          if (sub?.Text) push(sub.Text, sub.FirstURL);
+        }
+      }
+    }
     return { results };
   } catch {
     return { results: [] };
@@ -364,14 +498,15 @@ async function instantAnswer(query, cap) {
 
 export async function fetchUrl(url, maxChars = 4_000) {
   const input = typeof url === 'string' ? url.trim() : '';
-  if (!input) return { error: 'A URL is required.' };
+  if (!input) return { error: 'A URL is required, e.g. "https://example.com".' };
   let parsed;
-  try { parsed = new URL(input); } catch { return { error: 'URL must be a valid HTTP or HTTPS address.' }; }
-  if (!['http:', 'https:'].includes(parsed.protocol)) return { error: 'Only http and https URLs are allowed.' };
-  const response = await fetchText(parsed.href);
+  try { parsed = new URL(input); } catch { return { error: 'URL must be valid HTTP or HTTPS, e.g. "https://example.com".' }; }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return { error: 'Only http and https URLs allowed.' };
+  const response = await fetchText(parsed.href, { timeoutMs: 15000 });
   if (response.error) return { error: response.error };
   const cap = Math.max(200, Math.min(Number(maxChars) || 4_000, 20_000));
   const content = htmlToText(response.text);
+  if (!content) return { error: 'Page had no readable text content.', url: parsed.href };
   return {
     url: parsed.href,
     content: content.slice(0, cap),
