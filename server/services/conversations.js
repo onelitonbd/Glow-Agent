@@ -10,6 +10,7 @@ import { githubToolDefinitions } from './github-tools.js';
 import { activeMcpPlugins, activeLocalClonePlugins, clearWriteApproval, cloneGithubRepo, createMcpToolContext } from './plugins.js';
 import { getSettings } from './settings.js';
 import { THINKING_LEVELS, modelCapabilities } from './model-tests.js';
+import { saveAttachmentToLibrary } from './library.js';
 
 function toConversation(row) {
   return {
@@ -403,7 +404,7 @@ export function parseAttachments(db, body, { providerId, selectedModelId }) {
   });
 }
 
-async function prepareResponse(db, rawConversationId, body, { workspaceDirectory, existingUserMessage = null } = {}) {
+async function prepareResponse(db, rawConversationId, body, { workspaceDirectory, libraryDirectory, existingUserMessage = null } = {}) {
   const conversation = existingConversation(db, rawConversationId);
   const content = requiredString(body.message, 'Message', { max: 16_000 });
   const providerId = identifier(body.providerId, 'Provider ID');
@@ -458,6 +459,16 @@ async function prepareResponse(db, rawConversationId, body, { workspaceDirectory
       createdAt: existingUserMessage.created_at
     }
     : persistMessage(db, { conversationId: conversation.id, role: 'user', content, providerId, selectedModelId, attachments });
+
+  // Save every uploaded file to the Library (photos, PDFs, files)
+  if (!existingUserMessage && libraryDirectory && attachments.length) {
+    for (const att of attachments) {
+      saveAttachmentToLibrary(db, libraryDirectory, att, {
+        conversationId: conversation.id,
+        messageId: userMessage.id
+      });
+    }
+  }
   const messages = conversationMessages(db, conversation.id);
   const system = systemMessage(skills, { plugins: githubPlugins, mcp, customPrompt: settings.systemPrompt.text, developerTools: settings.developerTools });
   if (system) messages.unshift({ role: 'system', content: system });
@@ -886,8 +897,8 @@ async function streamProviderRound({ provider, credentials, selectedModelId, mes
   }
 }
 
-export async function respondToConversation(db, rawConversationId, body, timeoutMs, { rootDirectory, workspaceDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
-  const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory });
+export async function respondToConversation(db, rawConversationId, body, timeoutMs, { rootDirectory, workspaceDirectory, libraryDirectory, fetchTimeoutMs, maxToolRounds = 500, maxProviderRetries = 20 } = {}) {
+  const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory, libraryDirectory });
   const { provider, credentials } = providerCredentials(db, context.providerId);
   const toolEvents = [];
   const timeline = [];
@@ -1003,7 +1014,7 @@ async function streamConversation(db, context, timeoutMs, emit, { rootDirectory,
 }
 
 export async function respondToConversationStream(db, rawConversationId, body, timeoutMs, emit, options = {}) {
-  const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory: options.workspaceDirectory });
+  const context = await prepareResponse(db, rawConversationId, body, { workspaceDirectory: options.workspaceDirectory, libraryDirectory: options.libraryDirectory });
   return streamConversation(db, context, timeoutMs, emit, options);
 }
 
@@ -1012,6 +1023,6 @@ export async function regenerateMessageStream(db, rawConversationId, rawMessageI
   if (message.role !== 'user') throw validation('Choose one of your own messages to answer again.');
   dropMessagesAfter(db, conversation.id, message);
   touchConversation(db, conversation.id);
-  const context = await prepareResponse(db, conversation.id, { ...body, message: message.content }, { workspaceDirectory: options.workspaceDirectory, existingUserMessage: message });
+  const context = await prepareResponse(db, conversation.id, { ...body, message: message.content }, { workspaceDirectory: options.workspaceDirectory, libraryDirectory: options.libraryDirectory, existingUserMessage: message });
   return streamConversation(db, context, timeoutMs, emit, options);
 }

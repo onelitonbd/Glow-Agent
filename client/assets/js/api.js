@@ -151,5 +151,12 @@ export const api = {
     selectRepo: (id, values) => request(`/plugins/${encodeURIComponent(id)}/github/select`, { method: 'POST', body: values }),
     clone: (id) => request(`/plugins/${encodeURIComponent(id)}/github/clone`, { method: 'POST' }),
     repoList: (id, path = '') => request(`/plugins/${encodeURIComponent(id)}/repo/list`, { method: 'POST', body: { path } })
+  },
+  library: {
+    list: () => request('/library'),
+    get: (id) => request(`/library/${encodeURIComponent(id)}`),
+    fileUrl: (id) => `${API_ROOT}/library/${encodeURIComponent(id)}/file`,
+    remove: (id) => request(`/library/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    upload: (values) => request('/library', { method: 'POST', body: values })
   }
 };

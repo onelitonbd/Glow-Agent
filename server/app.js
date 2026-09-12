@@ -12,12 +12,14 @@ export function createApp(config) {
   // rest of the app can rely on the value always being present.
   config = {
     ...config,
-    workspaceDirectory: config.workspaceDirectory || join(config.rootDirectory, 'data', 'workspace')
+    workspaceDirectory: config.workspaceDirectory || join(config.rootDirectory, 'data', 'workspace'),
+    libraryDirectory: config.libraryDirectory || join(config.rootDirectory, 'data', 'library')
   };
   // The assistant's file-tool sandbox. Created up front so the folder is present even before
   // the first tool call (plugin clones also live under it), and so the app fails loudly at
   // boot rather than mid-turn if the location is unusable.
   mkdirSync(config.workspaceDirectory, { recursive: true });
+  mkdirSync(config.libraryDirectory, { recursive: true });
   const db = createDatabase(config.databasePath);
   const app = express();
   app.disable('x-powered-by');
@@ -44,6 +46,7 @@ export function createApp(config) {
   // and per-file size are checked again in the service, so a big body still cannot smuggle in an
   // unlimited number of files.
   app.use('/api/v1/conversations', express.json({ limit: '24mb', type: 'application/json' }));
+  app.use('/api/v1/library', express.json({ limit: '32mb', type: 'application/json' }));
   app.use(express.json({ limit: '64kb', type: 'application/json' }));
   const autoTests = createAutoTestScheduler({
     db,

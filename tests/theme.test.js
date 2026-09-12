@@ -38,7 +38,7 @@ test('every served page loads the shared theme controller before the stylesheet'
   const clientDirectory = join(process.cwd(), 'client');
   const pages = (await readdir(clientDirectory)).filter((name) => name.endsWith('.html'));
   // logo-showcase.html is PWA logo chooser, also must follow theme pattern
-  assert.deepEqual(pages.sort(), ['404.html', 'index.html', 'logo-showcase.html', 'models.html', 'other-settings.html', 'plugins.html', 'providers.html', 'settings.html', 'skills.html', 'testing.html', 'tools.html']);
+  assert.deepEqual(pages.sort(), ['404.html', 'index.html', 'library.html', 'logo-showcase.html', 'models.html', 'other-settings.html', 'plugins.html', 'providers.html', 'settings.html', 'skills.html', 'testing.html', 'tools.html']);
   for (const page of pages) {
     const markup = await readFile(join(clientDirectory, page), 'utf8');
     assert.ok(markup.indexOf('/assets/js/theme.js') < markup.indexOf('/assets/css/app.css'), `${page} must apply a saved theme before CSS loads`);

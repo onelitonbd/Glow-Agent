@@ -142,6 +142,27 @@ const migrations = [
     // hand the same file back to the model.
     version: 10,
     sql: `ALTER TABLE messages ADD COLUMN attachments TEXT;`
+  },
+  {
+    // Library: persistent store for every photo/pdf/file uploaded to the AI.
+    // Each file gets its own link /api/v1/library/:id/file
+    version: 11,
+    sql: `
+      CREATE TABLE IF NOT EXISTS library_files (
+        id TEXT PRIMARY KEY,
+        original_name TEXT NOT NULL,
+        stored_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+        message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS library_files_created_at_idx ON library_files(created_at DESC);
+      CREATE INDEX IF NOT EXISTS library_files_type_idx ON library_files(type);
+      CREATE INDEX IF NOT EXISTS library_files_conversation_id_idx ON library_files(conversation_id);
+    `
   }
 ];
 

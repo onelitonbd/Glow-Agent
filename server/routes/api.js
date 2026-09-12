@@ -63,6 +63,14 @@ import {
   selectPluginRepo,
   updatePlugin
 } from '../services/plugins.js';
+import {
+  listLibraryFiles,
+  getLibraryFile,
+  getLibraryFileRow,
+  saveLibraryFile,
+  deleteLibraryFile,
+  readLibraryFileBuffer
+} from '../services/library.js';
 
 function success(response, data, status = 200) {
   response.status(status).json({ data });
@@ -278,11 +286,12 @@ export function createApiRouter({ db, config, autoTests = null }) {
     try { success(response, getConversation(db, request.params.conversationId)); } catch (error) { next(error); }
   });
   router.post('/conversations/:conversationId/respond', rateLimit({ windowMs: 60_000, max: 30, code: 'CHAT_RATE_LIMITED' }), asyncRoute(async (request, response) => {
-    success(response, await respondToConversation(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, { rootDirectory: config.rootDirectory, workspaceDirectory: config.workspaceDirectory, fetchTimeoutMs: config.providerFetchTimeoutMs, maxToolRounds: config.maxToolRounds, maxProviderRetries: config.maxProviderRetries }));
+    success(response, await respondToConversation(db, request.params.conversationId, request.body ?? {}, config.chatTimeoutMs, { rootDirectory: config.rootDirectory, workspaceDirectory: config.workspaceDirectory, libraryDirectory: config.libraryDirectory, fetchTimeoutMs: config.providerFetchTimeoutMs, maxToolRounds: config.maxToolRounds, maxProviderRetries: config.maxProviderRetries }));
   }));
   const chatOptions = () => ({
     rootDirectory: config.rootDirectory,
     workspaceDirectory: config.workspaceDirectory,
+    libraryDirectory: config.libraryDirectory,
     fetchTimeoutMs: config.providerFetchTimeoutMs,
     maxToolRounds: config.maxToolRounds,
     maxProviderRetries: config.maxProviderRetries
@@ -392,6 +401,56 @@ export function createApiRouter({ db, config, autoTests = null }) {
   router.post('/plugins/:pluginId/repo/delete', asyncRoute(async (request, response) => {
     success(response, repoDeleteFile(db, request.params.pluginId, config.workspaceDirectory, request.body?.path));
   }));
+
+  // ---- Library: photos, PDFs, files uploaded to the AI ----
+  router.route('/library')
+    .get((_request, response) => {
+      success(response, listLibraryFiles(db));
+    })
+    .post((request, response, next) => {
+      try {
+        const { name, originalName, mimeType, dataUrl, conversationId, messageId } = request.body ?? {};
+        const fileName = name || originalName;
+        if (!fileName) throw validation('File name is required.');
+        if (!dataUrl) throw validation('File dataUrl is required.');
+        const file = saveLibraryFile(db, config.libraryDirectory, {
+          originalName: fileName,
+          mimeType,
+          dataUrl,
+          conversationId,
+          messageId
+        });
+        success(response, file, 201);
+      } catch (error) { next(error); }
+    });
+
+  router.get('/library/:fileId', (request, response, next) => {
+    try {
+      success(response, getLibraryFile(db, request.params.fileId));
+    } catch (error) { next(error); }
+  });
+
+  router.get('/library/:fileId/file', (request, response, next) => {
+    try {
+      const row = getLibraryFileRow(db, request.params.fileId);
+      const { buffer } = readLibraryFileBuffer(config.libraryDirectory, row.stored_name);
+      // Set headers for direct link opening
+      response.set({
+        'Content-Type': row.mime_type || 'application/octet-stream',
+        'Content-Length': buffer.length,
+        'Content-Disposition': `inline; filename=\"${encodeURIComponent(row.original_name)}\"`,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'X-Content-Type-Options': 'nosniff'
+      });
+      response.end(buffer);
+    } catch (error) { next(error); }
+  });
+
+  router.delete('/library/:fileId', (request, response, next) => {
+    try {
+      success(response, deleteLibraryFile(db, config.libraryDirectory, request.params.fileId));
+    } catch (error) { next(error); }
+  });
 
   return router;
 }

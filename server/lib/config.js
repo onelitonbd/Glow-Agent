@@ -49,6 +49,7 @@ export function loadConfig({ env = process.env, loadEnv = true } = {}) {
     throw new Error('This MVP only permits loopback binding. Set HOST to 127.0.0.1, ::1, or localhost.');
   }
   const databaseSetting = env.DATABASE_PATH || './data/glow-agent.sqlite';
+  const librarySetting = env.LIBRARY_DIRECTORY || './data/library';
   return Object.freeze({
     rootDirectory,
     host,
@@ -58,6 +59,7 @@ export function loadConfig({ env = process.env, loadEnv = true } = {}) {
     workspaceDirectory: isAbsolute(env.WORKSPACE_DIRECTORY || './data/workspace')
       ? env.WORKSPACE_DIRECTORY
       : resolve(rootDirectory, env.WORKSPACE_DIRECTORY || './data/workspace'),
+    libraryDirectory: isAbsolute(librarySetting) ? librarySetting : resolve(rootDirectory, librarySetting),
     providerFetchTimeoutMs: 15_000,
     chatTimeoutMs: 60_000,
     // Safety ceiling on tool-use rounds per turn (kept high so it is effectively unlimited,

@@ -3,6 +3,7 @@ const CACHE_NAME = 'glow-agent-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
+  '/library.html',
   '/manifest.json',
   '/assets/css/app.css',
   '/assets/js/theme.js',
@@ -10,6 +11,7 @@ const STATIC_ASSETS = [
   '/assets/js/ui.js',
   '/assets/js/markdown.js',
   '/assets/js/chat.js',
+  '/assets/js/library.js',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png'
 ];

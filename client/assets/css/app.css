@@ -523,3 +523,20 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-lineca
 .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 99px; background: var(--quiet); transition: transform .15s ease, background .15s ease; }
 .switch:checked { border-color: rgba(198,255,107,.5); background: var(--accent-wash); }
 .switch:checked::after { transform: translateX(18px); background: var(--accent); }
+
+/* Library drag & drop overlay */
+body.drag-over::after {
+  content: "Drop files to add to Library";
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(13,15,19,.82);
+  backdrop-filter: blur(8px);
+  color: var(--accent);
+  font: 800 18px var(--font);
+  letter-spacing: -.02em;
+  border: 2px dashed var(--accent);
+  border-radius: 0;
+}
