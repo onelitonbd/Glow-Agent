@@ -17,121 +17,58 @@
   <link rel="apple-touch-icon" sizes="152x152" href="/assets/icons/icon-152.png">
   <link rel="apple-touch-icon" sizes="192x192" href="/assets/icons/icon-192.png">
   <meta name="description" content="Library of photos, PDFs and files uploaded to Glow Agent.">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <script src="/assets/js/theme.js"></script>
-  <link rel="stylesheet" href="/assets/css/app.css?v=3">
+  <link rel="stylesheet" href="/assets/css/app.css?v=5">
   <title>Library — Glow Agent</title>
   <style>
-    /* Use only app.css variables, make filters look like real chips */
-    .lib-bar {
-      display: flex;
-      gap: 8px;
-      margin: 16px 4px 12px;
-      align-items: center;
-    }
-    .lib-search {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      height: 42px;
-      padding: 0 12px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: var(--surface);
-    }
-    .lib-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
-    .lib-search input {
-      flex: 1;
-      border: 0;
-      outline: 0;
-      background: transparent;
-      color: var(--text);
-      font: 14px var(--font);
-    }
-    .lib-search input::placeholder { color: var(--quiet); }
-    .lib-view { display: flex; gap: 6px; }
-    .lib-view .icon-button.active { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
-    .lib-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 4px 16px; }
-    .lib-chips .chip {
-      cursor: pointer;
-      border: 1px solid var(--line);
-      background: var(--surface);
-      color: var(--muted);
-      padding: 6px 12px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: .04em;
-      transition: all .15s ease;
-      user-select: none;
-    }
-    .lib-chips .chip:hover { border-color: rgba(198,255,107,.3); color: var(--text); }
-    .lib-chips .chip.active { border-color: var(--accent); background: var(--accent-wash); color: var(--accent); }
-    :root[data-theme="light"] .lib-chips .chip.active { background: rgba(75,127,23,.12); }
-    .lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-    .lib-card {
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: var(--surface);
-      overflow: hidden;
-    }
-    .lib-card:hover { border-color: rgba(198,255,107,.35); }
-    .lib-card-preview { aspect-ratio: 1.1; background: var(--surface-soft); display: grid; place-items: center; overflow: hidden; }
-    .lib-card-preview img { width: 100%; height: 100%; object-fit: cover; }
-    .lib-card-preview .ph {
-      width: 48px; height: 48px; display: grid; place-items: center;
-      border-radius: 12px; background: var(--surface-raised); color: var(--accent);
-    }
-    .lib-card-preview .ph.pdf { background: rgba(255,158,158,.14); color: var(--danger); }
-    .lib-card-preview .ph.doc { background: rgba(169,156,255,.14); color: var(--violet); }
-    .lib-card-body { padding: 10px 12px 12px; }
-    .lib-card-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .lib-card-meta { display: flex; gap: 6px; margin-top: 4px; color: var(--quiet); font: 10px var(--mono); text-transform: uppercase; }
-    .lib-card-actions { display: flex; gap: 6px; margin-top: 10px; }
-    .lib-card-actions a, .lib-card-actions button {
-      flex: 1; min-height: 32px; display: inline-flex; align-items: center; justify-content: center;
-      border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft);
-      color: var(--text-soft); font: 600 11px var(--mono); text-decoration: none;
-    }
-    .lib-card-actions a.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-    .lib-list { display: grid; gap: 8px; }
-    .lib-row {
-      display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center;
-      padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
-    }
-    .lib-row:hover { border-color: rgba(198,255,107,.3); }
-    .lib-row-icon {
-      width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px;
-      background: var(--surface-soft); color: var(--muted); overflow: hidden;
-    }
-    .lib-row-icon img { width: 100%; height: 100%; object-fit: cover; }
-    .lib-row-icon.image { background: var(--accent-wash); color: var(--accent); }
-    .lib-row-icon.pdf { background: rgba(255,158,158,.14); color: var(--danger); }
-    .lib-row-icon.doc { background: rgba(169,156,255,.14); color: var(--violet); }
-    .lib-row-name { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .lib-row-sub { display: flex; gap: 6px; margin-top: 2px; color: var(--quiet); font: 10.5px var(--mono); flex-wrap: wrap; }
-    .lib-row-actions { display: flex; gap: 6px; }
-    .lib-row-actions a, .lib-row-actions button {
-      width: 32px; height: 32px; display: grid; place-items: center;
-      border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); color: var(--muted); text-decoration: none;
-    }
-    .lib-stats {
-      display: flex; gap: 8px; align-items: center; margin: 0 4px 12px;
-      color: var(--quiet); font: 10.5px var(--mono);
-    }
-    .lib-stats b { color: var(--text-soft); }
-    .lib-stats::before {
-      content: ""; width: 6px; height: 6px; border-radius: 50%;
-      background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash);
-    }
-    .preview-dialog { width: min(100%, 560px); max-width: 560px; }
-    .preview-media { margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface-soft); }
-    .preview-media img { width: 100%; max-height: 60vh; object-fit: contain; display: block; background: #0c0e11; }
-    .preview-link {
-      display: flex; gap: 8px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 10px;
-      background: var(--surface-soft); font: 11px var(--mono); word-break: break-all; align-items: center;
-    }
-    .preview-link a { color: var(--accent); }
-    @media (max-width: 380px) { .lib-grid { grid-template-columns: repeat(2, 1fr); } }
+    .lib-bar{display:flex;gap:8px;align-items:center;margin:16px 4px 12px}
+    .lib-search{flex:1;display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+    .lib-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+    .lib-search input{flex:1;border:0;outline:0;background:transparent;color:var(--text);font:14px var(--font);min-width:0}
+    .lib-search input::placeholder{color:var(--quiet)}
+    .lib-view{display:flex;gap:6px;flex:0 0 auto}
+    .lib-view .icon-button.active{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+    .lib-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 4px 16px}
+    .lib-chips .chip{cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--muted);padding:6px 12px;font-size:11px;font-weight:700;letter-spacing:.04em;user-select:none}
+    .lib-chips .chip:hover{border-color:rgba(198,255,107,.3);color:var(--text)}
+    .lib-chips .chip.active{border-color:var(--accent);background:var(--accent-wash);color:var(--accent)}
+    .lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+    .lib-card{border:1px solid var(--line);border-radius:16px;background:var(--surface);overflow:hidden}
+    .lib-card:hover{border-color:rgba(198,255,107,.35)}
+    .lib-card-preview{aspect-ratio:1.1;background:var(--surface-soft);display:grid;place-items:center;overflow:hidden}
+    .lib-card-preview img{width:100%;height:100%;object-fit:cover}
+    .lib-card-preview .ph{width:48px;height:48px;display:grid;place-items:center;border-radius:12px;background:var(--surface-raised);color:var(--accent)}
+    .lib-card-preview .ph.pdf{background:rgba(255,158,158,.14);color:var(--danger)}
+    .lib-card-preview .ph.doc{background:rgba(169,156,255,.14);color:var(--violet)}
+    .lib-card-body{padding:10px 12px 12px}
+    .lib-card-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lib-card-meta{display:flex;gap:6px;margin-top:4px;color:var(--quiet);font:10px var(--mono);text-transform:uppercase}
+    .lib-card-actions{display:flex;gap:6px;margin-top:10px}
+    .lib-card-actions a,.lib-card-actions button{flex:1;min-height:32px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);color:var(--text-soft);font:600 11px var(--mono);text-decoration:none}
+    .lib-card-actions a.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+    .lib-list{display:grid;gap:8px}
+    .lib-row{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+    .lib-row:hover{border-color:rgba(198,255,107,.3)}
+    .lib-row-icon{width:44px;height:44px;display:grid;place-items:center;border-radius:10px;background:var(--surface-soft);color:var(--muted);overflow:hidden}
+    .lib-row-icon img{width:100%;height:100%;object-fit:cover}
+    .lib-row-icon.image{background:var(--accent-wash);color:var(--accent)}
+    .lib-row-icon.pdf{background:rgba(255,158,158,.14);color:var(--danger)}
+    .lib-row-icon.doc{background:rgba(169,156,255,.14);color:var(--violet)}
+    .lib-row-name{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lib-row-sub{display:flex;gap:6px;margin-top:2px;color:var(--quiet);font:10.5px var(--mono);flex-wrap:wrap}
+    .lib-row-actions{display:flex;gap:6px}
+    .lib-row-actions a,.lib-row-actions button{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);color:var(--muted);text-decoration:none}
+    .lib-stats{display:flex;gap:8px;align-items:center;margin:0 4px 12px;color:var(--quiet);font:10.5px var(--mono)}
+    .lib-stats b{color:var(--text-soft)}
+    .lib-stats::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+    .preview-dialog{width:min(100%,560px);max-width:560px}
+    .preview-media{margin:12px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface-soft)}
+    .preview-media img{width:100%;max-height:60vh;object-fit:contain;display:block;background:#0c0e11}
+    .preview-link{display:flex;gap:8px;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft);font:11px var(--mono);word-break:break-all;align-items:center}
+    .preview-link a{color:var(--accent)}
   </style>
 </head>
 <body>
@@ -141,60 +78,40 @@
       <h1 class="app-title">Library</h1>
       <button class="header-link" id="uploadBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Upload</button>
     </header>
-
     <section class="intro">
       <p class="eyebrow">Your uploads</p>
       <p>Every photo, PDF and file you send to the AI is saved here with its own direct link.</p>
     </section>
-
-    <div class="lib-bar">
-      <label class="lib-search" aria-label="Search library">
+    <div class="lib-bar" style="display:flex;gap:8px;align-items:center;margin:16px 4px 12px">
+      <label class="lib-search" aria-label="Search library" style="flex:1;display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)">
         <svg viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;flex:0 0 auto"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-        <input id="searchInput" type="search" placeholder="Search by name…" autocomplete="off">
+        <input id="searchInput" type="search" placeholder="Search by name…" autocomplete="off" style="flex:1;border:0;outline:0;background:transparent;color:var(--text);font:14px var(--font);min-width:0">
       </label>
-      <div class="lib-view" role="group" aria-label="View mode">
+      <div class="lib-view" style="display:flex;gap:6px;flex:0 0 auto">
         <button id="gridBtn" type="button" class="icon-button active" aria-label="Grid view"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
         <button id="listBtn" type="button" class="icon-button" aria-label="List view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       </div>
     </div>
-
-    <div class="lib-chips" role="group" aria-label="Filter by type">
+    <div class="lib-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin:0 4px 16px">
       <button data-filter="all" class="chip active" type="button">All</button>
       <button data-filter="image" class="chip" type="button">Photos</button>
       <button data-filter="pdf" class="chip" type="button">PDFs</button>
       <button data-filter="doc" class="chip" type="button">Docs</button>
       <button data-filter="file" class="chip" type="button">Files</button>
     </div>
-
     <div class="lib-stats" id="stats" hidden></div>
-
-    <section aria-live="polite">
-      <div id="libraryState"><div class="loading">Loading library</div></div>
-    </section>
-
+    <section aria-live="polite"><div id="libraryState"><div class="loading">Loading library</div></div></section>
     <p class="app-footer">GLOW AGENT · LIBRARY</p>
   </main>
-
   <input type="file" id="fileInput" hidden multiple>
-
   <dialog class="dialog preview-dialog" id="previewDialog" aria-labelledby="previewTitle">
     <div class="dialog-handle" aria-hidden="true"></div>
-    <header class="dialog-head">
-      <div>
-        <h2 id="previewTitle">File</h2>
-        <p class="dialog-kicker" id="previewKicker">PREVIEW</p>
-      </div>
-      <button class="icon-button" data-close-dialog="previewDialog" type="button" aria-label="Close preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button>
-    </header>
+    <header class="dialog-head"><div><h2 id="previewTitle">File</h2><p class="dialog-kicker" id="previewKicker">PREVIEW</p></div><button class="icon-button" data-close-dialog="previewDialog" type="button" aria-label="Close preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg></button></header>
     <div id="previewMedia" class="preview-media" hidden></div>
     <div class="field"><label>Direct link <span>COPY</span></label><div class="preview-link"><a id="previewLink" href="#" target="_blank" rel="noopener"></a><button class="icon-button" id="copyLinkBtn" type="button" style="width:28px;height:28px;flex:0 0 auto" aria-label="Copy link"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></div>
     <div class="field" style="margin-top:12px"><label>Details</label><p class="hint" id="previewDetails"></p></div>
-    <div class="dialog-actions">
-      <button class="button secondary" data-close-dialog="previewDialog" type="button">Close</button>
-      <a class="button" id="openFileBtn" href="#" target="_blank" rel="noopener">Open file</a>
-    </div>
+    <div class="dialog-actions"><button class="button secondary" data-close-dialog="previewDialog" type="button">Close</button><a class="button" id="openFileBtn" href="#" target="_blank" rel="noopener">Open file</a></div>
   </dialog>
-
-  <script type="module" src="/assets/js/library.js?v=3"></script>
+  <script type="module" src="/assets/js/library.js?v=5"></script>
 </body>
 </html>

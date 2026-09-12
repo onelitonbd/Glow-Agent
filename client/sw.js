@@ -1,5 +1,5 @@
 /* Glow Agent Service Worker - Production PWA */
-const CACHE_NAME = 'glow-agent-v3';
+const CACHE_NAME = 'glow-agent-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
