@@ -32,18 +32,14 @@ function humanSize(bytes) {
 }
 
 function formatDate(iso) {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch { return iso; }
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
 }
 
 function filteredFiles() {
   return state.files.filter(f => {
-    if (state.filter !== 'all' && f.type !== state.filter) {
-      // For doc filter, also include some file types? Keep strict
-      if (!(state.filter === 'file' && !['image','pdf','doc'].includes(f.type))) {
-        if (state.filter !== f.type) return false;
-      }
+    if (state.filter !== 'all') {
+      if (state.filter === 'file' && ['image','pdf','doc'].includes(f.type)) return false;
+      if (state.filter !== 'file' && f.type !== state.filter) return false;
     }
     if (state.search) {
       const q = state.search.toLowerCase();
@@ -57,30 +53,14 @@ function fileIcon(type) {
   if (type === 'image') return 'spark';
   if (type === 'pdf') return 'file';
   if (type === 'doc') return 'file';
-  if (type === 'video') return 'file';
   return 'paperclip';
 }
 
 function renderStats(list) {
   if (!stats) return;
-  if (list.length === 0 && state.files.length === 0) {
-    stats.hidden = true;
-    return;
-  }
+  if (list.length === 0 && state.files.length === 0) { stats.hidden = true; return; }
   stats.hidden = false;
   const totalSize = state.files.reduce((s, f) => s + (f.size || 0), 0);
-  stats.replaceChildren();
-  stats.append(
-    element('span', '', ''),
-  );
-  const b1 = element('b', '', `${list.length}`);
-  const t1 = document.createTextNode(` shown · `);
-  const b2 = element('b', '', `${state.files.length}`);
-  const t2 = document.createTextNode(` total · `);
-  const b3 = element('b', '', humanSize(totalSize));
-  stats.append(b1, t1, b2, t2, b3);
-  stats.firstChild.textContent = '';
-  // Rebuild properly
   stats.textContent = '';
   stats.append(
     Object.assign(element('span'), { innerHTML: `<b>${list.length}</b> shown · <b>${state.files.length}</b> total · <b>${humanSize(totalSize)}</b>` })
@@ -88,10 +68,10 @@ function renderStats(list) {
 }
 
 function renderGrid(files) {
-  const grid = element('div', 'library-grid');
+  const grid = element('div', 'lib-grid');
   files.forEach(file => {
-    const card = element('div', 'library-card');
-    const preview = element('div', 'library-card-preview');
+    const card = element('div', 'lib-card');
+    const preview = element('div', 'lib-card-preview');
     if (file.type === 'image') {
       const img = element('img');
       img.src = api.library.fileUrl(file.id);
@@ -99,36 +79,28 @@ function renderGrid(files) {
       img.loading = 'lazy';
       preview.append(img);
     } else {
-      const ic = element('span', `file-icon ${file.type}`);
+      const ic = element('span', `ph ${file.type}`);
       ic.append(icon(fileIcon(file.type)));
       preview.append(ic);
     }
-    const body = element('div', 'library-card-body');
-    const name = element('span', 'library-card-name', file.originalName);
+    const body = element('div', 'lib-card-body');
+    const name = element('div', 'lib-card-name', file.originalName);
     name.title = file.originalName;
-    const meta = element('div', 'library-card-meta');
-    meta.append(
-      element('span', '', file.type.toUpperCase()),
-      element('span', '', '·'),
-      element('span', '', humanSize(file.size))
-    );
-    const actions = element('div', 'library-card-actions');
+    const meta = element('div', 'lib-card-meta');
+    meta.append(element('span', '', file.type.toUpperCase()), element('span', '', '·'), element('span', '', humanSize(file.size)));
+    const actions = element('div', 'lib-card-actions');
     const open = element('a', 'primary');
     open.href = api.library.fileUrl(file.id);
     open.target = '_blank';
     open.rel = 'noopener';
     open.textContent = 'Open';
-    open.addEventListener('click', (e) => {
-      // allow default open, but also show preview on second click? For now just open
-    });
-    const details = element('button', '');
+    const details = element('button');
     details.type = 'button';
     details.textContent = 'Details';
     details.addEventListener('click', () => showPreview(file));
     actions.append(open, details);
     body.append(name, meta, actions);
     card.append(preview, body);
-    // Make whole card clickable to preview
     card.style.cursor = 'pointer';
     card.addEventListener('click', (e) => {
       if (e.target.closest('a, button')) return;
@@ -140,10 +112,10 @@ function renderGrid(files) {
 }
 
 function renderList(files) {
-  const list = element('div', 'library-list');
+  const list = element('div', 'lib-list');
   files.forEach(file => {
-    const row = element('div', 'library-row');
-    const iconWrap = element('div', `library-row-icon ${file.type}`);
+    const row = element('div', 'lib-row');
+    const iconWrap = element('div', `lib-row-icon ${file.type}`);
     if (file.type === 'image') {
       const img = element('img');
       img.src = api.library.fileUrl(file.id);
@@ -153,10 +125,10 @@ function renderList(files) {
     } else {
       iconWrap.append(icon(fileIcon(file.type)));
     }
-    const main = element('div', 'library-row-main');
-    const name = element('div', 'library-row-name', file.originalName);
+    const main = element('div', 'lib-row-main');
+    const name = element('div', 'lib-row-name', file.originalName);
     name.title = file.originalName;
-    const sub = element('div', 'library-row-sub');
+    const sub = element('div', 'lib-row-sub');
     sub.append(
       element('span', '', file.type),
       element('span', '', '·'),
@@ -165,7 +137,7 @@ function renderList(files) {
       element('span', '', new Date(file.createdAt).toLocaleDateString())
     );
     main.append(name, sub);
-    const actions = element('div', 'library-row-actions');
+    const actions = element('div', 'lib-row-actions');
     const open = element('a');
     open.href = api.library.fileUrl(file.id);
     open.target = '_blank';
@@ -204,17 +176,20 @@ function renderList(files) {
 
 function renderEmpty() {
   const isFiltered = Boolean(state.search || state.filter !== 'all');
-  const empty = element('div', isFiltered ? 'library-empty' : 'empty-state');
+  const empty = element('div', 'empty-state');
+  empty.style.minHeight = '360px';
+  empty.style.borderStyle = 'dashed';
   const ic = element('span', 'empty-icon');
   ic.append(icon(isFiltered ? 'search' : 'file'));
-  const h3 = element('h2', '', isFiltered ? 'No matches' : 'Library is empty');
+  const h2 = element('h2', '', isFiltered ? 'No matches' : 'Library is empty');
   const p = element('p', '', isFiltered
-    ? 'Try a different search or filter. All photos, PDFs and files you upload to the AI will appear here.'
+    ? 'Try a different search or filter. All photos, PDFs and files you upload will appear here.'
     : 'Upload a file or send a photo, PDF or document to the AI in chat. Every upload gets its own direct link you can open and share.');
-  empty.append(ic, h3, p);
-  if (state.files.length === 0 && !state.search && state.filter === 'all') {
+  empty.append(ic, h2, p);
+  if (state.files.length === 0 && !isFiltered) {
     const btn = element('button', 'button', 'Upload first file');
     btn.type = 'button';
+    btn.style.marginTop = '16px';
     btn.addEventListener('click', () => fileInput?.click());
     empty.append(btn);
   }
@@ -229,11 +204,7 @@ function render() {
     libraryState.append(renderEmpty());
     return;
   }
-  if (state.view === 'grid') {
-    libraryState.append(renderGrid(files));
-  } else {
-    libraryState.append(renderList(files));
-  }
+  libraryState.append(state.view === 'grid' ? renderGrid(files) : renderList(files));
 }
 
 function syncViewToggle() {
@@ -281,8 +252,7 @@ async function loadLibrary() {
     render();
   } catch (err) {
     libraryState.replaceChildren();
-    const errEl = element('p', 'hint', err.message);
-    libraryState.append(errEl);
+    libraryState.append(element('p', 'hint', err.message));
     showToast(err.message, 'danger');
   }
 }
@@ -302,13 +272,9 @@ async function uploadFiles(files) {
     try {
       showToast(`Uploading ${file.name}…`);
       const dataUrl = await readFileAsDataUrl(file);
-      const uploaded = await api.library.upload({
-        name: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        dataUrl
-      });
+      const uploaded = await api.library.upload({ name: file.name, mimeType: file.type || 'application/octet-stream', dataUrl });
       state.files.unshift(uploaded);
-      showToast(`${file.name} saved to Library.`);
+      showToast(`${file.name} saved.`);
     } catch (err) {
       showToast(err.message || `Failed to upload ${file.name}`, 'danger');
     }
@@ -316,71 +282,37 @@ async function uploadFiles(files) {
   render();
 }
 
-// Events
-searchInput?.addEventListener('input', () => {
-  state.search = searchInput.value.trim();
-  render();
-});
+searchInput?.addEventListener('input', () => { state.search = searchInput.value.trim(); render(); });
 
-document.querySelectorAll('.filter-chips button').forEach(btn => {
+document.querySelectorAll('.lib-filters button').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-chips button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.lib-filters button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.filter = btn.dataset.filter || 'all';
     render();
   });
 });
 
-gridBtn?.addEventListener('click', () => {
-  state.view = 'grid';
-  syncViewToggle();
-  render();
-});
-
-listBtn?.addEventListener('click', () => {
-  state.view = 'list';
-  syncViewToggle();
-  render();
-});
-
+gridBtn?.addEventListener('click', () => { state.view = 'grid'; syncViewToggle(); render(); });
+listBtn?.addEventListener('click', () => { state.view = 'list'; syncViewToggle(); render(); });
 uploadBtn?.addEventListener('click', () => fileInput?.click());
-
 fileInput?.addEventListener('change', async () => {
   const files = Array.from(fileInput.files || []);
   fileInput.value = '';
   await uploadFiles(files);
 });
-
 copyLinkBtn?.addEventListener('click', async () => {
   const url = previewLink?.href ? `${window.location.origin}${previewLink.getAttribute('href')}` : previewLink?.textContent;
   if (!url) return;
-  try {
-    await navigator.clipboard.writeText(url);
-    showToast('Link copied.');
-  } catch {
-    showToast(`Link: ${url}`);
-  }
+  try { await navigator.clipboard.writeText(url); showToast('Link copied.'); } catch { showToast(`Link: ${url}`); }
 });
-
 document.querySelectorAll('[data-close-dialog]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.closeDialog;
-    document.getElementById(id)?.close();
-  });
+  btn.addEventListener('click', () => { document.getElementById(btn.dataset.closeDialog)?.close(); });
 });
 
-// Drag & drop upload
 let dragCounter = 0;
-document.addEventListener('dragenter', (e) => {
-  e.preventDefault();
-  dragCounter++;
-  document.body.classList.add('drag-over');
-});
-document.addEventListener('dragleave', (e) => {
-  e.preventDefault();
-  dragCounter--;
-  if (dragCounter <= 0) document.body.classList.remove('drag-over');
-});
+document.addEventListener('dragenter', (e) => { e.preventDefault(); dragCounter++; document.body.classList.add('drag-over'); });
+document.addEventListener('dragleave', (e) => { e.preventDefault(); dragCounter--; if (dragCounter <= 0) document.body.classList.remove('drag-over'); });
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', async (e) => {
   e.preventDefault();
