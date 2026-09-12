@@ -8,6 +8,7 @@ const TITLE_KEY = 'titleGeneration';
 const PROMPT_KEY = 'systemPrompt';
 const AUTO_TEST_KEY = 'autoTesting';
 const DEVELOPER_TOOLS_KEY = 'developerTools';
+const CHAT_MODEL_KEY = 'chatModel';
 
 // Long enough for detailed standing instructions, short enough that it cannot crowd out the
 // conversation itself in the context window.
@@ -28,6 +29,10 @@ export function defaultAutoTestSettings() {
 // command execution, so the user has to opt in deliberately.
 export function defaultDeveloperToolsSettings() {
   return { fileManagement: true, shell: false, confirmShell: false };
+}
+
+export function defaultChatModelSettings() {
+  return { providerId: null, modelId: null, thinkingLevel: null };
 }
 
 function readSetting(db, key) {
@@ -54,6 +59,7 @@ export function getSettings(db) {
   const prompt = readSetting(db, PROMPT_KEY);
   const autoTest = readSetting(db, AUTO_TEST_KEY);
   const devTools = readSetting(db, DEVELOPER_TOOLS_KEY);
+  const chatModel = readSetting(db, CHAT_MODEL_KEY);
   return {
     titleGeneration: {
       enabled: title?.enabled === true,
@@ -71,6 +77,12 @@ export function getSettings(db) {
       // Only meaningful while shell access is on: every run_shell call then pauses the chat for
       // an explicit Approve/Deny tap from the user before anything executes.
       confirmShell: devTools?.confirmShell === true
+    },
+    // Last used chat model + thinking level, survives refresh and server restart
+    chatModel: {
+      providerId: typeof chatModel?.providerId === 'string' && chatModel.providerId ? chatModel.providerId : null,
+      modelId: typeof chatModel?.modelId === 'string' && chatModel.modelId ? chatModel.modelId : null,
+      thinkingLevel: typeof chatModel?.thinkingLevel === 'string' && chatModel.thinkingLevel ? chatModel.thinkingLevel : null
     }
   };
 }
@@ -82,7 +94,8 @@ export function updateSettings(db, body = {}) {
   const hasPrompt = patch.systemPrompt !== undefined;
   const hasAutoTest = patch.autoTesting !== undefined;
   const hasDevTools = patch.developerTools !== undefined;
-  if (!hasTitle && !hasPrompt && !hasAutoTest && !hasDevTools) throw validation('Nothing to save. Send the settings you want to change.');
+  const hasChatModel = patch.chatModel !== undefined;
+  if (!hasTitle && !hasPrompt && !hasAutoTest && !hasDevTools && !hasChatModel) throw validation('Nothing to save. Send the settings you want to change.');
 
   if (hasDevTools) {
     const next = patch.developerTools;
@@ -129,6 +142,45 @@ export function updateSettings(db, body = {}) {
     if (typeof raw !== 'string') throw validation('The system prompt must be text.');
     if (raw.length > SYSTEM_PROMPT_MAX) throw validation(`The system prompt must be at most ${SYSTEM_PROMPT_MAX} characters.`);
     writeSetting(db, PROMPT_KEY, { text: raw });
+  }
+
+  if (hasChatModel) {
+    const next = patch.chatModel;
+    if (!next || typeof next !== 'object') throw validation('Chat model settings are required.');
+    const providerId = next.providerId === null || next.providerId === undefined || next.providerId === ''
+      ? null
+      : (() => { try { return identifier(next.providerId, 'Provider ID'); } catch { return null; } })();
+    const modelIdVal = next.modelId === null || next.modelId === undefined || next.modelId === ''
+      ? null
+      : (() => { try { return modelId(next.modelId); } catch { return String(next.modelId).slice(0, 200); } })();
+    const thinkingLevel = next.thinkingLevel === null || next.thinkingLevel === undefined || next.thinkingLevel === ''
+      ? null
+      : String(next.thinkingLevel).slice(0, 120);
+
+    // If provider/model pair is set, ensure they still exist; if not, clear to null so UI falls back gracefully
+    let finalProviderId = providerId;
+    let finalModelId = modelIdVal;
+    if (finalProviderId) {
+      const provExists = db.prepare('SELECT id FROM providers WHERE id = ?').get(finalProviderId);
+      if (!provExists) {
+        finalProviderId = null;
+        finalModelId = null;
+      } else if (finalModelId) {
+        const modelExists = db.prepare('SELECT 1 FROM provider_models WHERE provider_id = ? AND model_id = ?').get(finalProviderId, finalModelId);
+        if (!modelExists) {
+          // Keep provider but clear model if model gone, so user picks again
+          finalModelId = null;
+        }
+      }
+    } else {
+      finalModelId = null;
+    }
+
+    writeSetting(db, CHAT_MODEL_KEY, {
+      providerId: finalProviderId,
+      modelId: finalModelId,
+      thinkingLevel
+    });
   }
 
   return getSettings(db);

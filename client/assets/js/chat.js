@@ -30,6 +30,88 @@ const state = {
   autoTicks: 0
 };
 
+// ---- Persist last model + thinking across refresh and server restart ----
+const LAST_MODEL_KEY = 'glow-last-model';
+try {
+  const raw = localStorage.getItem(LAST_MODEL_KEY);
+  if (raw) {
+    const saved = JSON.parse(raw);
+    if (saved?.providerId) state.selectedProviderId = saved.providerId;
+    if (saved?.modelId) state.selectedModelId = saved.modelId;
+    if (saved?.thinkingLevel) state.thinkingLevel = saved.thinkingLevel;
+  }
+} catch {}
+
+function saveLastModelToLocal() {
+  try {
+    localStorage.setItem(LAST_MODEL_KEY, JSON.stringify({
+      providerId: state.selectedProviderId,
+      modelId: state.selectedModelId,
+      thinkingLevel: state.thinkingLevel
+    }));
+  } catch {}
+}
+
+async function persistChatModel() {
+  saveLastModelToLocal();
+  try {
+    await api.settings.update({
+      chatModel: {
+        providerId: state.selectedProviderId,
+        modelId: state.selectedModelId,
+        thinkingLevel: state.thinkingLevel
+      }
+    });
+  } catch {
+    // server save is best-effort, local already saved
+  }
+}
+
+async function loadPersistedModelFromServer() {
+  try {
+    const settings = await api.settings.get();
+    const cm = settings?.chatModel;
+    if (!cm) {
+      // No server record yet, push local if we have one so restart will remember it
+      if (state.selectedProviderId && state.selectedModelId) {
+        persistChatModel();
+      }
+      return;
+    }
+    // Server is source of truth for restart persistence
+    if (cm.providerId && cm.modelId) {
+      const exists = state.availableModels.length === 0 || state.availableModels.some(m => m.providerId === cm.providerId && m.modelId === cm.modelId);
+      if (exists) {
+        state.selectedProviderId = cm.providerId;
+        state.selectedModelId = cm.modelId;
+        if (cm.thinkingLevel) state.thinkingLevel = cm.thinkingLevel;
+        saveLastModelToLocal();
+        const sel = selectedModel();
+        if (sel && modelTrigger) {
+          modelTrigger.classList.add('selected');
+          modelTrigger.title = `${sel.providerName} · ${sel.modelId}`;
+          modelTrigger.setAttribute('aria-label', `Selected model: ${sel.modelId}. Choose provider and model.`);
+        }
+        syncThinkingTrigger();
+        syncAttachTrigger();
+        renderModelPicker();
+      }
+    } else {
+      // Server has no model, but we have local - push local to server
+      if (state.selectedProviderId && state.selectedModelId) {
+        persistChatModel();
+      } else if (cm.thinkingLevel && !state.thinkingLevel) {
+        state.thinkingLevel = cm.thinkingLevel;
+        syncThinkingTrigger();
+        renderThinkingPicker();
+        saveLastModelToLocal();
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
 // How many times the chat will poll the automatic runner before giving up. A real run finishes in
 // seconds per model; this only stops a hung probe from polling for the life of the tab.
 const MAX_AUTO_POLLS = 400;
@@ -529,6 +611,8 @@ function chooseThinkingLevel(levelId) {
   renderThinkingPicker();
   thinkingDialog.close();
   showToast(levelId ? `Thinking level set to ${levelId}.` : 'Thinking level turned off.');
+  // Persist thinking level together with model
+  persistChatModel();
 }
 
 // The buttons under each message. An answer can be re-asked, copied, removed, or sent to a
@@ -918,6 +1002,8 @@ function selectModel(entry) {
   modelTrigger.setAttribute('aria-label', `Selected model: ${entry.modelId}. Choose provider and model.`);
   modelTrigger.title = `${entry.providerName} · ${entry.modelId}`;
   showToast(`${entry.modelId} selected.`);
+  // Persist across refresh and server restart
+  persistChatModel();
 }
 
 function renderSkillPicker() {
@@ -1094,13 +1180,34 @@ async function loadModels() {
     return models.map((model) => ({ providerId: provider.id, providerName: provider.name, modelId: model.modelId }));
   }));
   state.availableModels = results.flat();
-  if (!selectedModel() && state.availableModels.length > 0) {
+
+  // Restore persisted model if still valid, otherwise pick first available
+  if (selectedModel()) {
+    const sel = selectedModel();
+    if (sel && modelTrigger) {
+      modelTrigger.classList.add('selected');
+      modelTrigger.title = `${sel.providerName} · ${sel.modelId}`;
+      modelTrigger.setAttribute('aria-label', `Selected model: ${sel.modelId}. Choose provider and model.`);
+    }
+    syncThinkingTrigger();
+    syncAttachTrigger();
+  } else if (state.availableModels.length > 0) {
     state.selectedProviderId = state.availableModels[0].providerId;
     state.selectedModelId = state.availableModels[0].modelId;
-    modelTrigger.classList.add('selected');
-    modelTrigger.title = `${state.availableModels[0].providerName} · ${state.availableModels[0].modelId}`;
+    if (modelTrigger) {
+      modelTrigger.classList.add('selected');
+      modelTrigger.title = `${state.availableModels[0].providerName} · ${state.availableModels[0].modelId}`;
+      modelTrigger.setAttribute('aria-label', `Selected model: ${state.availableModels[0].modelId}. Choose provider and model.`);
+    }
+    // Persist the auto-picked first model so refresh remembers it
+    saveLastModelToLocal();
+    persistChatModel();
+    syncThinkingTrigger();
+    syncAttachTrigger();
   }
   renderModelPicker();
+  // After models are known, try to load server-persisted model (overrides local if server has newer)
+  await loadPersistedModelFromServer();
 }
 
 // The repository list comes from the server's own search tool, so it only works once the

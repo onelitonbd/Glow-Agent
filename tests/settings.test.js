@@ -83,7 +83,8 @@ test('settings default to off and are validated before they are stored', async (
     // Automatic capability testing is on unless the user turns it off.
     autoTesting: { enabled: true },
     // File management on, shell off, until the user changes them deliberately.
-    developerTools: { fileManagement: true, shell: false, confirmShell: false }
+    developerTools: { fileManagement: true, shell: false, confirmShell: false },
+    chatModel: { providerId: null, modelId: null, thinkingLevel: null }
   });
 
   const missing = await json(`${base}/settings`, { method: 'PUT', body: {} });

@@ -422,7 +422,7 @@ test('Edit replaces the bubble with a field and re-sends the corrected message',
   [...byId.get('chatLog').querySelector('.message-editor-actions').querySelectorAll('button')]
     .find((button) => button.dataset.action === 'save-edit').dispatchEvent('click');
   await waitFor(() => requests.some((request) => request.path.endsWith('/regenerate/stream')));
-  const edit = requests.find((request) => request.method === 'PUT');
+  const edit = requests.find((request) => request.method === 'PUT' && request.path.includes('/messages/'));
   assert.equal(edit.path, '/api/v1/conversations/conv-1/messages/msg-user');
   assert.deepEqual(edit.body, { content: 'Write me a tanka.' });
   const regenerate = requests.find((request) => request.path.endsWith('/regenerate/stream'));
