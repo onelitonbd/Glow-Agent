@@ -21,65 +21,86 @@
   <link rel="stylesheet" href="/assets/css/app.css">
   <title>Library — Glow Agent</title>
   <style>
+    /* Library matches the rest of Glow Agent: same shell, same cards, same accent */
     .library-toolbar {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       align-items: center;
-      margin: 12px 4px 10px;
+      margin: 14px 4px 12px;
     }
     .library-search {
-      flex: 1 1 180px;
+      flex: 1 1 200px;
+      position: relative;
       display: flex;
       align-items: center;
-      gap: 8px;
       height: 42px;
-      padding: 0 12px;
+      padding: 0 12px 0 36px;
       border: 1px solid var(--line);
-      border-radius: 11px;
+      border-radius: 12px;
       background: var(--surface);
-      color: var(--muted);
+      color: var(--quiet);
+      transition: border-color .16s ease, box-shadow .16s ease;
+    }
+    .library-search:focus-within {
+      border-color: rgba(198,255,107,.5);
+      box-shadow: 0 0 0 3px var(--accent-wash);
+    }
+    .library-search svg {
+      position: absolute;
+      left: 12px;
+      width: 14px;
+      height: 14px;
+      color: var(--quiet);
+      pointer-events: none;
     }
     .library-search input {
       flex: 1;
+      width: 100%;
       border: 0;
       outline: 0;
       background: transparent;
       color: var(--text);
-      font: 13px var(--font);
+      font: 13.5px var(--font);
     }
     .library-search input::placeholder { color: var(--quiet); }
     .view-toggle {
       display: flex;
-      gap: 2px;
+      gap: 3px;
       padding: 3px;
       border: 1px solid var(--line);
-      border-radius: 11px;
+      border-radius: 12px;
       background: var(--surface);
     }
     .view-toggle button {
       display: grid;
-      width: 36px;
+      width: 38px;
       height: 32px;
       place-items: center;
       border: 0;
       border-radius: 8px;
       background: transparent;
       color: var(--muted);
+      transition: background .15s ease, color .15s ease;
     }
     .view-toggle button.active {
+      background: var(--surface-raised);
+      color: var(--text);
+      box-shadow: 0 1px 0 rgba(255,255,255,.06) inset;
+    }
+    .view-toggle button.active:first-child {
       background: var(--accent);
       color: var(--accent-ink);
     }
     .filter-chips {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
-      margin: 0 4px 14px;
+      gap: 7px;
+      margin: 0 4px 16px;
     }
     .filter-chips button {
-      min-height: 32px;
-      padding: 0 12px;
+      min-height: 30px;
+      padding: 0 13px;
       border: 1px solid var(--line);
       border-radius: 99px;
       background: var(--surface);
@@ -87,15 +108,22 @@
       font: 600 11px var(--mono);
       letter-spacing: .04em;
       text-transform: uppercase;
+      transition: border-color .15s ease, background .15s ease, color .15s ease;
     }
+    .filter-chips button:hover { border-color: rgba(198,255,107,.25); color: var(--text-soft); }
     .filter-chips button.active {
-      border-color: rgba(198,255,107,.4);
+      border-color: rgba(198,255,107,.45);
       background: var(--accent-wash);
+      color: var(--accent);
+    }
+    :root[data-theme="light"] .filter-chips button.active {
+      border-color: rgba(75,127,23,.35);
+      background: rgba(75,127,23,.12);
       color: var(--accent);
     }
     .library-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
       gap: 10px;
     }
     .library-card {
@@ -104,14 +132,18 @@
       border: 1px solid var(--line);
       border-radius: 16px;
       background: var(--surface);
-      transition: border-color .16s ease, transform .16s ease;
+      transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease;
     }
-    .library-card:hover { border-color: rgba(198,255,107,.35); transform: translateY(-1px); }
+    .library-card:hover {
+      border-color: rgba(198,255,107,.35);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }
     .library-card-preview {
       position: relative;
-      aspect-ratio: 1.2;
+      aspect-ratio: 1.15;
       overflow: hidden;
-      background: var(--surface-soft);
+      background: linear-gradient(135deg, var(--surface-soft), var(--surface-raised));
       display: grid;
       place-items: center;
     }
@@ -122,22 +154,24 @@
     }
     .library-card-preview .file-icon {
       display: grid;
-      width: 48px;
-      height: 48px;
+      width: 52px;
+      height: 52px;
       place-items: center;
-      border-radius: 12px;
+      border-radius: 14px;
       background: var(--surface-raised);
       color: var(--accent);
+      box-shadow: 0 4px 12px rgba(0,0,0,.12);
     }
-    .library-card-preview .file-icon.pdf { background: rgba(255,158,158,.12); color: var(--danger); }
-    .library-card-preview .file-icon.doc { background: rgba(169,156,255,.12); color: var(--violet); }
+    .library-card-preview .file-icon.pdf { background: rgba(255,158,158,.14); color: var(--danger); }
+    .library-card-preview .file-icon.doc { background: rgba(169,156,255,.14); color: var(--violet); }
+    .library-card-preview .file-icon.file { background: var(--surface-raised); color: var(--muted); }
     .library-card-body {
-      padding: 10px 11px 11px;
+      padding: 11px 12px 12px;
     }
     .library-card-name {
       display: block;
       overflow: hidden;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 700;
       letter-spacing: -.02em;
       text-overflow: ellipsis;
@@ -149,72 +183,85 @@
       margin-top: 4px;
       color: var(--quiet);
       font: 10px var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .03em;
     }
     .library-card-actions {
       display: flex;
-      gap: 4px;
-      margin-top: 8px;
+      gap: 6px;
+      margin-top: 10px;
     }
-    .library-card-actions button, .library-card-actions a {
+    .library-card-actions a, .library-card-actions button {
       flex: 1;
       display: inline-flex;
-      min-height: 30px;
+      min-height: 32px;
       align-items: center;
       justify-content: center;
-      gap: 4px;
+      gap: 5px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: var(--surface-soft);
       color: var(--text-soft);
-      font: 600 10.5px var(--mono);
+      font: 600 11px var(--mono);
       text-decoration: none;
+      transition: border-color .15s ease, background .15s ease, color .15s ease;
+    }
+    .library-card-actions a:hover, .library-card-actions button:hover {
+      border-color: rgba(198,255,107,.35);
+      color: var(--text);
     }
     .library-card-actions a.primary {
       background: var(--accent);
       color: var(--accent-ink);
       border-color: transparent;
+      font-weight: 800;
     }
+    .library-card-actions a.primary:hover { filter: brightness(1.05); }
     .library-list {
       display: grid;
-      gap: 6px;
+      gap: 8px;
     }
     .library-row {
       display: grid;
-      grid-template-columns: 40px minmax(0,1fr) auto;
+      grid-template-columns: 44px minmax(0,1fr) auto;
       align-items: center;
-      gap: 10px;
-      padding: 10px 11px;
+      gap: 11px;
+      padding: 11px 12px;
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 13px;
       background: var(--surface);
+      transition: border-color .15s ease, background .15s ease;
     }
-    .library-row:hover { border-color: rgba(198,255,107,.3); }
+    .library-row:hover { border-color: rgba(198,255,107,.28); background: var(--surface-raised); }
     .library-row-icon {
       display: grid;
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       place-items: center;
-      border-radius: 10px;
+      border-radius: 11px;
       background: var(--surface-soft);
       color: var(--muted);
       overflow: hidden;
+      flex: 0 0 auto;
     }
     .library-row-icon img { width: 100%; height: 100%; object-fit: cover; }
     .library-row-icon.image { background: var(--accent-wash); color: var(--accent); }
-    .library-row-icon.pdf { background: rgba(255,158,158,.12); color: var(--danger); }
-    .library-row-icon.doc { background: rgba(169,156,255,.12); color: var(--violet); }
+    .library-row-icon.pdf { background: rgba(255,158,158,.14); color: var(--danger); }
+    .library-row-icon.doc { background: rgba(169,156,255,.14); color: var(--violet); }
     .library-row-main { min-width: 0; }
     .library-row-name {
       overflow: hidden;
-      font-size: 13px;
+      font-size: 13.5px;
       font-weight: 700;
+      letter-spacing: -.02em;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .library-row-sub {
       display: flex;
-      gap: 8px;
-      margin-top: 2px;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 3px;
       color: var(--quiet);
       font: 10.5px var(--mono);
     }
@@ -224,62 +271,80 @@
     }
     .library-row-actions a, .library-row-actions button {
       display: grid;
-      width: 32px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       place-items: center;
       border: 1px solid var(--line);
-      border-radius: 9px;
+      border-radius: 10px;
       background: var(--surface-soft);
       color: var(--muted);
       text-decoration: none;
+      transition: border-color .15s ease, color .15s ease, background .15s ease;
     }
-    .library-row-actions a:hover { color: var(--accent); border-color: rgba(198,255,107,.4); }
+    .library-row-actions a:hover { color: var(--accent); border-color: rgba(198,255,107,.4); background: var(--accent-wash); }
+    .library-row-actions button:hover { color: var(--danger); border-color: rgba(255,158,158,.3); background: var(--danger-wash); }
     .library-empty {
+      composes: empty-state;
       display: grid;
-      min-height: 280px;
+      min-height: 360px;
       place-content: center;
-      padding: 24px;
-      border: 1px dashed rgba(255,255,255,.15);
-      border-radius: 18px;
-      background: var(--surface-soft);
+      padding: 28px 24px;
+      border: 1px dashed rgba(255,255,255,.16);
+      border-radius: 20px;
+      background: radial-gradient(circle at 50% 0%, rgba(198,255,107,.06), transparent 40%), var(--surface-soft);
       text-align: center;
     }
-    .library-empty h3 { margin: 12px 0 6px; font-size: 16px; }
-    .library-empty p { max-width: 300px; margin: 0 auto; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    :root[data-theme="light"] .library-empty { border-color: rgba(25,36,22,.18); background: var(--surface); }
+    .library-empty .empty-icon { margin: 0 auto; }
+    .library-empty h3 { margin: 14px 0 8px; font-size: 17px; letter-spacing: -.03em; }
+    .library-empty p { max-width: 300px; margin: 0 auto; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
     .library-stats {
       display: flex;
-      gap: 12px;
-      margin: 0 4px 12px;
+      align-items: center;
+      gap: 10px;
+      margin: 0 4px 14px;
       color: var(--quiet);
       font: 10.5px var(--mono);
     }
-    .library-stats b { color: var(--text-soft); }
+    .library-stats b { color: var(--text-soft); font-weight: 700; }
+    .library-stats::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-wash);
+      flex: 0 0 auto;
+    }
     .preview-dialog {
       width: min(100%, 560px);
       max-width: 560px;
     }
     .preview-media {
-      margin: 12px 0;
+      margin: 14px 0;
       overflow: hidden;
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 13px;
       background: var(--surface-soft);
     }
-    .preview-media img { display: block; width: 100%; max-height: 60vh; object-fit: contain; background: #0c0e11; }
+    .preview-media img { display: block; width: 100%; max-height: 62vh; object-fit: contain; background: #0c0e11; }
     .preview-link {
       display: flex;
+      align-items: center;
       gap: 8px;
       margin-top: 10px;
-      padding: 10px 11px;
+      padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 10px;
+      border-radius: 11px;
       background: var(--surface-soft);
       font: 11px var(--mono);
       word-break: break-all;
     }
-    .preview-link a { color: var(--accent); }
-    @media (max-width: 360px) {
-      .library-grid { grid-template-columns: repeat(2, 1fr); }
+    .preview-link a { color: var(--accent); text-decoration: none; }
+    .preview-link a:hover { text-decoration: underline; }
+    @media (max-width: 380px) {
+      .library-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .library-toolbar { gap: 8px; }
     }
   </style>
 </head>
@@ -288,10 +353,7 @@
     <header class="app-header">
       <a class="icon-button" href="/" aria-label="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></a>
       <h1 class="app-title">Library</h1>
-      <div class="header-actions">
-        <button class="icon-button" id="uploadBtn" type="button" aria-label="Upload file" title="Upload file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/><path d="M5 19h14"/></svg></button>
-        <a class="icon-button" href="/settings.html" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-2.2 2.2-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V20.4h-3.1v-.11a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06-2.2-2.2.06-.06A1.7 1.7 0 0 0 6.78 15a1.7 1.7 0 0 0-1.56-1.03h-.11v-3.1h.11A1.7 1.7 0 0 0 6.78 9.84a1.7 1.7 0 0 0-.34-1.87l-.06-.06 2.2-2.2.06.06a1.7 1.7 0 0 0 1.87.34 1.7 1.7 0 0 0 1.03-1.56v-.11h3.1v.11a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06 2.2 2.2-.06.06a1.7 1.7 0 0 0-.34 1.87 1.7 1.7 0 0 0 1.56 1.03h.11v3.1h-.11A1.7 1.7 0 0 0 19.4 15Z"/></svg></a>
-      </div>
+      <button class="header-link" id="uploadBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Upload</button>
     </header>
 
     <section class="intro">

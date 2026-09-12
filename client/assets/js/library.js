@@ -203,18 +203,18 @@ function renderList(files) {
 }
 
 function renderEmpty() {
-  const empty = element('div', 'library-empty');
+  const isFiltered = Boolean(state.search || state.filter !== 'all');
+  const empty = element('div', isFiltered ? 'library-empty' : 'empty-state');
   const ic = element('span', 'empty-icon');
-  ic.append(icon('file'));
-  const h3 = element('h3', '', state.search || state.filter !== 'all' ? 'No matches' : 'Library is empty');
-  const p = element('p', '', state.search || state.filter !== 'all'
+  ic.append(icon(isFiltered ? 'search' : 'file'));
+  const h3 = element('h2', '', isFiltered ? 'No matches' : 'Library is empty');
+  const p = element('p', '', isFiltered
     ? 'Try a different search or filter. All photos, PDFs and files you upload to the AI will appear here.'
     : 'Upload a file or send a photo, PDF or document to the AI in chat. Every upload gets its own direct link you can open and share.');
   empty.append(ic, h3, p);
   if (state.files.length === 0 && !state.search && state.filter === 'all') {
-    const btn = element('button', 'button small', 'Upload first file');
+    const btn = element('button', 'button', 'Upload first file');
     btn.type = 'button';
-    btn.style.marginTop = '14px';
     btn.addEventListener('click', () => fileInput?.click());
     empty.append(btn);
   }
